@@ -5,10 +5,9 @@ import datetime
 import pytz
 import re
 import asyncio
-import json
-from typing import Dict, Any, Tuple, Optional, List, Union
+from typing import Dict, Any, Tuple
 
-from telegram import Update, ReplyKeyboardRemove, ForceReply, ReplyKeyboardMarkup, InlineKeyboardMarkup, InlineKeyboardButton
+from telegram import Update, ReplyKeyboardRemove, ForceReply, ReplyKeyboardMarkup, InlineKeyboardMarkup, InlineKeyboardButton, Message
 from telegram.ext import (
     Application, CommandHandler, MessageHandler, filters,
     ContextTypes, ConversationHandler, CallbackQueryHandler
@@ -21,35 +20,11 @@ from stt import transcribe_voice_persian
 from nlu import extract_reminder_details_gemini
 from utils import parse_persian_datetime_to_utc, format_jalali_datetime_for_display, normalize_persian_numerals
 
-# Set up enhanced logging
-import logging.handlers
-import sys
-
-# Create logs directory if it doesn't exist
-os.makedirs('logs', exist_ok=True)
-
-# Configure the root logger
+# Simple logging setup
 logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(module)s - %(funcName)s - %(message)s",
-    handlers=[
-        # Console handler with INFO level
-        logging.StreamHandler(sys.stdout),
-        # File handler with DEBUG level (more detailed)
-        logging.handlers.RotatingFileHandler(
-            'logs/bot.log',
-            maxBytes=10*1024*1024,  # 10MB
-            backupCount=5,
-            encoding='utf-8'
-        ),
-    ]
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", 
+    level=logging.INFO
 )
-
-# Set the file handler to DEBUG level for detailed logging
-for handler in logging.getLogger().handlers:
-    if isinstance(handler, logging.handlers.RotatingFileHandler):
-        handler.setLevel(logging.DEBUG)
-
 logger = logging.getLogger(__name__)
 
 # States for ConversationHandler
@@ -536,135 +511,100 @@ async def conversation_timeout(update: Update, context: ContextTypes.DEFAULT_TYP
 
 # --- STT Handler ---
 async def handle_voice_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if not update.message or not update.message.voice: return
+    if not update.message or not update.message.voice: 
+        return
+        
     user_id = update.effective_user.id
     chat_id = update.effective_chat.id
-    logger.info(f"User {user_id} sent voice message. Duration: {update.message.voice.duration}s")
+    logger.info(f"User {user_id} sent voice message.")
     
     # Show processing message
     processing_msg = await update.message.reply_text(MSG_PROCESSING_VOICE)
     
     try:
-        # Download the voice file
+        # Download and transcribe voice message
         voice_file = await update.message.voice.get_file()
         with tempfile.NamedTemporaryFile(delete=False, suffix=".oga") as temp_audio_file:
             await voice_file.download_to_drive(custom_path=temp_audio_file.name)
             temp_audio_file_path = temp_audio_file.name
-        
-        logger.info(f"Voice file downloaded to {temp_audio_file_path}")
-        
-        # Transcribe the voice message
+            
         transcribed_text = transcribe_voice_persian(temp_audio_file_path)
         
-        # Clean up the temporary file
+        # Clean up
         try: 
             os.remove(temp_audio_file_path)
-            logger.debug(f"Temp voice file {temp_audio_file_path} deleted")
-        except OSError as e: 
-            logger.error(f"Error deleting temp voice file {temp_audio_file_path}: {e}")
-
-        # Remove the processing message
-        if processing_msg:
-            try: 
-                await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=processing_msg.message_id)
-                logger.debug("Processing message deleted")
-            except Exception as e: 
-                logger.error(f"Failed to delete processing voice message: {e}")
-
+        except Exception as e: 
+            logger.error(f"Error deleting temp voice file: {e}")
+            
+        # Delete processing message
+        try:
+            await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=processing_msg.message_id)
+        except Exception as e:
+            logger.error(f"Failed to delete processing message: {e}")
+            
         # Handle transcription result
         if not transcribed_text:
-            logger.warning(f"Voice transcription failed for user {user_id}")
             await update.message.reply_text(MSG_STT_FAILED)
             return
-
-        logger.info(f"Transcription for user {user_id}: \"{transcribed_text}\"")
-        
-        # Reply with transcription
+            
+        # Show transcription and process it
         await update.message.reply_text(f"پیام صوتی شما: «{transcribed_text}»")
+        logger.info(f"Transcription: {transcribed_text}")
         
-        # Process the transcribed text directly
-        logger.info(f"Sending transcription to NLU: '{transcribed_text}'")
-        
-        try:
-            # Add a small delay to ensure the transcription message is displayed before processing
-            await asyncio.sleep(0.5)
+        # Extract reminder details
+        nlu_data = extract_reminder_details_gemini(transcribed_text, current_context="voice_transcription")
+        if not nlu_data:
+            await update.message.reply_text(MSG_NLU_ERROR)
+            return
             
-            # Process the transcribed text using NLU to extract reminder details
-            nlu_data = extract_reminder_details_gemini(transcribed_text, current_context="voice_transcription")
-            if not nlu_data:
-                logger.error(f"Failed to extract reminder details from transcription: '{transcribed_text}'")
-                await update.message.reply_text(MSG_NLU_ERROR)
+        logger.info(f"NLU data: {nlu_data}")
+        
+        # Set user data
+        context.user_data['task'] = nlu_data.get("task")
+        context.user_data['date_str'] = nlu_data.get("date")
+        context.user_data['time_str'] = nlu_data.get("time")
+        context.user_data['recurrence'] = nlu_data.get("recurrence")
+        context.user_data['am_pm'] = nlu_data.get("am_pm")
+        
+        # Create reminder if we have all the required information
+        if context.user_data['task'] and context.user_data['date_str'] and context.user_data['time_str']:
+            reminder, error = await save_or_update_reminder_in_db(user_id, chat_id, context.user_data)
+            if error:
+                await update.message.reply_text(error)
                 return
-            
-            logger.info(f"NLU extracted data: {nlu_data}")
                 
-            # Store extracted data in user context
-            context.user_data['nlu_data'] = nlu_data
-            context.user_data['task'] = nlu_data.get("task")
-            context.user_data['date_str'] = nlu_data.get("date")
-            context.user_data['time_str'] = nlu_data.get("time")
-            context.user_data['recurrence'] = nlu_data.get("recurrence")
-            context.user_data['am_pm'] = nlu_data.get("am_pm")
-            
-            logger.info(f"Extracted task: '{context.user_data['task']}', date: '{context.user_data['date_str']}', time: '{context.user_data['time_str']}'")
-            
-            # If we have task and date/time, save the reminder
-            if context.user_data['task'] and context.user_data['date_str'] and context.user_data['time_str']:
-                logger.info(f"Creating reminder with task, date, and time")
-                reminder, error = await save_or_update_reminder_in_db(user_id, chat_id, context.user_data)
-                if error:
-                    logger.error(f"Error saving reminder: {error}")
-                    await update.message.reply_text(error)
-                    return
-                    
-                if reminder:
-                    jalali_date, time_disp = format_jalali_datetime_for_display(reminder.due_datetime_utc)
-                    rec_info = f" (تکرار: {reminder.recurrence_rule})" if reminder.recurrence_rule else ""
-                    await update.message.reply_text(MSG_CONFIRMATION.format(
-                        task=reminder.task_description,
-                        date=jalali_date,
-                        time=time_disp,
-                        recurrence_info=rec_info
-                    ))
-                    logger.info(f"Successfully created reminder from voice message. ID: {reminder.id}")
-                    
-            # If we have task and date but no time, set default time and ask for confirmation
-            elif context.user_data['task'] and context.user_data['date_str'] and not context.user_data['time_str']:
-                logger.info(f"Voice message with task & date, but no time. Setting default 09:00.")
-                context.user_data['time_str'] = "09:00"
+            if reminder:
+                jalali_date, time_disp = format_jalali_datetime_for_display(reminder.due_datetime_utc)
+                rec_info = f" (تکرار: {reminder.recurrence_rule})" if reminder.recurrence_rule else ""
+                await update.message.reply_text(MSG_CONFIRMATION.format(
+                    task=reminder.task_description,
+                    date=jalali_date,
+                    time=time_disp,
+                    recurrence_info=rec_info
+                ))
+        elif context.user_data['task'] and context.user_data['date_str']:
+            # Task and date but no time - set default time
+            context.user_data['time_str'] = "09:00"
+            reminder, error = await save_or_update_reminder_in_db(user_id, chat_id, context.user_data)
+            if error:
+                await update.message.reply_text(error)
+                return
                 
-                reminder, error = await save_or_update_reminder_in_db(user_id, chat_id, context.user_data)
-                if error:
-                    logger.error(f"Error saving reminder with default time: {error}")
-                    await update.message.reply_text(error)
-                    return
-                    
-                if reminder:
-                    jalali_date, _ = format_jalali_datetime_for_display(reminder.due_datetime_utc)
-                    context.user_data['last_reminder_id_for_time_update'] = reminder.id
-                    await update.message.reply_text(MSG_CONFIRM_DEFAULT_TIME.format(
-                        task=reminder.task_description,
-                        date=jalali_date
-                    ))
-                    logger.info(f"Created reminder with default time. ID: {reminder.id}")
-                    
-            # If we only have a task, ask for date/time
-            elif context.user_data['task']:
-                logger.info(f"Only task extracted from voice. Asking for date/time.")
-                await update.message.reply_text(MSG_REQUEST_FULL_DATETIME)
-                
-            # If we couldn't extract any meaningful info
-            else:
-                logger.warning(f"No meaningful information extracted from transcription: '{transcribed_text}'")
-                await update.message.reply_text(MSG_FAILURE_EXTRACTION)
-                
-        except Exception as e:
-            logger.error(f"Error processing transcribed voice message: {e}", exc_info=True)
-            await update.message.reply_text("متأسفانه در پردازش پیام صوتی شما مشکلی پیش آمد. لطفاً پیام خود را به صورت متنی ارسال کنید.")
-    
+            if reminder:
+                jalali_date, _ = format_jalali_datetime_for_display(reminder.due_datetime_utc)
+                await update.message.reply_text(MSG_CONFIRM_DEFAULT_TIME.format(
+                    task=reminder.task_description,
+                    date=jalali_date
+                ))
+        elif context.user_data['task']:
+            # Only task - ask for date/time
+            await update.message.reply_text(MSG_REQUEST_FULL_DATETIME)
+        else:
+            # Couldn't extract anything useful
+            await update.message.reply_text(MSG_FAILURE_EXTRACTION)
     except Exception as e:
-        logger.error(f"Global error in voice message handling: {e}", exc_info=True)
-        await update.message.reply_text(MSG_GENERAL_ERROR + " (خطای پردازش پیام صوتی)")
+        logger.error(f"Error processing voice message: {e}", exc_info=True)
+        await update.message.reply_text(MSG_GENERAL_ERROR)
 
 # --- Scheduler ---
 async def check_reminders(context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -1033,35 +973,18 @@ def main() -> None:
     # Main Conversation Handler for setting reminders
     set_reminder_conv = ConversationHandler(
         entry_points=[
-            MessageHandler(filters.TEXT & ~filters.COMMAND, handle_initial_message),
-            MessageHandler(filters.VOICE & ~filters.COMMAND, handle_voice_message)
+            MessageHandler(filters.TEXT & ~filters.COMMAND, handle_initial_message)
         ],
         states={
-            AWAITING_TASK_DESCRIPTION: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, received_task_description),
-                MessageHandler(filters.VOICE & ~filters.COMMAND, handle_voice_message)
-            ],
-            AWAITING_FULL_DATETIME: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, received_full_datetime),
-                MessageHandler(filters.VOICE & ~filters.COMMAND, handle_voice_message)
-            ],
-            AWAITING_TIME_ONLY: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, received_time_only),
-                MessageHandler(filters.VOICE & ~filters.COMMAND, handle_voice_message)
-            ],
-            AWAITING_AM_PM_CLARIFICATION: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, received_am_pm_clarification),
-                MessageHandler(filters.VOICE & ~filters.COMMAND, handle_voice_message)
-            ],
+            AWAITING_TASK_DESCRIPTION: [MessageHandler(filters.TEXT & ~filters.COMMAND, received_task_description)],
+            AWAITING_FULL_DATETIME: [MessageHandler(filters.TEXT & ~filters.COMMAND, received_full_datetime)],
+            AWAITING_TIME_ONLY: [MessageHandler(filters.TEXT & ~filters.COMMAND, received_time_only)],
+            AWAITING_AM_PM_CLARIFICATION: [MessageHandler(filters.TEXT & ~filters.COMMAND, received_am_pm_clarification)],
             AWAITING_EDIT_FIELD_CHOICE: [
                 CallbackQueryHandler(button_callback, pattern=r'^edit_field_'),
-                MessageHandler(filters.TEXT & ~filters.COMMAND, received_edit_field_choice),
-                MessageHandler(filters.VOICE & ~filters.COMMAND, handle_voice_message)
+                MessageHandler(filters.TEXT & ~filters.COMMAND, received_edit_field_choice)
             ],
-            AWAITING_EDIT_FIELD_VALUE: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, received_edit_field_value),
-                MessageHandler(filters.VOICE & ~filters.COMMAND, handle_voice_message)
-            ],
+            AWAITING_EDIT_FIELD_VALUE: [MessageHandler(filters.TEXT & ~filters.COMMAND, received_edit_field_value)],
         },
         fallbacks=[
             CommandHandler("cancel", cancel_conversation),
@@ -1081,18 +1004,13 @@ def main() -> None:
         states={
             AWAITING_DELETE_NUMBER_INPUT: [
                 CallbackQueryHandler(button_callback),
-                MessageHandler(filters.TEXT & ~filters.COMMAND, received_delete_number_input),
-                MessageHandler(filters.VOICE & ~filters.COMMAND, handle_voice_message)
+                MessageHandler(filters.TEXT & ~filters.COMMAND, received_delete_number_input)
             ],
             AWAITING_EDIT_FIELD_CHOICE: [
                 CallbackQueryHandler(button_callback, pattern=r'^edit_field_'),
-                MessageHandler(filters.TEXT & ~filters.COMMAND, received_edit_field_choice),
-                MessageHandler(filters.VOICE & ~filters.COMMAND, handle_voice_message)
+                MessageHandler(filters.TEXT & ~filters.COMMAND, received_edit_field_choice)
             ],
-            AWAITING_EDIT_FIELD_VALUE: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, received_edit_field_value),
-                MessageHandler(filters.VOICE & ~filters.COMMAND, handle_voice_message)
-            ],
+            AWAITING_EDIT_FIELD_VALUE: [MessageHandler(filters.TEXT & ~filters.COMMAND, received_edit_field_value)],
         },
         fallbacks=[
             CommandHandler("cancel", cancel_conversation),
@@ -1104,10 +1022,10 @@ def main() -> None:
     application.add_handler(CommandHandler("start", start_command))
     application.add_handler(set_reminder_conv)
     application.add_handler(list_delete_conv)
+    application.add_handler(MessageHandler(filters.VOICE & ~filters.COMMAND, handle_voice_message))
     
     # Fallback cancel command if user is stuck somehow (not in a conversation)
     application.add_handler(CommandHandler("cancel", cancel_conversation))
-
 
     job_queue = application.job_queue
     if job_queue:
