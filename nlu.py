@@ -30,7 +30,17 @@ def extract_reminder_details_gemini(text: str, current_context: str | None = Non
         return None
 
     current_jalali_year = get_current_jalali_year()
-    context_instruction = f"Current conversation context/state: '{current_context}'." if current_context else "No specific prior conversation context (this is a new interaction or the start of a reminder sequence)."
+    context_instruction = ""
+    
+    # Handle specific contexts
+    if current_context == "voice_transcription":
+        context_instruction = "This is a transcribed voice message. Assume the user is trying to set a reminder. Extract the task and any date/time information carefully."
+    elif current_context == "initial_contact":
+        context_instruction = "This is the start of a new conversation. The user is likely setting a reminder, asking for help, or listing reminders."
+    elif current_context:
+        context_instruction = f"Current conversation context/state: '{current_context}'."
+    else:
+        context_instruction = "No specific prior conversation context (this is a new interaction or the start of a reminder sequence)."
 
     prompt = f"""
     You are an intelligent assistant for a Telegram Reminder Bot, primarily for Persian users, but you should also understand similar English requests.
@@ -70,6 +80,7 @@ def extract_reminder_details_gemini(text: str, current_context: str | None = Non
     6.  Recurrence: "هر روز", "روزانه" -> "daily". "هر هفته", "هفتگی" -> "weekly". "هر ماه", "ماهانه" -> "monthly". "هر دوشنبه ساعت ۷" -> "every monday", time: "07:00".
     7.  List/Delete: "یادآور‌هامو نشونم بده" -> "intent": "list_reminders". "حذف کن شماره ۲" -> "intent": "delete_reminder_by_number", "extracted_number": 2.
     8.  Affirmative/Negative/Cancel: "آره", "بله" -> "affirmative". "نه", "خیر" -> "negative". "لغو", "کنسل" -> "cancel".
+    9.  Voice Transcription Special Handling: For transcribed voice messages, be more lenient and try to extract as much information as possible. For phrases like "بلافاصله {task}" or "زود {task}", set "date" to "امروز" (today) and "time" to the next available hour or 1 hour from now.
 
     Examples:
     - User: "فردا ساعت ۱۰ صبح یادم بنداز شیر بخرم" (Context: None) -> {{"intent": "set_reminder", "task": "شیر بخرم", "date": "فردا", "time": "10:00", "recurrence": null, "am_pm": "am", "extracted_number": null, "raw_time_input": null}}
@@ -83,6 +94,7 @@ def extract_reminder_details_gemini(text: str, current_context: str | None = Non
     - User: "لغو" (Context: any) -> {{"intent": "cancel", "task": null, "date": null, "time": null, "recurrence": null, "am_pm": null, "extracted_number": null, "raw_time_input": null}}
     - User: "خرید هفتگی برای خونه هر شنبه ساعت ۱۰ صبح" (Context: None) -> {{"intent": "set_reminder", "task": "خرید هفتگی برای خونه", "date": null, "time": "10:00", "recurrence": "every saturday", "am_pm": "am", "extracted_number": null, "raw_time_input": null}}
     - User: "نه ممنون" (Context: Bot asked if user wants to change time) -> {{"intent": "negative", "task": null, "date": null, "time": null, "recurrence": null, "am_pm": null, "extracted_number": null, "raw_time_input": null}}
+    - User: "فردا ساعت ۲ به دوستم زنگ بزنم" (Context: 'voice_transcription') -> {{"intent": "set_reminder", "task": "به دوستم زنگ بزنم", "date": "فردا", "time": "14:00", "recurrence": null, "am_pm": "pm", "extracted_number": null, "raw_time_input": null}}
 
 
     User input: "{text}"
@@ -165,7 +177,10 @@ if __name__ == '__main__':
             ("List command: یادآورهای من", None),
             ("Delete command: شماره ۲ رو پاک کن", "awaiting_delete_number_confirm"), # Context here is bot state
             ("Cancel command: لغو", "awaiting_task_description"),
-            ("Ambiguous time: ساعت ۱۲ یادم بنداز", None) # Should give raw_time_input
+            ("Ambiguous time: ساعت ۱۲ یادم بنداز", None), # Should give raw_time_input
+            ("Voice transcription: فردا ساعت ۲ به دوستم زنگ بزنم", "voice_transcription"),
+            ("Voice transcription: بلافاصله به دوستم زنگ بزنم", "voice_transcription"),
+            ("Voice transcription: زود به دوستم زنگ بزنم", "voice_transcription")
         ]
         for desc, text_input, context_input in test_cases:
             print(f"\n--- NLU Testing ({desc}) ---")

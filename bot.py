@@ -5,9 +5,10 @@ import datetime
 import pytz
 import re
 import asyncio
-from typing import Dict, Any, Tuple
+import json
+from typing import Dict, Any, Tuple, Optional, List, Union
 
-from telegram import Update, ReplyKeyboardRemove, ForceReply, ReplyKeyboardMarkup, InlineKeyboardMarkup, InlineKeyboardButton, Message
+from telegram import Update, ReplyKeyboardRemove, ForceReply, ReplyKeyboardMarkup, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import (
     Application, CommandHandler, MessageHandler, filters,
     ContextTypes, ConversationHandler, CallbackQueryHandler
@@ -18,12 +19,37 @@ from config import *
 from database import init_db, get_db, Reminder
 from stt import transcribe_voice_persian
 from nlu import extract_reminder_details_gemini
-from utils import parse_persian_datetime_to_utc, format_jalali_datetime_for_display
+from utils import parse_persian_datetime_to_utc, format_jalali_datetime_for_display, normalize_persian_numerals
 
+# Set up enhanced logging
+import logging.handlers
+import sys
+
+# Create logs directory if it doesn't exist
+os.makedirs('logs', exist_ok=True)
+
+# Configure the root logger
 logging.basicConfig(
-    format="%(asctime)s - %(name)s - %(levelname)s - %(module)s - %(funcName)s - %(message)s", 
-    level=logging.INFO
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(module)s - %(funcName)s - %(message)s",
+    handlers=[
+        # Console handler with INFO level
+        logging.StreamHandler(sys.stdout),
+        # File handler with DEBUG level (more detailed)
+        logging.handlers.RotatingFileHandler(
+            'logs/bot.log',
+            maxBytes=10*1024*1024,  # 10MB
+            backupCount=5,
+            encoding='utf-8'
+        ),
+    ]
 )
+
+# Set the file handler to DEBUG level for detailed logging
+for handler in logging.getLogger().handlers:
+    if isinstance(handler, logging.handlers.RotatingFileHandler):
+        handler.setLevel(logging.DEBUG)
+
 logger = logging.getLogger(__name__)
 
 # States for ConversationHandler
@@ -511,99 +537,134 @@ async def conversation_timeout(update: Update, context: ContextTypes.DEFAULT_TYP
 # --- STT Handler ---
 async def handle_voice_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.message or not update.message.voice: return
-    logger.info(f"User {update.effective_user.id} sent voice.")
+    user_id = update.effective_user.id
+    chat_id = update.effective_chat.id
+    logger.info(f"User {user_id} sent voice message. Duration: {update.message.voice.duration}s")
+    
+    # Show processing message
     processing_msg = await update.message.reply_text(MSG_PROCESSING_VOICE)
-    voice_file = await update.message.voice.get_file()
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".oga") as temp_audio_file:
-        await voice_file.download_to_drive(custom_path=temp_audio_file.name)
-        temp_audio_file_path = temp_audio_file.name
     
-    transcribed_text = transcribe_voice_persian(temp_audio_file_path)
-    try: os.remove(temp_audio_file_path)
-    except OSError as e: logger.error(f"Error deleting temp voice file {temp_audio_file_path}: {e}")
-
-    if processing_msg:
-        try: await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=processing_msg.message_id)
-        except Exception as e: logger.error(f"Failed to delete processing voice message: {e}")
-
-    if not transcribed_text:
-        await update.message.reply_text(MSG_STT_FAILED)
-        return
-
-    logger.info(f"Transcription for user {update.effective_user.id}: \"{transcribed_text}\"")
-    
-    # Reply with transcription
-    await update.message.reply_text(f"پیام صوتی شما: «{transcribed_text}»")
-    
-    # Process the transcribed text directly
     try:
-        # Add a small delay to ensure the transcription message is displayed before processing
-        await asyncio.sleep(0.5)
+        # Download the voice file
+        voice_file = await update.message.voice.get_file()
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".oga") as temp_audio_file:
+            await voice_file.download_to_drive(custom_path=temp_audio_file.name)
+            temp_audio_file_path = temp_audio_file.name
         
-        # Process the transcribed text using NLU to extract reminder details
-        nlu_data = extract_reminder_details_gemini(transcribed_text, current_context="voice_transcription")
-        if not nlu_data:
-            logger.error(f"Failed to extract reminder details from transcription: '{transcribed_text}'")
+        logger.info(f"Voice file downloaded to {temp_audio_file_path}")
+        
+        # Transcribe the voice message
+        transcribed_text = transcribe_voice_persian(temp_audio_file_path)
+        
+        # Clean up the temporary file
+        try: 
+            os.remove(temp_audio_file_path)
+            logger.debug(f"Temp voice file {temp_audio_file_path} deleted")
+        except OSError as e: 
+            logger.error(f"Error deleting temp voice file {temp_audio_file_path}: {e}")
+
+        # Remove the processing message
+        if processing_msg:
+            try: 
+                await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=processing_msg.message_id)
+                logger.debug("Processing message deleted")
+            except Exception as e: 
+                logger.error(f"Failed to delete processing voice message: {e}")
+
+        # Handle transcription result
+        if not transcribed_text:
+            logger.warning(f"Voice transcription failed for user {user_id}")
+            await update.message.reply_text(MSG_STT_FAILED)
             return
-            
-        # Store extracted data in user context
-        context.user_data['nlu_data'] = nlu_data
-        context.user_data['task'] = nlu_data.get("task")
-        context.user_data['date_str'] = nlu_data.get("date")
-        context.user_data['time_str'] = nlu_data.get("time")
-        context.user_data['recurrence'] = nlu_data.get("recurrence")
-        context.user_data['am_pm'] = nlu_data.get("am_pm")
+
+        logger.info(f"Transcription for user {user_id}: \"{transcribed_text}\"")
         
-        user_id = update.effective_user.id
-        chat_id = update.effective_chat.id
+        # Reply with transcription
+        await update.message.reply_text(f"پیام صوتی شما: «{transcribed_text}»")
         
-        # If we have task and date/time, save the reminder
-        if context.user_data['task'] and context.user_data['date_str'] and context.user_data['time_str']:
-            reminder, error = await save_or_update_reminder_in_db(user_id, chat_id, context.user_data)
-            if error:
-                await update.message.reply_text(error)
+        # Process the transcribed text directly
+        logger.info(f"Sending transcription to NLU: '{transcribed_text}'")
+        
+        try:
+            # Add a small delay to ensure the transcription message is displayed before processing
+            await asyncio.sleep(0.5)
+            
+            # Process the transcribed text using NLU to extract reminder details
+            nlu_data = extract_reminder_details_gemini(transcribed_text, current_context="voice_transcription")
+            if not nlu_data:
+                logger.error(f"Failed to extract reminder details from transcription: '{transcribed_text}'")
+                await update.message.reply_text(MSG_NLU_ERROR)
                 return
-                
-            if reminder:
-                jalali_date, time_disp = format_jalali_datetime_for_display(reminder.due_datetime_utc)
-                rec_info = f" (تکرار: {reminder.recurrence_rule})" if reminder.recurrence_rule else ""
-                await update.message.reply_text(MSG_CONFIRMATION.format(
-                    task=reminder.task_description,
-                    date=jalali_date,
-                    time=time_disp,
-                    recurrence_info=rec_info
-                ))
-                logger.info(f"Successfully created reminder from voice message: '{transcribed_text}'")
-                
-        # If we have task and date but no time, set default time and ask for confirmation
-        elif context.user_data['task'] and context.user_data['date_str'] and not context.user_data['time_str']:
-            logger.info(f"Voice message with task & date, but no time. Setting default 09:00.")
-            context.user_data['time_str'] = "09:00"
             
-            reminder, error = await save_or_update_reminder_in_db(user_id, chat_id, context.user_data)
-            if error:
-                await update.message.reply_text(error)
-                return
+            logger.info(f"NLU extracted data: {nlu_data}")
                 
-            if reminder:
-                jalali_date, _ = format_jalali_datetime_for_display(reminder.due_datetime_utc)
-                context.user_data['last_reminder_id_for_time_update'] = reminder.id
-                await update.message.reply_text(MSG_CONFIRM_DEFAULT_TIME.format(
-                    task=reminder.task_description,
-                    date=jalali_date
-                ))
+            # Store extracted data in user context
+            context.user_data['nlu_data'] = nlu_data
+            context.user_data['task'] = nlu_data.get("task")
+            context.user_data['date_str'] = nlu_data.get("date")
+            context.user_data['time_str'] = nlu_data.get("time")
+            context.user_data['recurrence'] = nlu_data.get("recurrence")
+            context.user_data['am_pm'] = nlu_data.get("am_pm")
+            
+            logger.info(f"Extracted task: '{context.user_data['task']}', date: '{context.user_data['date_str']}', time: '{context.user_data['time_str']}'")
+            
+            # If we have task and date/time, save the reminder
+            if context.user_data['task'] and context.user_data['date_str'] and context.user_data['time_str']:
+                logger.info(f"Creating reminder with task, date, and time")
+                reminder, error = await save_or_update_reminder_in_db(user_id, chat_id, context.user_data)
+                if error:
+                    logger.error(f"Error saving reminder: {error}")
+                    await update.message.reply_text(error)
+                    return
+                    
+                if reminder:
+                    jalali_date, time_disp = format_jalali_datetime_for_display(reminder.due_datetime_utc)
+                    rec_info = f" (تکرار: {reminder.recurrence_rule})" if reminder.recurrence_rule else ""
+                    await update.message.reply_text(MSG_CONFIRMATION.format(
+                        task=reminder.task_description,
+                        date=jalali_date,
+                        time=time_disp,
+                        recurrence_info=rec_info
+                    ))
+                    logger.info(f"Successfully created reminder from voice message. ID: {reminder.id}")
+                    
+            # If we have task and date but no time, set default time and ask for confirmation
+            elif context.user_data['task'] and context.user_data['date_str'] and not context.user_data['time_str']:
+                logger.info(f"Voice message with task & date, but no time. Setting default 09:00.")
+                context.user_data['time_str'] = "09:00"
                 
-        # If we only have a task, ask for date/time
-        elif context.user_data['task']:
-            await update.message.reply_text(MSG_REQUEST_FULL_DATETIME)
-            
-        # If we couldn't extract any meaningful info
-        else:
-            await update.message.reply_text(MSG_FAILURE_EXTRACTION)
-            
+                reminder, error = await save_or_update_reminder_in_db(user_id, chat_id, context.user_data)
+                if error:
+                    logger.error(f"Error saving reminder with default time: {error}")
+                    await update.message.reply_text(error)
+                    return
+                    
+                if reminder:
+                    jalali_date, _ = format_jalali_datetime_for_display(reminder.due_datetime_utc)
+                    context.user_data['last_reminder_id_for_time_update'] = reminder.id
+                    await update.message.reply_text(MSG_CONFIRM_DEFAULT_TIME.format(
+                        task=reminder.task_description,
+                        date=jalali_date
+                    ))
+                    logger.info(f"Created reminder with default time. ID: {reminder.id}")
+                    
+            # If we only have a task, ask for date/time
+            elif context.user_data['task']:
+                logger.info(f"Only task extracted from voice. Asking for date/time.")
+                await update.message.reply_text(MSG_REQUEST_FULL_DATETIME)
+                
+            # If we couldn't extract any meaningful info
+            else:
+                logger.warning(f"No meaningful information extracted from transcription: '{transcribed_text}'")
+                await update.message.reply_text(MSG_FAILURE_EXTRACTION)
+                
+        except Exception as e:
+            logger.error(f"Error processing transcribed voice message: {e}", exc_info=True)
+            await update.message.reply_text("متأسفانه در پردازش پیام صوتی شما مشکلی پیش آمد. لطفاً پیام خود را به صورت متنی ارسال کنید.")
+    
     except Exception as e:
-        logger.error(f"Error processing transcribed voice message: {e}", exc_info=True)
-        await update.message.reply_text("متأسفانه در پردازش پیام صوتی شما مشکلی پیش آمد. لطفاً پیام خود را به صورت متنی ارسال کنید.")
+        logger.error(f"Global error in voice message handling: {e}", exc_info=True)
+        await update.message.reply_text(MSG_GENERAL_ERROR + " (خطای پردازش پیام صوتی)")
 
 # --- Scheduler ---
 async def check_reminders(context: ContextTypes.DEFAULT_TYPE) -> None:
