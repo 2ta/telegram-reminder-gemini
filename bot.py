@@ -3,6 +3,7 @@ import os
 import tempfile
 import datetime
 import pytz
+import re
 from typing import Dict, Any, Tuple
 
 from telegram import Update, ReplyKeyboardRemove, ForceReply
@@ -12,7 +13,8 @@ from telegram.ext import (
 )
 from sqlalchemy.orm import Session
 
-from config import * from database import init_db, get_db, Reminder
+from config import * 
+from database import init_db, get_db, Reminder
 from stt import transcribe_voice_persian
 from nlu import extract_reminder_details_gemini
 from utils import parse_persian_datetime_to_utc, format_jalali_datetime_for_display
@@ -29,8 +31,10 @@ logger = logging.getLogger(__name__)
     AWAITING_FULL_DATETIME,    
     AWAITING_TIME_ONLY,        
     AWAITING_AM_PM_CLARIFICATION,
-    AWAITING_DELETE_NUMBER_INPUT, 
-) = range(5)
+    AWAITING_DELETE_NUMBER_INPUT,
+    AWAITING_EDIT_FIELD_CHOICE,
+    AWAITING_EDIT_FIELD_VALUE,
+) = range(7)
 
 
 async def save_or_update_reminder_in_db(user_id: int, chat_id: int, context_data: Dict[str, Any], reminder_id_to_update: int | None = None) -> Tuple[Reminder | None, str | None]:
@@ -100,6 +104,15 @@ async def handle_initial_message(update: Update, context: ContextTypes.DEFAULT_T
     context.user_data.clear() 
     logger.info(f"User {user_id} initial message: '{text}'")
 
+    # Check for edit reminder request
+    if re.search(r'ویرایش|تغییر', text) and re.search(r'شماره[‌\s]+\d+', text):
+        return await handle_edit_reminder_request(update, context)
+
+    # Check for multi-stage reminders
+    if " و " in text and await handle_multi_stage_reminders(text, update, context):
+        return ConversationHandler.END
+    
+    # Regular reminder processing continues below
     nlu_data = extract_reminder_details_gemini(text, current_context="initial_contact")
     if not nlu_data:
         await update.message.reply_text(MSG_NLU_ERROR)
@@ -517,13 +530,39 @@ async def check_reminders(context: ContextTypes.DEFAULT_TYPE) -> None:
                 
                 if reminder.recurrence_rule:
                     logger.info(f"Reminder ID {reminder.id} is recurring: {reminder.recurrence_rule}")
-                    # VERY BASIC RECURRENCE - NEEDS A PROPER RRULE LIBRARY
+                    # More advanced recurrence handling
                     next_due_time = None
+                    recurring_type = "روزانه"
+                    
                     if reminder.recurrence_rule.lower() == "daily":
                         next_due_time = reminder.due_datetime_utc + datetime.timedelta(days=1)
+                        recurring_type = "روزانه"
                     elif reminder.recurrence_rule.lower() == "weekly":
-                         next_due_time = reminder.due_datetime_utc + datetime.timedelta(weeks=1)
-                    # Add more specific rules like "every monday" etc.
+                        next_due_time = reminder.due_datetime_utc + datetime.timedelta(weeks=1)
+                        recurring_type = "هفتگی"
+                    elif reminder.recurrence_rule.lower() == "monthly":
+                        # Add one month (approximately)
+                        next_month = reminder.due_datetime_utc.month + 1
+                        next_year = reminder.due_datetime_utc.year
+                        if next_month > 12:
+                            next_month = 1
+                            next_year += 1
+                        next_due_time = reminder.due_datetime_utc.replace(year=next_year, month=next_month)
+                        recurring_type = "ماهانه"
+                    elif reminder.recurrence_rule.lower().startswith("every "):
+                        # Handle "every monday", "every friday", etc.
+                        parts = reminder.recurrence_rule.lower().split()
+                        if len(parts) >= 2 and parts[0] == "every":
+                            day_name = parts[1]
+                            weekday_map = {"monday": 0, "tuesday": 1, "wednesday": 2, 
+                                          "thursday": 3, "friday": 4, "saturday": 5, "sunday": 6}
+                            if day_name in weekday_map:
+                                target_weekday = weekday_map[day_name]
+                                days_ahead = (target_weekday - reminder.due_datetime_utc.weekday()) % 7
+                                if days_ahead == 0:
+                                    days_ahead = 7  # Next week
+                                next_due_time = reminder.due_datetime_utc + datetime.timedelta(days=days_ahead)
+                                recurring_type = f"هر {day_name}"
                     
                     if next_due_time:
                         reminder.due_datetime_utc = next_due_time
@@ -542,6 +581,191 @@ async def check_reminders(context: ContextTypes.DEFAULT_TYPE) -> None:
                 logger.error(f"Scheduler: Failed to send/process reminder ID {reminder.id}: {e}", exc_info=True)
     except Exception as e:
         logger.error(f"Scheduler: Error in check_reminders job: {e}", exc_info=True)
+    finally:
+        db.close()
+
+# Add this after the display_list_and_ask_delete function and before list_reminders_entry
+async def handle_multi_stage_reminders(text, update, context):
+    """Handle reminders with multiple parts like 'Remind me to do X on Monday and Y on Tuesday'"""
+    user_id = update.effective_user.id
+    chat_id = update.effective_chat.id
+    
+    # Check for 'and' pattern or multiple dates/actions in the text
+    parts = text.split(' و ')  # Split by Persian 'and'
+    
+    if len(parts) <= 1:
+        return False  # Not a multi-stage reminder
+    
+    created_reminders = []
+    response_parts = []
+    
+    for part in parts:
+        # Extract details for each part
+        nlu_data = extract_reminder_details_gemini(part, current_context="multi_stage_part")
+        if not nlu_data or nlu_data.get("intent") != "set_reminder" or not nlu_data.get("task"):
+            continue
+            
+        # Setup reminder data for this part
+        reminder_data = {
+            'task': nlu_data.get("task"),
+            'date_str': nlu_data.get("date"),
+            'time_str': nlu_data.get("time", "09:00"),  # Default time if not specified
+            'recurrence': nlu_data.get("recurrence")
+        }
+        
+        # Save the reminder
+        reminder, error = await save_or_update_reminder_in_db(user_id, chat_id, reminder_data)
+        if error:
+            continue
+            
+        if reminder:
+            jalali_date, time_disp = format_jalali_datetime_for_display(reminder.due_datetime_utc)
+            created_reminders.append(reminder)
+            response_parts.append(f"📝 متن: {reminder.task_description}\n⏰ زمان: {jalali_date}، ساعت {time_disp}")
+    
+    if created_reminders:
+        # Format the response
+        response = "باشه، دو یادآوری تنظیم شد:\n" + "\n\n".join(response_parts)
+        await update.message.reply_text(response)
+        return True
+    
+    return False
+
+# Add this after the received_delete_number_input function
+async def handle_edit_reminder_request(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handle requests to edit a specific reminder"""
+    user_id = update.effective_user.id
+    text = update.message.text.strip()
+    
+    # Extract the reminder number from input like "یادآور شماره ۱ رو ویرایش کن"
+    reminder_number_match = re.search(r'شماره[‌\s]+(\d+)', normalize_persian_numerals(text))
+    if not reminder_number_match:
+        return ConversationHandler.END
+        
+    reminder_index = int(reminder_number_match.group(1))
+    
+    # Get the user's reminders
+    db = next(get_db())
+    try:
+        reminders_from_db = db.query(Reminder).filter(
+            Reminder.user_id == user_id,
+            Reminder.is_active == True
+        ).order_by(Reminder.due_datetime_utc).all()
+        
+        if not reminders_from_db or reminder_index > len(reminders_from_db):
+            await update.message.reply_text(MSG_REMINDER_NOT_FOUND_FOR_ACTION)
+            return ConversationHandler.END
+            
+        # Get the reminder to edit
+        reminder_to_edit = reminders_from_db[reminder_index - 1]
+        context.user_data['reminder_to_edit_id'] = reminder_to_edit.id
+        context.user_data['reminder_to_edit_task'] = reminder_to_edit.task_description
+        
+        # Ask what field to edit
+        await update.message.reply_text(MSG_EDIT_REMINDER_FIELD_CHOICE)
+        return AWAITING_EDIT_FIELD_CHOICE
+    except Exception as e:
+        logger.error(f"Error finding reminder to edit: {e}", exc_info=True)
+        await update.message.reply_text(MSG_GENERAL_ERROR)
+        return ConversationHandler.END
+    finally:
+        db.close()
+
+async def received_edit_field_choice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handle user's choice of which field to edit (time or text)"""
+    text = update.message.text.strip().lower()
+    
+    # Check if user wants to edit time or text
+    if 'زمان' in text or 'ساعت' in text or 'تاریخ' in text:
+        context.user_data['edit_field'] = 'time'
+        await update.message.reply_text(MSG_REQUEST_FULL_DATETIME)
+        return AWAITING_EDIT_FIELD_VALUE
+    elif 'متن' in text or 'موضوع' in text:
+        context.user_data['edit_field'] = 'text'
+        await update.message.reply_text(MSG_REQUEST_TASK)
+        return AWAITING_EDIT_FIELD_VALUE
+    else:
+        await update.message.reply_text("لطفاً مشخص کنید می‌خواهید متن را تغییر دهید یا زمان را.")
+        return AWAITING_EDIT_FIELD_CHOICE
+
+async def received_edit_field_value(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handle the new value for the edited field"""
+    user_id = update.effective_user.id
+    text = update.message.text.strip()
+    
+    reminder_id = context.user_data.get('reminder_to_edit_id')
+    edit_field = context.user_data.get('edit_field')
+    
+    if not reminder_id or not edit_field:
+        await update.message.reply_text(MSG_GENERAL_ERROR)
+        return ConversationHandler.END
+    
+    db = next(get_db())
+    try:
+        reminder = db.query(Reminder).filter(
+            Reminder.id == reminder_id,
+            Reminder.user_id == user_id,
+            Reminder.is_active == True
+        ).first()
+        
+        if not reminder:
+            await update.message.reply_text(MSG_REMINDER_NOT_FOUND_FOR_ACTION)
+            return ConversationHandler.END
+        
+        if edit_field == 'text':
+            # Update the reminder text
+            reminder.task_description = text
+            db.commit()
+            
+            jalali_date, time_disp = format_jalali_datetime_for_display(reminder.due_datetime_utc)
+            await update.message.reply_text(
+                MSG_EDIT_REMINDER_UPDATED.format(
+                    task=reminder.task_description,
+                    date=jalali_date,
+                    time=time_disp
+                )
+            )
+            return ConversationHandler.END
+            
+        elif edit_field == 'time':
+            # Extract new date/time from text
+            nlu_data = extract_reminder_details_gemini(text, current_context="editing_reminder_time")
+            
+            if not nlu_data:
+                await update.message.reply_text(MSG_NLU_ERROR)
+                return AWAITING_EDIT_FIELD_VALUE
+                
+            date_str = nlu_data.get("date")
+            time_str = nlu_data.get("time")
+            
+            if not date_str or not time_str:
+                await update.message.reply_text(MSG_DATE_PARSE_ERROR)
+                return AWAITING_EDIT_FIELD_VALUE
+                
+            # Parse the new date/time
+            new_due_datetime = parse_persian_datetime_to_utc(date_str, time_str)
+            if not new_due_datetime:
+                await update.message.reply_text(MSG_DATE_PARSE_ERROR)
+                return AWAITING_EDIT_FIELD_VALUE
+                
+            # Update the reminder time
+            reminder.due_datetime_utc = new_due_datetime
+            db.commit()
+            
+            jalali_date, time_disp = format_jalali_datetime_for_display(new_due_datetime)
+            await update.message.reply_text(
+                MSG_EDIT_REMINDER_UPDATED.format(
+                    task=reminder.task_description,
+                    date=jalali_date,
+                    time=time_disp
+                )
+            )
+            return ConversationHandler.END
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error updating reminder: {e}", exc_info=True)
+        await update.message.reply_text(MSG_GENERAL_ERROR)
+        return ConversationHandler.END
     finally:
         db.close()
 
@@ -564,18 +788,24 @@ def main() -> None:
 
     # Main Conversation Handler for setting reminders
     set_reminder_conv = ConversationHandler(
-        entry_points=[MessageHandler(filters.TEXT & ~filters.COMMAND & ~filters.Regex(r'^/(start|list|help|cancel)$'), handle_initial_message)],
+        entry_points=[
+            MessageHandler(filters.TEXT & ~filters.COMMAND, handle_initial_message)
+        ],
         states={
             AWAITING_TASK_DESCRIPTION: [MessageHandler(filters.TEXT & ~filters.COMMAND, received_task_description)],
             AWAITING_FULL_DATETIME: [MessageHandler(filters.TEXT & ~filters.COMMAND, received_full_datetime)],
             AWAITING_TIME_ONLY: [MessageHandler(filters.TEXT & ~filters.COMMAND, received_time_only)],
             AWAITING_AM_PM_CLARIFICATION: [MessageHandler(filters.TEXT & ~filters.COMMAND, received_am_pm_clarification)],
+            AWAITING_EDIT_FIELD_CHOICE: [MessageHandler(filters.TEXT & ~filters.COMMAND, received_edit_field_choice)],
+            AWAITING_EDIT_FIELD_VALUE: [MessageHandler(filters.TEXT & ~filters.COMMAND, received_edit_field_value)],
         },
         fallbacks=[
             CommandHandler("cancel", cancel_conversation),
             MessageHandler(filters.Regex(persian_cancel_regex), cancel_conversation)
         ],
-        conversation_timeout=300 # 5 minutes
+        # Setting a conversation timeout so the user is not stuck if they abandon the interaction
+        conversation_timeout=300, # 5 minutes in seconds
+        name="set_reminder_conversation"
     )
     
     # Conversation Handler for listing and then deleting reminders
