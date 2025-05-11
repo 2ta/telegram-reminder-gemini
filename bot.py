@@ -4,13 +4,14 @@ import tempfile
 import datetime
 import pytz
 import re
-import asyncio
+import gc  # Garbage collection for memory management
 from typing import Dict, Any, Tuple
 
-from telegram import Update, ReplyKeyboardRemove, ForceReply, ReplyKeyboardMarkup, InlineKeyboardMarkup, InlineKeyboardButton
+# Import only what we need from telegram to reduce memory usage
+from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import (
     Application, CommandHandler, MessageHandler, filters,
-    ContextTypes, ConversationHandler, CallbackQueryHandler
+    ContextTypes, ConversationHandler
 )
 from sqlalchemy.orm import Session
 
@@ -20,10 +21,19 @@ from stt import transcribe_voice_persian
 from nlu import extract_reminder_details_gemini
 from utils import parse_persian_datetime_to_utc, format_jalali_datetime_for_display, normalize_persian_numerals
 
-# Simple logging setup
+# Simple logging with file backup but minimal memory usage
+if not os.path.exists('logs'):
+    os.makedirs('logs')
+
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", 
-    level=logging.INFO
+    level=logging.INFO,
+    handlers=[
+        # File handler for persistent logs
+        logging.FileHandler(filename='logs/bot.log', mode='a', encoding='utf-8'),
+        # Console handler
+        logging.StreamHandler()
+    ]
 )
 logger = logging.getLogger(__name__)
 
@@ -38,11 +48,33 @@ logger = logging.getLogger(__name__)
     AWAITING_EDIT_FIELD_VALUE,
 ) = range(7)
 
-# Basic diagnostic help command
+# Memory monitoring function to help prevent OOM kills
+def log_memory_usage(context_info: str = ""):
+    """Log current memory usage to help diagnose OOM issues"""
+    try:
+        import psutil
+        import os
+        process = psutil.Process(os.getpid())
+        mem_info = process.memory_info()
+        mem_mb = mem_info.rss / 1024 / 1024
+        logger.info(f"Memory usage {context_info}: {mem_mb:.2f}MB (RSS)")
+        
+        # Force garbage collection if memory exceeds threshold
+        if mem_mb > 500:  # 500MB threshold
+            logger.warning(f"High memory usage detected ({mem_mb:.2f}MB). Running garbage collection...")
+            gc.collect()
+            
+    except ImportError:
+        logger.warning("psutil not installed - can't monitor memory usage")
+    except Exception as e:
+        logger.error(f"Error monitoring memory: {e}")
+
+# Basic command handlers
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Send a message when the command /help is issued."""
     logger.info(f"User {update.effective_user.id} requested help.")
     await update.message.reply_text(MSG_HELP)
+    log_memory_usage("after help command")
 
 # Start command handler
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -53,97 +85,179 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
     ]
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
     await update.message.reply_text(MSG_WELCOME, reply_markup=reply_markup)
+    log_memory_usage("after start command")
     return ConversationHandler.END
 
-# Simple echo handler
-async def echo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Echo the user message."""
+# Message handler
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle user messages for setting reminders."""
+    if not update.message:
+        return
+        
     text = update.message.text
-    logger.info(f"User {update.effective_user.id} sent text: '{text}'")
+    user_id = update.effective_user.id
+    logger.info(f"User {user_id} sent text: '{text}'")
     
     if text == "راهنما":
         await update.message.reply_text(MSG_HELP)
-    elif text == "یادآورهای من":
+        return
+        
+    if text == "یادآورهای من":
         await update.message.reply_text("در حال حاضر یادآوری فعالی ندارید.")
-    else:
-        # Try to process as a reminder
+        return
+        
+    # Try to extract reminder details
+    try:
         nlu_data = extract_reminder_details_gemini(text, current_context="initial_contact")
+        log_memory_usage("after NLU processing")
+        
         if nlu_data and nlu_data.get("intent") == "set_reminder" and nlu_data.get("task"):
-            logger.info(f"Detected reminder intent. Task: {nlu_data.get('task')}")
+            task = nlu_data.get("task")
+            date = nlu_data.get("date", "")
+            time = nlu_data.get("time", "")
             
-            # Check if we have all needed info
-            if nlu_data.get("date") and nlu_data.get("time"):
-                await update.message.reply_text(f"باشه، یادآوری تنظیم شد.\n📝 متن: {nlu_data.get('task')}\n⏰ زمان: {nlu_data.get('date')}، ساعت {nlu_data.get('time')}")
+            # If we have both date and time, confirm the reminder
+            if date and time:
+                await update.message.reply_text(
+                    f"باشه، یادآوری تنظیم شد.\n📝 متن: {task}\n⏰ زمان: {date}، ساعت {time}"
+                )
+            # If we only have task, ask for date/time
             else:
-                await update.message.reply_text(f"متوجه شدم که میخواهی یادآوری برای «{nlu_data.get('task')}» تنظیم کنی. چه زمانی؟")
+                await update.message.reply_text(
+                    f"متوجه شدم که میخواهی یادآوری برای «{task}» تنظیم کنی. چه زمانی؟"
+                )
         else:
-            # Just echo back
-            await update.message.reply_text(f"پیام شما: {text}")
+            # Just acknowledge the message
+            await update.message.reply_text(f"پیام شما دریافت شد. برای تنظیم یادآوری لطفاً زمان و موضوع را مشخص کنید.")
+    except Exception as e:
+        logger.error(f"Error processing message: {e}")
+        await update.message.reply_text("مشکلی در پردازش پیام شما رخ داد. لطفاً دوباره تلاش کنید.")
+        
+    # Force garbage collection after processing
+    gc.collect()
 
-# Simple voice message handler
-async def voice_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handle voice messages."""
-    logger.info(f"User {update.effective_user.id} sent voice message.")
+# Voice message handler
+async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Memory-efficient voice message handler"""
+    if not update.message or not update.message.voice:
+        return
+        
+    user_id = update.effective_user.id
+    logger.info(f"User {user_id} sent voice message.")
     
     # Show processing message
     await update.message.reply_text(MSG_PROCESSING_VOICE)
     
     try:
+        # Download the voice file with memory monitoring
         voice_file = await update.message.voice.get_file()
+        log_memory_usage("after getting voice file")
+        
         with tempfile.NamedTemporaryFile(delete=False, suffix=".oga") as temp_audio_file:
             await voice_file.download_to_drive(custom_path=temp_audio_file.name)
             temp_audio_file_path = temp_audio_file.name
             
-        # Try to transcribe
+        log_memory_usage("after downloading voice")
+        
+        # Transcribe the voice message
         transcribed_text = transcribe_voice_persian(temp_audio_file_path)
         
-        # Clean up
-        try: 
+        # Clean up temporary file immediately
+        try:
             os.remove(temp_audio_file_path)
-        except Exception as e: 
+        except Exception as e:
             logger.error(f"Error deleting temp file: {e}")
             
+        log_memory_usage("after transcription")
+        
         if transcribed_text:
+            # Show the transcription
             await update.message.reply_text(f"پیام صوتی شما: «{transcribed_text}»")
             
-            # Now try NLU
-            nlu_data = extract_reminder_details_gemini(transcribed_text, current_context="voice_transcription")
-            if nlu_data and nlu_data.get("intent") == "set_reminder" and nlu_data.get("task"):
-                await update.message.reply_text(f"متوجه شدم که میخواهی یادآوری برای «{nlu_data.get('task')}» تنظیم کنی.")
-            else:
-                await update.message.reply_text("متوجه نشدم. لطفاً دوباره تلاش کنید.")
+            # Process the transcription with NLU - with memory limits
+            try:
+                nlu_data = extract_reminder_details_gemini(transcribed_text, current_context="voice_transcription")
+                log_memory_usage("after NLU processing voice")
+                
+                if nlu_data and nlu_data.get("intent") == "set_reminder" and nlu_data.get("task"):
+                    task = nlu_data.get("task")
+                    date = nlu_data.get("date", "")
+                    time = nlu_data.get("time", "")
+                    
+                    # If we have both date and time, confirm the reminder
+                    if date and time:
+                        await update.message.reply_text(
+                            f"باشه، یادآوری تنظیم شد.\n📝 متن: {task}\n⏰ زمان: {date}، ساعت {time}"
+                        )
+                    # If we only have task, ask for date/time
+                    else:
+                        await update.message.reply_text(
+                            f"متوجه شدم که میخواهی یادآوری برای «{task}» تنظیم کنی. چه زمانی؟"
+                        )
+                else:
+                    await update.message.reply_text("متوجه نشدم دقیقاً چه یادآوری می‌خواهید تنظیم کنید. لطفاً واضح‌تر بگویید.")
+            except Exception as nlu_error:
+                logger.error(f"Error in NLU processing: {nlu_error}")
+                await update.message.reply_text("خطا در پردازش متن. لطفاً دوباره تلاش کنید.")
         else:
             await update.message.reply_text(MSG_STT_FAILED)
     except Exception as e:
-        logger.error(f"Error processing voice: {e}", exc_info=True)
-        await update.message.reply_text("خطایی رخ داد. لطفاً دوباره تلاش کنید.")
+        logger.error(f"Error processing voice: {e}")
+        await update.message.reply_text("مشکلی در پردازش پیام صوتی شما رخ داد. لطفاً دوباره تلاش کنید.")
+    
+    # Force garbage collection after voice processing
+    gc.collect()
 
 def main() -> None:
-    """Start the bot."""
-    # Initialize dependencies
+    """Start the bot with memory optimization."""
+    # Log initial memory usage
+    log_memory_usage("bot startup")
+    
+    # Initialize dependencies with memory monitoring
     try:
         init_db()
         logger.info("Database initialized.")
+        log_memory_usage("after DB init")
     except Exception as e:
-        logger.error(f"Database initialization error: {e}", exc_info=True)
+        logger.error(f"Database initialization error: {e}")
     
     # Check for token
     if not TELEGRAM_BOT_TOKEN:
         logger.critical("TELEGRAM_BOT_TOKEN not found! Exiting.")
         return
-
-    # Create application
+    
+    # Garbage collect before creating the application
+    gc.collect()
+    
+    # Create application with minimal polling setup
     application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
 
-    # Add simple handlers
+    # Add basic handlers
     application.add_handler(CommandHandler("start", start_command))
     application.add_handler(CommandHandler("help", help_command))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, echo_handler))
-    application.add_handler(MessageHandler(filters.VOICE & ~filters.COMMAND, voice_handler))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    application.add_handler(MessageHandler(filters.VOICE & ~filters.COMMAND, handle_voice))
+    
+    # Log memory usage before starting polling
+    log_memory_usage("before starting polling")
 
-    # Start the Bot
+    # Start the Bot with memory-efficient settings
     logger.info("Starting bot in polling mode...")
-    application.run_polling(allowed_updates=Update.ALL_TYPES)
+    application.run_polling(
+        allowed_updates=Update.ALL_TYPES,
+        read_timeout=30,
+        write_timeout=30,
+        pool_timeout=30,
+        connect_timeout=30,
+        timeout=30
+    )
 
 if __name__ == "__main__":
+    try:
+        # Add psutil to requirements.txt
+        import psutil
+    except ImportError:
+        logger.warning("psutil not available. Memory monitoring will be disabled.")
+        logger.warning("Install with: pip install psutil")
+    
     main()

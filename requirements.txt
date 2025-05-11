@@ -11,3 +11,4 @@ pytz
 google-generativeai
 vertexai
 # python-dateutil # Not used in this version, but needed for full recurrence
+psutil==5.9.5

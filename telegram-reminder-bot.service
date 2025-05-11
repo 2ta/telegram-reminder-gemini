@@ -4,12 +4,21 @@ After=network.target
 
 [Service]
 Type=simple
-WorkingDirectory=%h/telegram-reminder-bot
-ExecStart=%h/telegram-reminder-bot/venv/bin/python %h/telegram-reminder-bot/bot.py
+User=root
+WorkingDirectory=/home/telegram-reminder-gemini
+ExecStart=/usr/bin/python3 bot.py
 Restart=on-failure
 RestartSec=10
-StandardOutput=journal
-StandardError=journal
+StartLimitBurst=3
+StartLimitInterval=60
+
+# Memory Management
+MemoryHigh=500M
+MemoryMax=800M
+MemorySwapMax=0
+
+# Environment
+Environment=PYTHONUNBUFFERED=1
 
 [Install]
-WantedBy=default.target 
+WantedBy=multi-user.target 
