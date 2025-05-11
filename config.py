@@ -68,6 +68,12 @@ MSG_HELP = """🔔 راهنمای ربات یادآور
 
 برای دیدن لیست یادآوری‌ها، روی دکمه «یادآورهای من» کلیک کنید."""
 
+# Snooze functionality messages
+MSG_SNOOZE_CONFIRMATION = "باشه، یادآوری «{task}» برای {time} مجدداً تنظیم شد."
+MSG_SNOOZE_FAILURE_NO_CONTEXT = "متاسفم، متوجه نشدم کدام یادآوری را می‌خواهید به تعویق بیندازید. لطفاً ابتدا منتظر اعلان یادآوری بمانید."
+MSG_SNOOZE_FAILURE_NLU = "متاسفم، نتوانستم زمان جدید را برای تعویق یادآوری تشخیص دهم. لطفاً واضح‌تر بگویید (مثلاً 'نیم ساعت دیگه' یا 'ساعت ۳ بعد از ظهر')."
+MSG_SNOOZE_ASK_TIME = "می‌خواهید برای چه زمانی مجدداً یادتان بیندازم؟ (مثلاً 'نیم ساعت دیگه' یا 'فردا ساعت ۱۰ صبح')"
+
 if not all([TELEGRAM_BOT_TOKEN, GOOGLE_APPLICATION_CREDENTIALS, GEMINI_PROJECT_ID, GEMINI_LOCATION, GEMINI_MODEL_NAME]):
     raise ValueError("One or more critical environment variables are not set. Check your .env file and ensure GOOGLE_APPLICATION_CREDENTIALS path is correct.")
 
