@@ -6,7 +6,7 @@ import pytz
 import re
 from typing import Dict, Any, Tuple
 
-from telegram import Update, ReplyKeyboardRemove, ForceReply
+from telegram import Update, ReplyKeyboardRemove, ForceReply, ReplyKeyboardMarkup, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import (
     Application, CommandHandler, MessageHandler, filters,
     ContextTypes, ConversationHandler, CallbackQueryHandler
@@ -94,7 +94,11 @@ async def save_or_update_reminder_in_db(user_id: int, chat_id: int, context_data
 
 # --- Conversation Handler States & Functions ---
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    await update.message.reply_text(MSG_WELCOME)
+    keyboard = [
+        ["یادآورهای من", "راهنما"],
+    ]
+    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+    await update.message.reply_text(MSG_WELCOME, reply_markup=reply_markup)
     return ConversationHandler.END
 
 async def handle_initial_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -103,6 +107,15 @@ async def handle_initial_message(update: Update, context: ContextTypes.DEFAULT_T
     text = update.message.text.strip()
     context.user_data.clear() 
     logger.info(f"User {user_id} initial message: '{text}'")
+
+    # Check for list reminders button press
+    if text == "یادآورهای من":
+        return await display_list_and_ask_delete(update, context)
+
+    # Check for help button press
+    if text == "راهنما":
+        await update.message.reply_text(MSG_HELP)
+        return ConversationHandler.END
 
     # Check for edit reminder request
     if re.search(r'ویرایش|تغییر', text) and re.search(r'شماره[‌\s]+\d+', text):
@@ -399,6 +412,8 @@ async def display_list_and_ask_delete(update: Update, context: ContextTypes.DEFA
 
     response_text = MSG_LIST_HEADER + "\n"
     display_map = {} 
+    keyboard = []
+    
     for index, reminder_obj in enumerate(reminders_from_db, 1):
         jalali_date, time_disp = format_jalali_datetime_for_display(reminder_obj.due_datetime_utc)
         recurrence_info = f" (تکرار: {reminder_obj.recurrence_rule})" if reminder_obj.recurrence_rule else ""
@@ -409,11 +424,18 @@ async def display_list_and_ask_delete(update: Update, context: ContextTypes.DEFA
             time=time_disp,
             recurrence_info=recurrence_info
         ) + "\n"
-        display_map[index] = reminder_obj.id 
+        display_map[index] = reminder_obj.id
+        
+        # Add inline buttons for each reminder
+        edit_button = InlineKeyboardButton(f"✏️ ویرایش #{index}", callback_data=f"edit_{reminder_obj.id}")
+        delete_button = InlineKeyboardButton(f"🗑️ حذف #{index}", callback_data=f"delete_{reminder_obj.id}")
+        keyboard.append([edit_button, delete_button])
     
     context.user_data['reminders_list_map'] = display_map
-    response_text += "\n" + MSG_SELECT_FOR_DELETE
-    await update.message.reply_text(response_text)
+    
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await update.message.reply_text(response_text, reply_markup=reply_markup)
+    
     return AWAITING_DELETE_NUMBER_INPUT
 
 async def list_reminders_entry(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -486,7 +508,7 @@ async def conversation_timeout(update: Update, context: ContextTypes.DEFAULT_TYP
     return ConversationHandler.END
 
 # --- STT Handler ---
-async def handle_voice_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None: # Not part of conv directly
+async def handle_voice_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.message or not update.message.voice: return
     logger.info(f"User {update.effective_user.id} sent voice.")
     processing_msg = await update.message.reply_text(MSG_PROCESSING_VOICE)
@@ -505,9 +527,21 @@ async def handle_voice_message(update: Update, context: ContextTypes.DEFAULT_TYP
 
     if transcribed_text:
         logger.info(f"Transcription for user {update.effective_user.id}: \"{transcribed_text}\"")
-        # Send transcribed text back to user, they can then copy/paste or re-issue command.
-        # Trying to inject this into ConversationHandler is complex and error-prone.
-        await update.message.reply_text(f"پیام صوتی شما: «{transcribed_text}»\n\nمی‌توانید این متن را ویرایش و ارسال کنید، یا دستور جدیدی بدهید.")
+        
+        # Reply with transcription
+        transcription_msg = await update.message.reply_text(f"پیام صوتی شما: «{transcribed_text}»")
+        
+        # Process the transcribed text to set a reminder
+        # Create a fake text message update to reuse the existing conversation handler
+        fake_update = Update(
+            update_id=update.update_id,
+            message=update.message.copy()
+        )
+        fake_update.message.text = transcribed_text
+        fake_update.message.voice = None
+        
+        # Process the message as if it was text
+        await handle_initial_message(fake_update, context)
     else:
         await update.message.reply_text(MSG_STT_FAILED)
 
@@ -769,6 +803,95 @@ async def received_edit_field_value(update: Update, context: ContextTypes.DEFAUL
     finally:
         db.close()
 
+async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    query = update.callback_query
+    await query.answer()
+    
+    data = query.data
+    user_id = update.effective_user.id
+    
+    if data.startswith("edit_"):
+        reminder_id = int(data.split("_")[1])
+        context.user_data['reminder_to_edit_id'] = reminder_id
+        
+        # Get reminder details
+        db = next(get_db())
+        try:
+            reminder = db.query(Reminder).filter(
+                Reminder.id == reminder_id,
+                Reminder.user_id == user_id,
+                Reminder.is_active == True
+            ).first()
+            
+            if not reminder:
+                await query.edit_message_text(MSG_REMINDER_NOT_FOUND_FOR_ACTION)
+                return ConversationHandler.END
+                
+            context.user_data['reminder_to_edit_task'] = reminder.task_description
+            
+            # Ask what to edit with inline buttons
+            keyboard = [
+                [
+                    InlineKeyboardButton("📝 متن", callback_data="edit_field_text"),
+                    InlineKeyboardButton("🕒 زمان", callback_data="edit_field_time")
+                ]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            await query.edit_message_text(
+                MSG_EDIT_REMINDER_FIELD_CHOICE,
+                reply_markup=reply_markup
+            )
+            return AWAITING_EDIT_FIELD_CHOICE
+            
+        except Exception as e:
+            logger.error(f"Error finding reminder to edit: {e}", exc_info=True)
+            await query.edit_message_text(MSG_GENERAL_ERROR)
+            return ConversationHandler.END
+        finally:
+            db.close()
+            
+    elif data.startswith("delete_"):
+        reminder_id = int(data.split("_")[1])
+        
+        db = next(get_db())
+        try:
+            reminder = db.query(Reminder).filter(
+                Reminder.id == reminder_id, 
+                Reminder.user_id == user_id, 
+                Reminder.is_active == True
+            ).first()
+            
+            if reminder:
+                reminder.is_active = False  # Soft delete
+                db.commit()
+                await query.edit_message_text(
+                    MSG_REMINDER_DELETED.format(task=reminder.task_description)
+                )
+            else:
+                await query.edit_message_text(MSG_REMINDER_NOT_FOUND_FOR_ACTION)
+        except Exception as e:
+            db.rollback()
+            logger.error(f"Error deleting reminder ID {reminder_id}: {e}", exc_info=True)
+            await query.edit_message_text(MSG_GENERAL_ERROR)
+        finally:
+            db.close()
+            
+        return ConversationHandler.END
+        
+    elif data.startswith("edit_field_"):
+        field = data.split("_")[2]
+        context.user_data['edit_field'] = field
+        
+        if field == "text":
+            await query.edit_message_text(MSG_REQUEST_TASK)
+            return AWAITING_EDIT_FIELD_VALUE
+        elif field == "time":
+            await query.edit_message_text(MSG_REQUEST_FULL_DATETIME)
+            return AWAITING_EDIT_FIELD_VALUE
+            
+    return ConversationHandler.END
+
 def main() -> None:
     init_db()
     logger.info("Database initialized.")
@@ -796,7 +919,10 @@ def main() -> None:
             AWAITING_FULL_DATETIME: [MessageHandler(filters.TEXT & ~filters.COMMAND, received_full_datetime)],
             AWAITING_TIME_ONLY: [MessageHandler(filters.TEXT & ~filters.COMMAND, received_time_only)],
             AWAITING_AM_PM_CLARIFICATION: [MessageHandler(filters.TEXT & ~filters.COMMAND, received_am_pm_clarification)],
-            AWAITING_EDIT_FIELD_CHOICE: [MessageHandler(filters.TEXT & ~filters.COMMAND, received_edit_field_choice)],
+            AWAITING_EDIT_FIELD_CHOICE: [
+                CallbackQueryHandler(button_callback, pattern=r'^edit_field_'),
+                MessageHandler(filters.TEXT & ~filters.COMMAND, received_edit_field_choice)
+            ],
             AWAITING_EDIT_FIELD_VALUE: [MessageHandler(filters.TEXT & ~filters.COMMAND, received_edit_field_value)],
         },
         fallbacks=[
@@ -810,9 +936,22 @@ def main() -> None:
     
     # Conversation Handler for listing and then deleting reminders
     list_delete_conv = ConversationHandler(
-        entry_points=[CommandHandler("list", list_reminders_entry)],
+        entry_points=[
+            CommandHandler("list", list_reminders_entry),
+            MessageHandler(filters.Regex(r'^یادآورهای من$'), display_list_and_ask_delete)
+        ],
         states={
-            AWAITING_DELETE_NUMBER_INPUT: [MessageHandler(filters.TEXT & ~filters.COMMAND, received_delete_number_input)],
+            AWAITING_DELETE_NUMBER_INPUT: [
+                CallbackQueryHandler(button_callback),
+                MessageHandler(filters.TEXT & ~filters.COMMAND, received_delete_number_input)
+            ],
+            AWAITING_EDIT_FIELD_CHOICE: [
+                CallbackQueryHandler(button_callback, pattern=r'^edit_field_'),
+                MessageHandler(filters.TEXT & ~filters.COMMAND, received_edit_field_choice)
+            ],
+            AWAITING_EDIT_FIELD_VALUE: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, received_edit_field_value)
+            ],
         },
         fallbacks=[
             CommandHandler("cancel", cancel_conversation),

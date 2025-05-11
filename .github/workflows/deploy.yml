@@ -23,4 +23,4 @@ jobs:
       
       - name: Restart Bot Service
         run: |
-          ssh ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }} "cd ${{ secrets.DEPLOY_PATH }} && source venv/bin/activate && pip install -r requirements.txt && systemctl --user restart telegram-reminder-bot.service" 
+          ssh ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }} "cd ${{ secrets.DEPLOY_PATH }} && source venv/bin/activate && pip install -r requirements.txt && systemctl --user restart telegram-reminder.service" 
