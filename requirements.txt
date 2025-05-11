@@ -1,0 +1,13 @@
+python-telegram-bot[job-queue]
+SQLAlchemy
+jdatetime
+google-cloud-speech
+google-cloud-aiplatform
+python-dotenv
+pydub
+requests
+apscheduler
+pytz
+google-generativeai
+vertexai
+# python-dateutil # Not used in this version, but needed for full recurrence
