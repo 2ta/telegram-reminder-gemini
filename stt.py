@@ -13,30 +13,85 @@ def transcribe_voice_persian(audio_file_path: str) -> str | None:
 
         audio = speech.RecognitionAudio(content=content)
         
+        # Primary configuration for Telegram voice messages
         config = speech.RecognitionConfig(
-            encoding=speech.RecognitionConfig.AudioEncoding.WEBM_OPUS, # Common for Telegram .oga files
-            sample_rate_hertz=48000,
-            language_code="fa-IR",
-            model="default", 
+            encoding=speech.RecognitionConfig.AudioEncoding.OGG_OPUS,  # Telegram uses OGG_OPUS for .oga files
+            sample_rate_hertz=48000,  # Common sample rate for voice messages
+            language_code="fa-IR",    # Primary language: Persian
+            alternative_language_codes=["en-US"],  # Also recognize English
+            model="default",
+            enable_automatic_punctuation=True,     # Add punctuation
+            use_enhanced=True,                     # Use enhanced model for better accuracy
+            audio_channel_count=1,                 # Most Telegram voice messages are mono
         )
         
-        logger.info(f"Sending audio ({audio_file_path}) to Google STT API...")
+        logger.info(f"Sending audio ({audio_file_path}) to Google STT API with OGG_OPUS encoding...")
         response = client.recognize(config=config, audio=audio)
         logger.info("Received response from Google STT API.")
 
         if response.results and response.results[0].alternatives:
             transcript = response.results[0].alternatives[0].transcript
-            logger.info(f"STT Transcript: {transcript}")
+            confidence = response.results[0].alternatives[0].confidence
+            logger.info(f"STT Transcript: '{transcript}' (confidence: {confidence:.2f})")
             return transcript
-        else:
-            error_message = "No transcription result from STT API."
-            # Check for more detailed error from response if available
-            # This part depends on the structure of `response` when there are no results.
-            # For example, some responses might have a `response.error` field.
-            # google.cloud.speech.v1.types.RecognizeResponse doesn't directly have .error
-            # errors are usually raised as exceptions by client.recognize() if the call itself fails.
-            # If the call succeeds but yields no transcription, `response.results` is empty.
-            logger.warning(error_message)
+            
+        # First fallback - try with WEBM_OPUS encoding
+        logger.warning(f"No transcription result with OGG_OPUS. Trying WEBM_OPUS...")
+        try:
+            config = speech.RecognitionConfig(
+                encoding=speech.RecognitionConfig.AudioEncoding.WEBM_OPUS,
+                sample_rate_hertz=48000,
+                language_code="fa-IR",
+                alternative_language_codes=["en-US"],
+                model="default",
+                enable_automatic_punctuation=True,
+                use_enhanced=True,
+                audio_channel_count=1,
+            )
+            response = client.recognize(config=config, audio=audio)
+            
+            if response.results and response.results[0].alternatives:
+                transcript = response.results[0].alternatives[0].transcript
+                logger.info(f"STT Transcript (WEBM_OPUS): '{transcript}'")
+                return transcript
+                
+            # Second fallback - try with different sample rate
+            logger.warning("WEBM_OPUS also failed. Trying with different sample rate...")
+            config = speech.RecognitionConfig(
+                encoding=speech.RecognitionConfig.AudioEncoding.OGG_OPUS,
+                sample_rate_hertz=16000,  # Try lower sample rate
+                language_code="fa-IR",
+                alternative_language_codes=["en-US"],
+                model="default",
+                enable_automatic_punctuation=True,
+            )
+            response = client.recognize(config=config, audio=audio)
+            
+            if response.results and response.results[0].alternatives:
+                transcript = response.results[0].alternatives[0].transcript
+                logger.info(f"STT Transcript (16kHz): '{transcript}'")
+                return transcript
+                
+            # Third fallback - try with phone call model which might work better for low quality audio
+            logger.warning("All encoding attempts failed. Trying phone_call model...")
+            config = speech.RecognitionConfig(
+                encoding=speech.RecognitionConfig.AudioEncoding.OGG_OPUS,
+                sample_rate_hertz=48000,
+                language_code="fa-IR",
+                model="phone_call",  # Model for telephone audio
+            )
+            response = client.recognize(config=config, audio=audio)
+            
+            if response.results and response.results[0].alternatives:
+                transcript = response.results[0].alternatives[0].transcript
+                logger.info(f"STT Transcript (phone_call model): '{transcript}'")
+                return transcript
+                
+            logger.warning("All transcription attempts failed.")
+            return None
+            
+        except Exception as fallback_error:
+            logger.error(f"Error in fallback transcription: {fallback_error}")
             return None
             
     except Exception as e:
