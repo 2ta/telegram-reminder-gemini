@@ -11,7 +11,7 @@ from typing import Dict, Any, Tuple
 from telegram import Update, ReplyKeyboardMarkup, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import (
     Application, CommandHandler, MessageHandler, filters,
-    ContextTypes, ConversationHandler, CallbackQueryHandler, DispatcherHandlerStop
+    ContextTypes, ConversationHandler, CallbackQueryHandler
 )
 from sqlalchemy.orm import Session
 
@@ -424,7 +424,6 @@ async def received_full_datetime(update: Update, context: ContextTypes.DEFAULT_T
             jalali_date, time_disp = format_jalali_datetime_for_display(reminder.due_datetime_utc)
             rec_info = f" (تکرار: {reminder.recurrence_rule})" if reminder.recurrence_rule else ""
             await update.message.reply_text(MSG_CONFIRMATION.format(task=context.user_data['task'], date=jalali_date, time=time_disp, recurrence_info=rec_info))
-            return ConversationHandler.END
     gc.collect()
     return ConversationHandler.END
 
@@ -987,8 +986,8 @@ async def check_reminders(context: ContextTypes.DEFAULT_TYPE) -> None:
         # gc.collect() # Removed from here, will be handled by memory monitor or less frequently
 
 # +++ SNOOZE HANDLER +++
-async def handle_snooze_request(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handles user requests to snooze a recently sent reminder."""
+async def handle_snooze_request(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
+    """Handles user requests to snooze a recently sent reminder. Returns True if handled, False otherwise."""
     user_id = update.effective_user.id
     chat_id = update.effective_chat.id
     text = update.message.text.strip()
@@ -1000,13 +999,13 @@ async def handle_snooze_request(update: Update, context: ContextTypes.DEFAULT_TY
 
     if not last_notified_reminder_id or not last_notified_at_utc:
         # Not a snooze situation, or context is missing. Let other handlers process.
-        return
+        return False
 
     # Check if the notification was recent (e.g., within 5 minutes)
     if (datetime.datetime.now(pytz.utc) - last_notified_at_utc) > datetime.timedelta(minutes=5):
         logger.info(f"Snooze attempt for user {user_id} is for an old notification. Clearing context.")
         context.bot_data.pop(user_id, None) # Clear stale context
-        return # Too old, not a snooze for the last notification
+        return False # Too old, not a snooze for the last notification
 
     # Try to parse for snooze intent / relative time
     # A simple keyword check first, NLU can be heavy
@@ -1040,11 +1039,11 @@ async def handle_snooze_request(update: Update, context: ContextTypes.DEFAULT_TY
         if not new_due_datetime_utc:
             await update.message.reply_text(MSG_SNOOZE_FAILURE_NLU)
             # Don't clear context yet, user might try again immediately
-            raise DispatcherHandlerStop # Stop processing this update further
+            return True # Stop processing this update further
         
         if new_due_datetime_utc < datetime.datetime.now(pytz.utc):
             await update.message.reply_text(MSG_REMINDER_IN_PAST.format(date=format_jalali_datetime_for_display(new_due_datetime_utc)[0], time=format_jalali_datetime_for_display(new_due_datetime_utc)[1]))
-            raise DispatcherHandlerStop
+            return True
 
         db = next(get_db())
         try:
@@ -1070,11 +1069,13 @@ async def handle_snooze_request(update: Update, context: ContextTypes.DEFAULT_TY
             db.close()
             log_memory_usage(f"after DB snooze for {user_id}")
             gc.collect()
-        raise DispatcherHandlerStop # Stop processing this update further
+        return True # Stop processing this update further
+        
     elif nlu_data and nlu_data.get("intent") == "cancel": # User says "لغو" to snooze prompt (if we had one)
         context.bot_data.pop(user_id, None)
         await update.message.reply_text(MSG_CANCELLED) # Or a more specific "snooze cancelled"
-        raise DispatcherHandlerStop
+        return True
+
     else:
         # This means NLU didn't get a date/time for snooze from the message.
         # It could be a regular message. If we are sure user is in "snooze mode" (e.g. very recent notification),
@@ -1086,9 +1087,9 @@ async def handle_snooze_request(update: Update, context: ContextTypes.DEFAULT_TY
         # Let's send a failure message if snooze context was present but NLU failed.
         if is_potential_snooze: # If keywords indicated snooze but NLU failed
              await update.message.reply_text(MSG_SNOOZE_FAILURE_NLU)
-             raise DispatcherHandlerStop
+             return True
         # Otherwise, it's likely not a snooze message, let it go to other handlers.
-        return # Allow other handlers
+        return False # Allow other handlers
 
 def main() -> None:
     """Start the bot with memory optimization and full conversation logic."""
@@ -1115,11 +1116,18 @@ def main() -> None:
 
     persian_cancel_regex = r'^(لغو|کنسل|بیخیال|نه ممنون)$'.strip()
 
+    # Add a wrapper for the snooze handler that only passes to the main conversation if snooze isn't handled
+    async def snooze_wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        handled = await handle_snooze_request(update, context)
+        if not handled:
+            # If snooze handler didn't handle this message, pass it to the main conversation handler
+            await handle_initial_message(update, context)
+
     # Main Conversation Handler for setting reminders (text and voice)
     set_reminder_conv = ConversationHandler(
         entry_points=[
-            MessageHandler(filters.TEXT & ~filters.COMMAND & ~filters.Regex(persian_cancel_regex) & ~filters.Regex(r'^یادآورهای من$') & ~filters.Regex(r'^راهنما$'), handle_initial_message),
-            MessageHandler(filters.VOICE & ~filters.COMMAND, handle_voice_message) # Voice can also start a reminder conv
+            MessageHandler(filters.TEXT & ~filters.COMMAND & ~filters.Regex(persian_cancel_regex) & ~filters.Regex(r'^یادآورهای من$') & ~filters.Regex(r'^راهنما$'), snooze_wrapper),
+            MessageHandler(filters.VOICE & ~filters.COMMAND, handle_voice_message)
         ],
         states={
             AWAITING_TASK_DESCRIPTION: [MessageHandler(filters.TEXT & ~filters.COMMAND, received_task_description)],
@@ -1166,11 +1174,6 @@ def main() -> None:
     application.add_handler(CommandHandler("list", list_reminders_entry))
     application.add_handler(MessageHandler(filters.Regex(r'^یادآورهای من$'), list_reminders_entry)) # Handle button
     application.add_handler(MessageHandler(filters.Regex(r'^راهنما$'), help_command)) # Handle button
-
-    # Add the snooze handler: It should run before the main conversation handler for text messages.
-    # Group 0 is the default. Handlers are processed in the order they are added within the same group.
-    # Or, use a negative group number to ensure it runs before default group 0 handlers.
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & ~filters.StatusUpdate.WEB_APP_DATA, handle_snooze_request), group=-1)
 
     application.add_handler(set_reminder_conv)
     application.add_handler(manage_reminders_conv)
