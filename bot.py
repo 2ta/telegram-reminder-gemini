@@ -242,15 +242,9 @@ def main() -> None:
     log_memory_usage("before starting polling")
 
     # Start the Bot with memory-efficient settings
+    # Using only supported parameters
     logger.info("Starting bot in polling mode...")
-    application.run_polling(
-        allowed_updates=Update.ALL_TYPES,
-        read_timeout=30,
-        write_timeout=30,
-        pool_timeout=30,
-        connect_timeout=30,
-        timeout=30
-    )
+    application.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == "__main__":
     try:
