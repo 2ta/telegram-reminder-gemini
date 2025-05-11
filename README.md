@@ -37,6 +37,39 @@ Send a message to the bot with a reminder request. For example:
 - "یادم بنداز فردا ساعت ۵ عصر به مادرم زنگ بزنم"
 - "هر روز ساعت ۸ شب یادم بنداز داروهامو بخورم"
 
+## Deployment
+
+### Manual Deployment
+
+1. Set up your server with Python 3.9+ and pip
+2. Clone the repository to your server
+3. Create a virtual environment: `python -m venv venv`
+4. Activate the virtual environment: `source venv/bin/activate`
+5. Install dependencies: `pip install -r requirements.txt`
+6. Create a .env file with your credentials
+7. Set up a systemd service:
+   ```
+   # Copy the service file to your user's systemd directory
+   cp telegram-reminder-bot.service ~/.config/systemd/user/
+   
+   # Enable and start the service
+   systemctl --user enable telegram-reminder-bot.service
+   systemctl --user start telegram-reminder-bot.service
+   ```
+
+### Automatic Deployment with GitHub Actions
+
+This repository includes a GitHub Actions workflow for automatic deployment. To use it:
+
+1. Set up your server as described in the manual deployment steps
+2. Add the following secrets to your GitHub repository:
+   - `SSH_PRIVATE_KEY`: Your private SSH key for connecting to the server
+   - `SERVER_IP`: Your server's IP address
+   - `SSH_USER`: SSH username for your server
+   - `DEPLOY_PATH`: Absolute path to the deployment directory on your server
+
+The workflow will automatically deploy changes when you push to the main branch.
+
 ## Requirements
 
 - Python 3.9+

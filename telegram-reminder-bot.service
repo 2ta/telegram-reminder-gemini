@@ -1,0 +1,15 @@
+[Unit]
+Description=Telegram Reminder Bot with Gemini AI
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/telegram-reminder-bot
+ExecStart=%h/telegram-reminder-bot/venv/bin/python %h/telegram-reminder-bot/bot.py
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target 
