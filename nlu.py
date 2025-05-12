@@ -51,7 +51,7 @@ def extract_reminder_details_gemini(text: str, current_context: str | None = Non
     Context: {context_instruction}
 
     JSON Output:
-    - "intent": string - ["set_reminder", "provide_task", "provide_date", "provide_time", "provide_am_pm", "list_reminders", "delete_reminder_by_number", "affirmative", "negative", "cancel", "other"].
+    - "intent": string - ["set_reminder", "provide_task", "provide_date", "provide_time", "provide_am_pm", "list_reminders", "delete_reminder_by_number", "request_edit_last_reminder", "affirmative", "negative", "cancel", "other"].
     - "task": string | null - Reminder subject.
     - "date": string | null - Date. Prefer Persian relative (e.g., "فردا", "پس‌فردا").
     - "time": string | null - Time in "HH:MM" format.

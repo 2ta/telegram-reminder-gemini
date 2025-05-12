@@ -314,6 +314,12 @@ async def handle_initial_message(update: Update, context: ContextTypes.DEFAULT_T
                 jalali_date, _ = format_jalali_datetime_for_display(reminder.due_datetime_utc)
                 context.user_data['last_reminder_id_for_time_update'] = reminder.id
                 await update.message.reply_text(MSG_CONFIRM_DEFAULT_TIME.format(task=reminder.task_description, date=jalali_date))
+                # Store context for potential quick edit
+                context.user_data['last_confirmed_reminder'] = {
+                    'id': reminder.id,
+                    'task': reminder.task_description,
+                    'timestamp': datetime.datetime.now(pytz.utc)
+                }
                 return AWAITING_TIME_ONLY
 
         # Scenario 3 & 4: All parts present (task, date, time)
@@ -335,6 +341,12 @@ async def handle_initial_message(update: Update, context: ContextTypes.DEFAULT_T
                 jalali_date, time_disp = format_jalali_datetime_for_display(reminder.due_datetime_utc)
                 rec_info = f" (تکرار: {reminder.recurrence_rule})" if reminder.recurrence_rule else ""
                 await update.message.reply_text(MSG_CONFIRMATION.format(task=reminder.task_description, date=jalali_date, time=time_disp, recurrence_info=rec_info))
+                # Store context for potential quick edit
+                context.user_data['last_confirmed_reminder'] = {
+                    'id': reminder.id,
+                    'task': reminder.task_description,
+                    'timestamp': datetime.datetime.now(pytz.utc)
+                }
                 return ConversationHandler.END
         else:
             logger.info(f"Intent: set_reminder, but not enough initial parts. Asking for task if missing, else datetime.")
@@ -344,6 +356,36 @@ async def handle_initial_message(update: Update, context: ContextTypes.DEFAULT_T
             else:
                  await update.message.reply_text(MSG_REQUEST_FULL_DATETIME)
                  return AWAITING_FULL_DATETIME
+    elif intent == "request_edit_last_reminder" and context.user_data.get('last_confirmed_reminder'):
+        logger.info(f"User {user_id} requested to edit last confirmed reminder ID {context.user_data['last_confirmed_reminder']['id']}")
+        reminder_id_to_edit = context.user_data['last_confirmed_reminder']['id']
+        context.user_data['reminder_to_edit_id'] = reminder_id_to_edit
+        
+        # Need to fetch reminder details to populate context for edit flow
+        db = next(get_db())
+        try:
+            reminder = db.query(Reminder).filter(Reminder.id == reminder_id_to_edit, Reminder.user_id == user_id).first()
+            if not reminder or not reminder.is_active:
+                await update.message.reply_text(MSG_REMINDER_NOT_FOUND_FOR_ACTION + " (یادآور قبلی یافت نشد یا فعال نیست.)")
+                context.user_data.pop('last_confirmed_reminder', None) # Clear invalid context
+                return ConversationHandler.END
+            # We don't strictly need to store current values here, as the edit flow fetches them again if needed.
+        finally:
+            db.close()
+
+        # Now, ask the user what field to edit and transition state via button callback
+        keyboard = [
+            [InlineKeyboardButton("📝 متن یادآور", callback_data=f"edit_field_task_{reminder_id_to_edit}")],
+            [InlineKeyboardButton("⏰ زمان یادآور", callback_data=f"edit_field_time_{reminder_id_to_edit}")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await update.message.reply_text(text=MSG_EDIT_REMINDER_FIELD_CHOICE, reply_markup=reply_markup)
+        
+        # Clear the last_confirmed context now that we are offering to edit it
+        context.user_data.pop('last_confirmed_reminder', None) 
+        
+        # End the current conversation (if any) - the response will be handled by button_callback
+        return ConversationHandler.END 
     else:
         logger.info(f"NLU intent '{intent}' not directly handled as entry or is unclear. Defaulting to failure message.")
         await update.message.reply_text(MSG_FAILURE_EXTRACTION)
@@ -404,6 +446,12 @@ async def received_full_datetime(update: Update, context: ContextTypes.DEFAULT_T
             jalali_date, _ = format_jalali_datetime_for_display(reminder.due_datetime_utc)
             context.user_data['last_reminder_id_for_time_update'] = reminder.id
             await update.message.reply_text(MSG_CONFIRM_DEFAULT_TIME.format(task=context.user_data['task'], date=jalali_date))
+            # Store context for potential quick edit
+            context.user_data['last_confirmed_reminder'] = {
+                'id': reminder.id,
+                'task': reminder.task_description,
+                'timestamp': datetime.datetime.now(pytz.utc)
+            }
             return AWAITING_TIME_ONLY
     else:
         context.user_data['time_str'] = time_str
@@ -424,6 +472,13 @@ async def received_full_datetime(update: Update, context: ContextTypes.DEFAULT_T
             jalali_date, time_disp = format_jalali_datetime_for_display(reminder.due_datetime_utc)
             rec_info = f" (تکرار: {reminder.recurrence_rule})" if reminder.recurrence_rule else ""
             await update.message.reply_text(MSG_CONFIRMATION.format(task=context.user_data['task'], date=jalali_date, time=time_disp, recurrence_info=rec_info))
+            # Store context for potential quick edit
+            context.user_data['last_confirmed_reminder'] = {
+                'id': reminder.id,
+                'task': reminder.task_description,
+                'timestamp': datetime.datetime.now(pytz.utc)
+            }
+            return ConversationHandler.END
     gc.collect()
     return ConversationHandler.END
 
@@ -468,6 +523,12 @@ async def received_time_only(update: Update, context: ContextTypes.DEFAULT_TYPE)
         jalali_date, time_disp = format_jalali_datetime_for_display(reminder.due_datetime_utc)
         rec_info = f" (تکرار: {reminder.recurrence_rule})" if reminder.recurrence_rule else ""
         await update.message.reply_text(MSG_CONFIRMATION_UPDATE.format(task=reminder.task_description, date=jalali_date, time=time_disp, recurrence_info=rec_info))
+        # Store context for potential quick edit
+        context.user_data['last_confirmed_reminder'] = {
+            'id': reminder.id,
+            'task': reminder.task_description,
+            'timestamp': datetime.datetime.now(pytz.utc)
+        }
     gc.collect()
     return ConversationHandler.END
 
@@ -523,6 +584,12 @@ async def received_am_pm_clarification(update: Update, context: ContextTypes.DEF
         rec_info = f" (تکرار: {reminder.recurrence_rule})" if reminder.recurrence_rule else ""
         msg_format = MSG_CONFIRMATION_UPDATE if reminder_id_to_update else MSG_CONFIRMATION
         await update.message.reply_text(msg_format.format(task=reminder.task_description, date=jalali_date, time=time_disp, recurrence_info=rec_info))
+        # Store context for potential quick edit
+        context.user_data['last_confirmed_reminder'] = {
+            'id': reminder.id,
+            'task': reminder.task_description,
+            'timestamp': datetime.datetime.now(pytz.utc)
+        }
     gc.collect()
     return ConversationHandler.END
 
@@ -542,6 +609,8 @@ async def cancel_conversation(update: Update, context: ContextTypes.DEFAULT_TYPE
     context.user_data.clear()
     if update.effective_user: # Clear bot_data related to snooze for this user too
         context.bot_data.pop(update.effective_user.id, None)
+    # Also clear last confirmed reminder context on cancel
+    context.user_data.pop('last_confirmed_reminder', None)
     gc.collect()
     return ConversationHandler.END
 
@@ -614,6 +683,12 @@ async def handle_voice_message(update: Update, context: ContextTypes.DEFAULT_TYP
                     jalali_date, _ = format_jalali_datetime_for_display(reminder.due_datetime_utc)
                     context.user_data['last_reminder_id_for_time_update'] = reminder.id
                     await update.message.reply_text(MSG_CONFIRM_DEFAULT_TIME.format(task=reminder.task_description, date=jalali_date))
+                    # Store context for potential quick edit
+                    context.user_data['last_confirmed_reminder'] = {
+                        'id': reminder.id,
+                        'task': reminder.task_description,
+                        'timestamp': datetime.datetime.now(pytz.utc)
+                    }
                     return AWAITING_TIME_ONLY
             elif context.user_data['task'] and context.user_data['date_str'] and context.user_data['time_str']:
                 if nlu_data.get("raw_time_input") and not context.user_data['am_pm']:
@@ -629,6 +704,12 @@ async def handle_voice_message(update: Update, context: ContextTypes.DEFAULT_TYP
                     jalali_date, time_disp = format_jalali_datetime_for_display(reminder.due_datetime_utc)
                     rec_info = f" (تکرار: {reminder.recurrence_rule})" if reminder.recurrence_rule else ""
                     await update.message.reply_text(MSG_CONFIRMATION.format(task=reminder.task_description, date=jalali_date, time=time_disp, recurrence_info=rec_info))
+                    # Store context for potential quick edit
+                    context.user_data['last_confirmed_reminder'] = {
+                        'id': reminder.id,
+                        'task': reminder.task_description,
+                        'timestamp': datetime.datetime.now(pytz.utc)
+                    }
                     return ConversationHandler.END
             else:
                 if not context.user_data['task']:
@@ -854,6 +935,12 @@ async def received_edit_field_value(update: Update, context: ContextTypes.DEFAUL
             jalali_date, time_disp = format_jalali_datetime_for_display(updated_reminder.due_datetime_utc)
             rec_info = f" (تکرار: {updated_reminder.recurrence_rule})" if updated_reminder.recurrence_rule else ""
             await update.message.reply_text(MSG_CONFIRMATION_UPDATE.format(task=updated_reminder.task_description, date=jalali_date, time=time_disp, recurrence_info=rec_info))
+            # Store context for potential quick edit
+            context.user_data['last_confirmed_reminder'] = {
+                'id': updated_reminder.id,
+                'task': updated_reminder.task_description,
+                'timestamp': datetime.datetime.now(pytz.utc)
+            }
     except Exception as e:
         db.rollback()
         logger.error(f"Error updating reminder ID {reminder_id}: {e}", exc_info=True)
@@ -875,6 +962,8 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
     # Clear any pending snooze context if user interacts with buttons
     context.bot_data.pop(user_id, None)
+    # Clear last confirmed context on any button interaction as well
+    context.user_data.pop('last_confirmed_reminder', None)
 
     if data.startswith("edit_field_task_") or data.startswith("edit_field_time_"):
         return await received_edit_field_choice(update, context) # Pass to this handler
