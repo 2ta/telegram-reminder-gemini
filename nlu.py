@@ -51,7 +51,7 @@ def extract_reminder_details_gemini(text: str, current_context: str | None = Non
     Context: {context_instruction}
 
     JSON Output:
-    - "intent": string - ["set_reminder", "provide_task", "provide_date", "provide_time", "provide_am_pm", "list_reminders", "delete_reminder_by_number", "request_edit_last_reminder", "affirmative", "negative", "cancel", "other"].
+    - "intent": string - ["set_reminder", "provide_task", "provide_date", "provide_time", "provide_am_pm", "list_reminders", "delete_reminder_by_number", "request_edit_last_reminder", "request_primary_event_time", "affirmative", "negative", "cancel", "other"].
     - "task": string | null - Reminder subject.
     - "date": string | null - Date. Prefer Persian relative (e.g., "فردا", "پس‌فردا").
     - "time": string | null - Time in "HH:MM" format.
@@ -59,6 +59,8 @@ def extract_reminder_details_gemini(text: str, current_context: str | None = Non
     - "am_pm": string | null - "am" (صبح) or "pm" (بعد از ظهر).
     - "extracted_number": integer | null - For operations like "delete number 2".
     - "raw_time_input": string | null - Raw time if AM/PM needs clarification.
+    - "primary_event_task": string | null - The main event the reminder is relative to.
+    - "relative_offset_description": string | null - e.g., "نیم ساعت قبل", "10 minutes after".
 
     JSON Output:
     """

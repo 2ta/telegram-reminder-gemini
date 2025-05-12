@@ -195,6 +195,62 @@ def format_jalali_datetime_for_display(dt_utc: datetime.datetime) -> tuple[str, 
     
     return date_display, time_display
 
+def calculate_relative_reminder_time(primary_event_time_utc: datetime.datetime, relative_offset_description: str) -> datetime.datetime | None:
+    """Calculates the actual reminder datetime based on a primary event time and a relative offset string."""
+    if not primary_event_time_utc or not relative_offset_description:
+        return None
+
+    normalized_offset = normalize_persian_numerals(relative_offset_description.lower())
+    delta = None
+
+    # Simple parsing for now, can be expanded with more regex or a dedicated library
+    # Example: "نیم ساعت قبل", "30 دقیقه بعد", "1 ساعت قبل"
+    
+    match_minutes = re.search(r'(\d+|یک|دو|نیم) +دقیقه', normalized_offset)
+    match_hours = re.search(r'(\d+|یک|دو|نیم) +ساعت', normalized_offset)
+
+    value = 0
+    unit = None
+
+    if match_minutes:
+        value_str = match_minutes.group(1)
+        unit = "minutes"
+    elif match_hours:
+        value_str = match_hours.group(1)
+        unit = "hours"
+    else:
+        logger.warning(f"Could not parse time unit from relative offset: {relative_offset_description}")
+        return None
+
+    if value_str == "نیم":
+        value = 30 if unit == "minutes" else 0.5 # 0.5 hours
+    elif value_str == "یک":
+        value = 1
+    elif value_str == "دو":
+        value = 2
+    else:
+        try:
+            value = int(value_str)
+        except ValueError:
+            logger.error(f"Could not parse numeric value from relative offset: {value_str} in {relative_offset_description}")
+            return None
+    
+    if unit == "minutes":
+        delta = datetime.timedelta(minutes=value)
+    elif unit == "hours":
+        delta = datetime.timedelta(hours=value)
+    
+    if delta is None:
+        return None
+
+    if "قبل" in normalized_offset:
+        return primary_event_time_utc - delta
+    elif "بعد" in normalized_offset:
+        return primary_event_time_utc + delta
+    else:
+        logger.warning(f"Could not determine 'before' or 'after' in relative offset: {relative_offset_description}")
+        return None # Default to before if not specified, or require it?
+
 # ... (keep the if __name__ == '__main__': test block from the previous utils.py version for your own testing) ...
 if __name__ == '__main__':
     logging.basicConfig(level=logging.DEBUG, format="%(asctime)s - %(name)s - %(levelname)s - %(module)s - %(message)s")
