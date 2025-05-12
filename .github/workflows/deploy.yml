@@ -15,12 +15,12 @@ jobs:
           mkdir -p ~/.ssh/
           echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
-          ssh-keyscan -p 61208 -H ${{ secrets.SERVER_IP }} >> ~/.ssh/known_hosts
+          ssh-keyscan -H ${{ secrets.SERVER_IP }} >> ~/.ssh/known_hosts
       
       - name: Deploy to Server
         run: |
-          scp -P 61208 -r bot.py config.py database.py nlu.py stt.py utils.py requirements.txt ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }}:${{ secrets.DEPLOY_PATH }}
+          scp -r bot.py config.py database.py nlu.py stt.py utils.py requirements.txt test_scenarios.md .env.sample telegram-reminder-bot.service ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }}:${{ secrets.DEPLOY_PATH }}
       
       - name: Restart Bot Service
         run: |
-          ssh -p 61208 ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }} "cd ${{ secrets.DEPLOY_PATH }} && source venv/bin/activate && pip install -r requirements.txt && systemctl --user restart telegram-reminder.service" 
+          ssh ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }} "cd ${{ secrets.DEPLOY_PATH }} && source venv/bin/activate && pip install -r requirements.txt && sudo systemctl restart telegram-reminder.service" 

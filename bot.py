@@ -650,7 +650,7 @@ async def display_list_and_ask_delete(update: Update, context: ContextTypes.DEFA
     user_id = update.effective_user.id
     log_memory_usage(f"display_list_and_ask_delete for {user_id}")
     logger.info(f"User {user_id} requested to list reminders.")
-
+    
     db = next(get_db())
     try:
         reminders_from_db = db.query(Reminder).filter(
@@ -659,12 +659,12 @@ async def display_list_and_ask_delete(update: Update, context: ContextTypes.DEFA
         ).order_by(Reminder.due_datetime_utc).all()
     finally:
         db.close()
-
+    
     if not reminders_from_db:
         await update.message.reply_text(MSG_LIST_EMPTY)
         return ConversationHandler.END
 
-    response_text = MSG_LIST_HEADER + "\\n"
+    response_text = MSG_LIST_HEADER + "\n\n" # Added an extra newline for better spacing
     display_map = {} # To map display index to reminder ID
     keyboard_buttons = [] # For inline keyboard
 
@@ -672,25 +672,28 @@ async def display_list_and_ask_delete(update: Update, context: ContextTypes.DEFA
         jalali_date, time_disp = format_jalali_datetime_for_display(reminder_obj.due_datetime_utc)
         recurrence_info = f" (تکرار: {reminder_obj.recurrence_rule})" if reminder_obj.recurrence_rule else ""
         response_text += MSG_LIST_ITEM.format(
-            index=index,
-            task=reminder_obj.task_description,
-            date=jalali_date,
+            index=index, 
+            task=reminder_obj.task_description, 
+            date=jalali_date, 
             time=time_disp,
             recurrence_info=recurrence_info
-        ) + "\\n"
-        display_map[index] = reminder_obj.id
+        ) + "\n" # Changed to simple newline instead of escaped newline
+        display_map[index] = reminder_obj.id 
         # Add buttons for each reminder
         edit_button = InlineKeyboardButton(f"✏️ ویرایش #{index}", callback_data=f"edit_{reminder_obj.id}")
         delete_button = InlineKeyboardButton(f"🗑️ حذف #{index}", callback_data=f"delete_{reminder_obj.id}")
         keyboard_buttons.append([edit_button, delete_button])
-
+    
     context.user_data['reminders_list_map'] = display_map
     reply_markup = InlineKeyboardMarkup(keyboard_buttons)
-    await update.message.reply_text(response_text, reply_markup=reply_markup)
-    # We don't go to AWAITING_DELETE_NUMBER_INPUT here directly.
-    # The callback_query_handler will handle button presses.
-    # If user types a number, that should be handled by a different state or logic if we want that.
-    # For now, interaction is via buttons.
+    
+    if update.callback_query:
+        # If this is called from a callback query, edit the message
+        await update.callback_query.edit_message_text(response_text, reply_markup=reply_markup)
+    else:
+        # If this is called from a command or button press, send a new message
+        await update.message.reply_text(response_text, reply_markup=reply_markup)
+        
     return ConversationHandler.END # Ends the current conversation if any, buttons will trigger new one or action
 
 async def list_reminders_entry(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -722,7 +725,7 @@ async def received_delete_number_input(update: Update, context: ContextTypes.DEF
     reminder_id_to_delete = reminders_map.get(selected_index)
 
     if not reminder_id_to_delete:
-        await update.message.reply_text(MSG_INVALID_SELECTION + "\\n" + MSG_SELECT_FOR_DELETE)
+        await update.message.reply_text(MSG_INVALID_SELECTION + "\n" + MSG_SELECT_FOR_DELETE)
         return AWAITING_DELETE_NUMBER_INPUT
 
     db = next(get_db())
@@ -825,7 +828,7 @@ async def received_edit_field_value(update: Update, context: ContextTypes.DEFAUL
             nlu_data = extract_reminder_details_gemini(text, current_context="editing_reminder_time")
             log_memory_usage(f"after NLU for received_edit_field_value (time) from {user_id}")
             if not nlu_data or not nlu_data.get("date") or not nlu_data.get("time"):
-                await update.message.reply_text(MSG_DATE_PARSE_ERROR + "\\nمجدداً تلاش کنید یا 'لغو' بفرستید.")
+                await update.message.reply_text(MSG_DATE_PARSE_ERROR + "\nمجدداً تلاش کنید یا 'لغو' بفرستید.")
                 return AWAITING_EDIT_FIELD_VALUE # Stay in state
             
             context_data_for_update = {
@@ -888,13 +891,15 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             reminder_id_to_delete = int(data.split('_')[1])
             db = next(get_db())
             deleted_task_desc = "یادآور"
+            deleted_successfully = False
+            
             try:
                 reminder = db.query(Reminder).filter(Reminder.id == reminder_id_to_delete, Reminder.user_id == user_id).first()
                 if reminder:
                     deleted_task_desc = reminder.task_description
                     reminder.is_active = False # Soft delete
                     db.commit()
-                    await query.edit_message_text(text=MSG_REMINDER_DELETED.format(task=deleted_task_desc))
+                    deleted_successfully = True
                 else:
                     await query.edit_message_text(text=MSG_REMINDER_NOT_FOUND_FOR_ACTION)
             except Exception as e:
@@ -905,6 +910,31 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                 db.close()
                 log_memory_usage(f"after DB delete via button for {user_id}")
                 gc.collect()
+            
+            if deleted_successfully:
+                # Show a temporary success message
+                success_message = MSG_REMINDER_DELETED.format(task=deleted_task_desc)
+                
+                # Check if there are still active reminders
+                db = next(get_db())
+                try:
+                    remaining_reminders = db.query(Reminder).filter(
+                        Reminder.user_id == user_id,
+                        Reminder.is_active == True
+                    ).count()
+                    
+                    if remaining_reminders > 0:
+                        # Update the message with the modified list
+                        return await display_list_and_ask_delete(update, context)
+                    else:
+                        # If no reminders left, just show the deletion confirmation
+                        await query.edit_message_text(text=success_message)
+                except Exception as e:
+                    logger.error(f"Error checking remaining reminders: {e}", exc_info=True)
+                    await query.edit_message_text(text=success_message)
+                finally:
+                    db.close()
+                    
             return ConversationHandler.END # End conversation or action
         except (IndexError, ValueError):
             logger.error(f"Invalid callback data for delete: {data}")
