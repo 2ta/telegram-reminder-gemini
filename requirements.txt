@@ -9,6 +9,5 @@ requests
 apscheduler
 pytz
 google-generativeai~=0.5.2
-google-cloud-vertexai~=1.47.0
 # python-dateutil # Not used in this version, but needed for full recurrence
 psutil==5.9.5
