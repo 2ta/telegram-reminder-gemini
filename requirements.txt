@@ -4,7 +4,7 @@ jdatetime
 google-cloud-speech
 google-cloud-aiplatform
 python-dotenv
-pydub
+pydub==0.25.1
 requests
 apscheduler
 pytz
