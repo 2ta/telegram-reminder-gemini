@@ -65,9 +65,11 @@ def extract_reminder_details_gemini(text: str, current_context: str | None = Non
     try:
         logger.info(f"NLU Sending to Gemini (context: {current_context})")
         generation_config = GenerationConfig(
-            response_mime_type="application/json",
-            temperature=0.05,
-            max_output_tokens=256  # Limit output size to save memory
+            max_output_tokens=150, 
+            temperature=0.2,
+            top_p=0.8,
+            top_k=40,
+            # response_mime_type="application/json" # Removed for compatibility
         )
         
         # Ensure gemini_model_vertex is not None before calling
