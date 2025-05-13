@@ -45,14 +45,24 @@ def extract_reminder_details_gemini(text: str, current_context: str | None = Non
     elif current_context:
         context_instruction = f"Context: '{current_context}'."
     
-    # Simplified prompt to reduce token count and memory usage
+    # Improved prompt with Persian examples for better extraction
     prompt = f"""
     AI assistant for Persian Telegram Reminder Bot. Extract reminder details from: "{text}".
     Context: {context_instruction}
 
+    Examples:
+    - Input: "یادم بنداز به برادرم زنگ بزنم"
+      Output: {{"intent": "set_reminder", "task": "زنگ زدن به برادرم", "date": null, "time": null}}
+    - Input: "یادم بنداز فردا به مادرم زنگ بزنم"
+      Output: {{"intent": "set_reminder", "task": "زنگ زدن به مادرم", "date": "فردا", "time": null}}
+    - Input: "یادم بنداز ساعت ۵ به دوستم پیام بدم"
+      Output: {{"intent": "set_reminder", "task": "پیام دادن به دوستم", "date": null, "time": "17:00"}}
+    - Input: "یادم بنداز هر روز ورزش کنم"
+      Output: {{"intent": "set_reminder", "task": "ورزش کردن", "recurrence": "daily"}}
+
     JSON Output:
     - "intent": string - ["set_reminder", "provide_task", "provide_date", "provide_time", "provide_am_pm", "list_reminders", "delete_reminder_by_number", "request_edit_last_reminder", "request_primary_event_time", "affirmative", "negative", "cancel", "other"].
-    - "task": string | null - Reminder subject.
+    - "task": string | null - Reminder subject (e.g., "زنگ زدن به برادرم").
     - "date": string | null - Date. Prefer Persian relative (e.g., "فردا", "پس‌فردا").
     - "time": string | null - Time in "HH:MM" format.
     - "recurrence": string | null - e.g., "daily", "weekly", "monthly".

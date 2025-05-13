@@ -112,21 +112,23 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         nlu_data = extract_reminder_details_gemini(text, current_context="initial_contact")
         log_memory_usage("after NLU processing")
         
-        if nlu_data and nlu_data.get("intent") == "set_reminder" and nlu_data.get("task"):
-            task = nlu_data.get("task")
-            date = nlu_data.get("date", "")
-            time = nlu_data.get("time", "")
-            
-            # If we have both date and time, confirm the reminder
-            if date and time:
-                await update.message.reply_text(
-                    f"باشه، یادآوری تنظیم شد.\n📝 متن: {task}\n⏰ زمان: {date}، ساعت {time}"
-                )
-            # If we only have task, ask for date/time
+        if nlu_data and nlu_data.get("intent") == "set_reminder":
+            if nlu_data.get("task"):
+                task = nlu_data.get("task")
+                date = nlu_data.get("date", "")
+                time = nlu_data.get("time", "")
+                # If we have both date and time, confirm the reminder
+                if date and time:
+                    await update.message.reply_text(
+                        f"باشه، یادآوری تنظیم شد.\n📝 متن: {task}\n⏰ زمان: {date}، ساعت {time}"
+                    )
+                # If we only have task, ask for date/time
+                else:
+                    await update.message.reply_text(
+                        f"متوجه شدم که میخواهی یادآوری برای «{task}» تنظیم کنی. چه زمانی؟"
+                    )
             else:
-                await update.message.reply_text(
-                    f"متوجه شدم که میخواهی یادآوری برای «{task}» تنظیم کنی. چه زمانی؟"
-                )
+                await update.message.reply_text("چه کاری را می‌خواهی بهت یادآوری کنم؟")
         else:
             # Just acknowledge the message
             await update.message.reply_text(f"پیام شما دریافت شد. برای تنظیم یادآوری لطفاً زمان و موضوع را مشخص کنید.")
@@ -196,7 +198,7 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
                             f"متوجه شدم که میخواهی یادآوری برای «{task}» تنظیم کنی. چه زمانی؟"
                         )
                 else:
-                    await update.message.reply_text("متوجه نشدم دقیقاً چه یادآوری می‌خواهید تنظیم کنید. لطفاً واضح‌تر بگویید.")
+                    await update.message.reply_text("متوجه نشدم دقیقاً چه یادآوری می‌خواهی تنظیم کنید. لطفاً واضح‌تر بگویید.")
             except Exception as nlu_error:
                 logger.error(f"Error in NLU processing: {nlu_error}")
                 await update.message.reply_text("خطا در پردازش متن. لطفاً دوباره تلاش کنید.")
