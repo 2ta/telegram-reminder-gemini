@@ -280,20 +280,17 @@ async def handle_initial_message(update: Update, context: ContextTypes.DEFAULT_T
     user_id = update.message.from_user.id
     chat_id = update.message.chat_id
     text = update.message.text.strip()
-    context.user_data.clear()
+    context.user_data.clear() 
     log_memory_usage(f"initial message from {user_id}")
     logger.info(f"User {user_id} initial message: '{text}'")
 
-    # Check for list reminders button press or /list command - this should be handled by a separate handler ideally
-    # For now, let's keep it simple and not transition to a conv state here for list.
+    # Check for list reminders button press or /list command
     if text == "یادآورهای من":
-        # This will be handled by list_reminders_entry directly now
-        return ConversationHandler.END
+        return await list_reminders_entry(update, context) # Direct to list handler
     if text == "راهنما":
         await update.message.reply_text(MSG_HELP)
         return ConversationHandler.END
 
-    # Regular reminder processing continues below
     nlu_data = extract_reminder_details_gemini(text, current_context="initial_contact")
     log_memory_usage(f"after NLU for {user_id}")
     if not nlu_data:
@@ -307,68 +304,55 @@ async def handle_initial_message(update: Update, context: ContextTypes.DEFAULT_T
     context.user_data['time_str'] = nlu_data.get("time")
     context.user_data['recurrence'] = nlu_data.get("recurrence")
     context.user_data['am_pm'] = nlu_data.get("am_pm")
-    # New fields for relative reminders
     context.user_data['primary_event_task'] = nlu_data.get("primary_event_task")
     context.user_data['relative_offset_description'] = nlu_data.get("relative_offset_description")
 
     last_confirmed = context.user_data.get('last_confirmed_reminder')
-    # Check if last_confirmed is recent enough (e.g., within 2 minutes)
-    if last_confirmed and (datetime.datetime.now(pytz.utc) - last_confirmed['timestamp']) > datetime.timedelta(minutes=2):
+    if last_confirmed and (datetime.datetime.now(pytz.utc) - last_confirmed['timestamp']) > datetime.timedelta(minutes=5): # Increased timeout
         context.user_data.pop('last_confirmed_reminder', None)
         last_confirmed = None
         logger.info(f"Cleared stale last_confirmed_reminder context for user {user_id}")
 
-    # --- Check for relative reminder intent first ---
     if intent == "set_reminder" and \
        context.user_data.get('task') and \
        context.user_data.get('primary_event_task') and \
        context.user_data.get('relative_offset_description') and \
        not (context.user_data.get('date_str') or context.user_data.get('time_str')):
         
-        logger.info(f"User {user_id} - Intent: set_reminder (relative). Task: '{context.user_data['task']}', relative to '{context.user_data['primary_event_task']}' ('{context.user_data['relative_offset_description']}'). Asking for primary event time.")
+        logger.info(f"User {user_id} - Intent: set_reminder (relative). Asking for primary event time for '{context.user_data['primary_event_task']}'.")
         await update.message.reply_text(MSG_REQUEST_PRIMARY_EVENT_TIME.format(primary_event_task=context.user_data['primary_event_task']))
         return AWAITING_PRIMARY_EVENT_TIME
 
-    # --- Then check for quick edit intent ---
     elif intent == "request_edit_last_reminder" and last_confirmed:
         logger.info(f"User {user_id} requested to edit last confirmed reminder ID {last_confirmed['id']}")
         reminder_id_to_edit = last_confirmed['id']
         context.user_data['reminder_to_edit_id'] = reminder_id_to_edit
         
-        # Need to fetch reminder details to populate context for edit flow
         db = next(get_db())
         try:
             reminder = db.query(Reminder).filter(Reminder.id == reminder_id_to_edit, Reminder.user_id == user_id).first()
             if not reminder or not reminder.is_active:
                 await update.message.reply_text(MSG_REMINDER_NOT_FOUND_FOR_ACTION + " (یادآور قبلی یافت نشد یا فعال نیست.)")
-                context.user_data.pop('last_confirmed_reminder', None) # Clear invalid context
+                context.user_data.pop('last_confirmed_reminder', None)
                 return ConversationHandler.END
-            # We don't strictly need to store current values here, as the edit flow fetches them again if needed.
         finally:
             db.close()
 
-        # Now, ask the user what field to edit and transition state via button callback
         keyboard = [
             [InlineKeyboardButton("📝 متن یادآور", callback_data=f"edit_field_task_{reminder_id_to_edit}")],
             [InlineKeyboardButton("⏰ زمان یادآور", callback_data=f"edit_field_time_{reminder_id_to_edit}")]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         await update.message.reply_text(text=MSG_EDIT_REMINDER_FIELD_CHOICE, reply_markup=reply_markup)
-        
-        # Clear the last_confirmed context now that we are offering to edit it
         context.user_data.pop('last_confirmed_reminder', None) 
-        
-        # End the current conversation (if any) - the response will be handled by button_callback
         return ConversationHandler.END 
     
-    # --- Handle standard set_reminder intent with varying levels of detail ---
     elif intent == "set_reminder":
         task = context.user_data.get('task')
         date_str = context.user_data.get('date_str')
         time_str = context.user_data.get('time_str')
-        # recurrence = context.user_data.get('recurrence') # Already in user_data
-        am_pm = context.user_data.get('am_pm') # Already in user_data
-        raw_time_input = nlu_data.get("raw_time_input") # Get from nlu_data as it might not be in user_data yet
+        am_pm = context.user_data.get('am_pm') # From NLU, might be None
+        raw_time_input = nlu_data.get("raw_time_input") # From current NLU
 
         if not task:
             logger.info(f"User {user_id} - Intent: set_reminder. Task missing. Asking for task.")
@@ -381,7 +365,7 @@ async def handle_initial_message(update: Update, context: ContextTypes.DEFAULT_T
                 return AWAITING_FULL_DATETIME
             elif date_str and not time_str:
                 logger.info(f"User {user_id} - Intent: set_reminder, Task: '{task}', Date: '{date_str}'. Time missing. Setting default 09:00.")
-                context.user_data['time_str'] = "09:00" # Default time
+                context.user_data['time_str'] = "09:00"
                 
                 reminder, error = await save_or_update_reminder_in_db(user_id, chat_id, context.user_data)
                 if error:
@@ -391,68 +375,56 @@ async def handle_initial_message(update: Update, context: ContextTypes.DEFAULT_T
                     jalali_date_display, _ = format_jalali_datetime_for_display(reminder.due_datetime_utc)
                     context.user_data['last_reminder_id_for_time_update'] = reminder.id
                     context.user_data['last_confirmed_reminder'] = {
-                        'id': reminder.id,
-                        'task': reminder.task_description,
-                        'timestamp': datetime.datetime.now(pytz.utc)
+                        'id': reminder.id, 'task': reminder.task_description, 'timestamp': datetime.datetime.now(pytz.utc)
                     }
                     await update.message.reply_text(MSG_CONFIRM_DEFAULT_TIME.format(task=task, date=jalali_date_display))
                     return AWAITING_TIME_ONLY
                 else:
                      await update.message.reply_text(MSG_GENERAL_ERROR + " (خطا در ذخیره با زمان پیشفرض)")
                      return ConversationHandler.END
-            elif date_str and time_str: # Both date and time are present
-                # Check for AM/PM ambiguity only if raw_time_input suggests it and am_pm isn't set by NLU
+            elif date_str and time_str: # Both date and time are present from NLU
                 if raw_time_input and not am_pm:
-                    # Try to match a simple hour pattern from the time_str that NLU provided
-                    ambiguous_hour_match = re.match(r"(\d{1,2})", time_str) 
+                    ambiguous_hour_match = re.match(r"(\\d{1,2})", time_str) 
                     if ambiguous_hour_match:
                         ambiguous_hour = int(ambiguous_hour_match.group(1))
-                        if 1 <= ambiguous_hour <= 12: # Only ask for AM/PM if it's a typical 12-hour format number
-                            logger.info(f"User {user_id} - Intent: set_reminder. Time '{time_str}' (raw: '{raw_time_input}') is ambiguous. Asking AM/PM for hour {ambiguous_hour}.")
+                        if 1 <= ambiguous_hour <= 12:
+                            logger.info(f"User {user_id} - Intent: set_reminder. Time '{time_str}' (raw: '{raw_time_input}') is ambiguous for hour {ambiguous_hour}. Asking AM/PM.")
                             context.user_data['ambiguous_time_hour_str'] = str(ambiguous_hour)
                             await update.message.reply_text(MSG_ASK_AM_PM.format(time_hour=str(ambiguous_hour)))
                             return AWAITING_AM_PM_CLARIFICATION
                 
-                # If not ambiguous, or AM/PM already clarified by NLU, or time_str is 24h format
                 reminder, error = await save_or_update_reminder_in_db(user_id, chat_id, context.user_data)
                 if error:
                     await update.message.reply_text(error)
-                    # Consider if returning a specific state is better for some errors, e.g., AWAITING_FULL_DATETIME for parse errors
                     return ConversationHandler.END 
                 if reminder:
                     jalali_date_display, time_display_parsed = format_jalali_datetime_for_display(reminder.due_datetime_utc)
                     rec_info = f" (تکرار: {reminder.recurrence_rule})" if reminder.recurrence_rule else ""
                     await update.message.reply_text(MSG_CONFIRMATION.format(task=task, date=jalali_date_display, time=time_display_parsed, recurrence_info=rec_info))
                     context.user_data['last_confirmed_reminder'] = {
-                        'id': reminder.id,
-                        'task': reminder.task_description,
-                        'timestamp': datetime.datetime.now(pytz.utc)
+                        'id': reminder.id, 'task': reminder.task_description, 'timestamp': datetime.datetime.now(pytz.utc)
                     }
                     return ConversationHandler.END
                 else: 
                      await update.message.reply_text(MSG_GENERAL_ERROR + " (خطا در ذخیره نهایی)")
                      return ConversationHandler.END
-            else: # Other combinations (e.g., only time_str but no date_str)
-                logger.info(f"User {user_id} - Intent: set_reminder, Task: '{task}'. Date missing or incomplete time. Asking for full datetime.")
+            else: # Task is present, but date or time is missing in a way not covered above (e.g. time_str but no date_str)
+                logger.info(f"User {user_id} - Intent: set_reminder, Task: '{task}'. Date missing or time incomplete. Asking for full datetime.")
                 await update.message.reply_text(MSG_REQUEST_FULL_DATETIME)
                 return AWAITING_FULL_DATETIME
-    else:
-        # This is for intents other than set_reminder, relative_reminder, or edit_request_with_context
+    else: 
         logger.info(f"NLU intent '{intent}' not directly handled as an entry point or is unclear. Text: '{text}'")
         if intent == "request_edit_last_reminder" and not last_confirmed:
-            # Using MSG_NO_REMINDER_TO_EDIT, hoping it's defined in config.py.
-            # If not, it might cause an error, or a default message might be better.
-            # For now, let's assume it might be there or use a fallback.
             try:
                 msg_to_send = MSG_NO_REMINDER_TO_EDIT
             except NameError:
-                msg_to_send = MSG_FAILURE_EXTRACTION + " (No recent reminder to edit.)"
+                logger.warning("MSG_NO_REMINDER_TO_EDIT not found in config, using fallback.")
+                msg_to_send = MSG_FAILURE_EXTRACTION + " (یادآوری اخیر برای ویرایش یافت نشد.)"
             await update.message.reply_text(msg_to_send)
-        elif intent == "list_reminders": # Should be handled by its own handler, but as a fallback
+        elif intent == "list_reminders": # Should be handled by CommandHandler or RegexHandler
             logger.warning("list_reminders intent fell through to final else in handle_initial_message. Should be caught by dedicated handler.")
-            # Forward to list_reminders_entry or send a message
-            return await list_reminders_entry(update, context) # This might not be ideal from within a conversation's entry
-        else: # General fallback for other intents or unclear NLU
+            return await list_reminders_entry(update, context)
+        else: 
             await update.message.reply_text(MSG_FAILURE_EXTRACTION)
         return ConversationHandler.END
 
