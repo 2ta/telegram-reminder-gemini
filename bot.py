@@ -43,7 +43,7 @@ logger = logging.getLogger(__name__)
     AWAITING_FULL_DATETIME,    
     AWAITING_TIME_ONLY,        
     AWAITING_AM_PM_CLARIFICATION,
-    AWAITING_DELETE_NUMBER_INPUT,
+    AWAITING_DELETE_NUMBER_INPUT, 
     AWAITING_EDIT_FIELD_CHOICE,
     AWAITING_EDIT_FIELD_VALUE,
     AWAITING_PRIMARY_EVENT_TIME
@@ -222,8 +222,8 @@ async def save_or_update_reminder_in_db(user_id: int, chat_id: int, context_data
         due_datetime_utc = due_datetime_utc_calculated
         logger.info(f"Using pre-calculated UTC datetime for saving: {due_datetime_utc}")
     else:
-        date_str = context_data.get('date_str')
-        time_str = context_data.get('time_str')
+    date_str = context_data.get('date_str')
+    time_str = context_data.get('time_str')
         if not date_str: return None, "تاریخ یادآور مشخص نشده است."
         if not time_str: return None, "زمان یادآور مشخص نشده است."
         
@@ -240,7 +240,7 @@ async def save_or_update_reminder_in_db(user_id: int, chat_id: int, context_data
     if error_msg:
         logger.error(f"Save attempt with incomplete data: {error_msg} - Data: {context_data}")
         return None, error_msg
-    
+
     if due_datetime_utc < datetime.datetime.now(pytz.utc) and not recurrence:
         logger.warning(f"Attempt to save non-recurring reminder in past: {due_datetime_utc}")
         jalali_date_display, time_display_parsed = format_jalali_datetime_for_display(due_datetime_utc)
@@ -380,11 +380,11 @@ async def handle_initial_message(update: Update, context: ContextTypes.DEFAULT_T
                     await update.message.reply_text(MSG_CONFIRM_DEFAULT_TIME.format(task=task, date=jalali_date_display))
                     return AWAITING_TIME_ONLY
                 else:
-                     await update.message.reply_text(MSG_GENERAL_ERROR + " (خطا در ذخیره با زمان پیشفرض)")
-                     return ConversationHandler.END
+                    await update.message.reply_text(MSG_GENERAL_ERROR + " (خطا در ذخیره با زمان پیشفرض)")
+                    return ConversationHandler.END
             elif date_str and time_str: # Both date and time are present from NLU
                 if raw_time_input and not am_pm:
-                    ambiguous_hour_match = re.match(r"(\\d{1,2})", time_str) 
+                    ambiguous_hour_match = re.match(r"(\d{1,2})", time_str)
                     if ambiguous_hour_match:
                         ambiguous_hour = int(ambiguous_hour_match.group(1))
                         if 1 <= ambiguous_hour <= 12:
@@ -402,12 +402,17 @@ async def handle_initial_message(update: Update, context: ContextTypes.DEFAULT_T
                     rec_info = f" (تکرار: {reminder.recurrence_rule})" if reminder.recurrence_rule else ""
                     await update.message.reply_text(MSG_CONFIRMATION.format(task=task, date=jalali_date_display, time=time_display_parsed, recurrence_info=rec_info))
                     context.user_data['last_confirmed_reminder'] = {
-                        'id': reminder.id, 'task': reminder.task_description, 'timestamp': datetime.datetime.now(pytz.utc)
+                        'id': reminder.id,
+                        'task': reminder.task_description,
+                        'timestamp': datetime.datetime.now(pytz.utc)
                     }
+                    
+                    # Clean up memory and return
+                    gc.collect()
                     return ConversationHandler.END
                 else: 
-                     await update.message.reply_text(MSG_GENERAL_ERROR + " (خطا در ذخیره نهایی)")
-                     return ConversationHandler.END
+                    await update.message.reply_text(MSG_GENERAL_ERROR + " (خطا در ذخیره نهایی)")
+                    return ConversationHandler.END
             else: # Task is present, but date or time is missing in a way not covered above (e.g. time_str but no date_str)
                 logger.info(f"User {user_id} - Intent: set_reminder, Task: '{task}'. Date missing or time incomplete. Asking for full datetime.")
                 await update.message.reply_text(MSG_REQUEST_FULL_DATETIME)
@@ -433,7 +438,7 @@ async def received_task_description(update: Update, context: ContextTypes.DEFAUL
     log_memory_usage(f"received_task_description from {update.effective_user.id}")
     nlu_data = extract_reminder_details_gemini(text, current_context="awaiting_task_description")
     log_memory_usage(f"after NLU for received_task_description from {update.effective_user.id}")
-
+    
     if nlu_data and nlu_data.get("intent") == "provide_task" and nlu_data.get("task"):
         context.user_data['task'] = nlu_data.get("task")
         logger.info(f"User {update.effective_user.id} provided task: {context.user_data['task']}. Asking for datetime.")
@@ -471,7 +476,7 @@ async def received_full_datetime(update: Update, context: ContextTypes.DEFAULT_T
         return AWAITING_FULL_DATETIME
 
     context.user_data['date_str'] = date_str
-
+    
     if not time_str:
         logger.info(f"Date '{date_str}' provided, time missing. Setting default 09:00.")
         context.user_data['time_str'] = "09:00"
@@ -493,14 +498,14 @@ async def received_full_datetime(update: Update, context: ContextTypes.DEFAULT_T
     else:
         context.user_data['time_str'] = time_str
         if nlu_data.get("raw_time_input") and not nlu_data.get("am_pm"):
-            ambiguous_hour_match = re.match(r"(\\d{1,2})", time_str)
+            ambiguous_hour_match = re.match(r"(\d{1,2})", time_str)
             if ambiguous_hour_match:
                 ambiguous_hour = int(ambiguous_hour_match.group(1))
                 logger.info(f"Time {time_str} from NLU is ambiguous. Asking AM/PM for hour {ambiguous_hour}.")
                 context.user_data['ambiguous_time_hour_str'] = str(ambiguous_hour)
                 await update.message.reply_text(MSG_ASK_AM_PM.format(time_hour=str(ambiguous_hour)))
                 return AWAITING_AM_PM_CLARIFICATION
-
+        
         reminder, error = await save_or_update_reminder_in_db(user_id, chat_id, context.user_data)
         if error:
             await update.message.reply_text(error)
@@ -515,9 +520,12 @@ async def received_full_datetime(update: Update, context: ContextTypes.DEFAULT_T
                 'task': reminder.task_description,
                 'timestamp': datetime.datetime.now(pytz.utc)
             }
+            
+            # Clean up memory and return
+            gc.collect()
             return ConversationHandler.END
     gc.collect()
-    return ConversationHandler.END
+            return ConversationHandler.END
 
 
 async def received_time_only(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -543,7 +551,7 @@ async def received_time_only(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
 
     if nlu_data.get("raw_time_input") and not nlu_data.get("am_pm"):
-        ambiguous_hour_match = re.match(r"(\\d{1,2})", new_time_str)
+        ambiguous_hour_match = re.match(r"(\d{1,2})", new_time_str)
         if ambiguous_hour_match:
             ambiguous_hour = int(ambiguous_hour_match.group(1))
             logger.info(f"New time '{new_time_str}' is ambiguous. Asking AM/PM for hour {ambiguous_hour}.")
@@ -589,24 +597,24 @@ async def received_am_pm_clarification(update: Update, context: ContextTypes.DEF
 
     if nlu_data.get("intent") == "cancel":
         return await cancel_conversation(update, context)
-
+        
     if nlu_data.get("intent") != "provide_am_pm" or not nlu_data.get("am_pm"):
         await update.message.reply_text(MSG_ASK_AM_PM.format(time_hour=ambiguous_hour_str) + " (لطفاً فقط 'صبح'، 'ظهر' یا 'بعد از ظهر' را مشخص کنید)")
         return AWAITING_AM_PM_CLARIFICATION
 
     am_pm_specifier = nlu_data.get("am_pm")
     hour_12_format = int(ambiguous_hour_str)
-
+    
     hour_24_format = hour_12_format
     if am_pm_specifier == "pm" and hour_12_format < 12:
         hour_24_format += 12
     elif am_pm_specifier == "am" and hour_12_format == 12: # 12 AM (midnight) -> 00
         hour_24_format = 0
-
+    
     minute_str = "00"
     if context.user_data.get('time_str') and ':' in context.user_data['time_str']:
         minute_str = context.user_data['time_str'].split(':')[1]
-
+    
     context.user_data['time_str'] = f"{hour_24_format:02d}:{minute_str}"
     context.user_data['am_pm'] = am_pm_specifier
 
@@ -615,7 +623,7 @@ async def received_am_pm_clarification(update: Update, context: ContextTypes.DEF
 
     if error:
         await update.message.reply_text(error)
-        return ConversationHandler.END
+        return ConversationHandler.END 
     if reminder:
         jalali_date, time_disp = format_jalali_datetime_for_display(reminder.due_datetime_utc)
         rec_info = f" (تکرار: {reminder.recurrence_rule})" if reminder.recurrence_rule else ""
@@ -732,7 +740,7 @@ async def handle_voice_message(update: Update, context: ContextTypes.DEFAULT_TYP
                     return AWAITING_TIME_ONLY
             elif context.user_data['task'] and context.user_data['date_str'] and context.user_data['time_str']:
                 if nlu_data.get("raw_time_input") and not context.user_data['am_pm']:
-                    ambiguous_hour_match = re.match(r"(\\d{1,2})", context.user_data['time_str'])
+                    ambiguous_hour_match = re.match(r"(\d{1,2})", context.user_data['time_str'])
                     if ambiguous_hour_match:
                         ambiguous_hour = int(ambiguous_hour_match.group(1))
                         context.user_data['ambiguous_time_hour_str'] = str(ambiguous_hour)
@@ -743,7 +751,7 @@ async def handle_voice_message(update: Update, context: ContextTypes.DEFAULT_TYP
                 if reminder:
                     jalali_date, time_disp = format_jalali_datetime_for_display(reminder.due_datetime_utc)
                     rec_info = f" (تکرار: {reminder.recurrence_rule})" if reminder.recurrence_rule else ""
-                    await update.message.reply_text(MSG_CONFIRMATION.format(task=reminder.task_description, date=jalali_date, time=time_disp, recurrence_info=rec_info))
+            await update.message.reply_text(MSG_CONFIRMATION.format(task=reminder.task_description, date=jalali_date, time=time_disp, recurrence_info=rec_info))
                     # Store context for potential quick edit
                     context.user_data['last_confirmed_reminder'] = {
                         'id': reminder.id,
@@ -758,7 +766,7 @@ async def handle_voice_message(update: Update, context: ContextTypes.DEFAULT_TYP
                     await update.message.reply_text(MSG_REQUEST_FULL_DATETIME); return AWAITING_FULL_DATETIME
         else:
             await update.message.reply_text(MSG_FAILURE_EXTRACTION)
-            return ConversationHandler.END
+    return ConversationHandler.END
 
     except Exception as e:
         logger.error(f"Error processing voice message: {e}", exc_info=True)
@@ -836,7 +844,7 @@ async def received_delete_number_input(update: Update, context: ContextTypes.DEF
     selected_index = None
     if nlu_data and nlu_data.get("intent") == "delete_reminder_by_number" and nlu_data.get("extracted_number") is not None:
         selected_index = nlu_data.get("extracted_number")
-    else:
+    else: 
         try:
             selected_index = int(normalize_persian_numerals(text) or "-1")
         except ValueError:
@@ -866,7 +874,7 @@ async def received_delete_number_input(update: Update, context: ContextTypes.DEF
         db.close()
         log_memory_usage(f"after DB delete for {user_id}")
         gc.collect()
-
+    
     context.user_data.clear()
     return ConversationHandler.END
 
@@ -880,7 +888,7 @@ async def handle_edit_reminder_request(update: Update, context: ContextTypes.DEF
         reminder = db.query(Reminder).filter(Reminder.id == reminder_id, Reminder.user_id == update.effective_user.id).first()
         if not reminder:
             await update.callback_query.edit_message_text(text=MSG_REMINDER_NOT_FOUND_FOR_ACTION)
-            return ConversationHandler.END
+    return ConversationHandler.END
         context.user_data['current_task_for_edit'] = reminder.task_description
         context.user_data['current_due_for_edit'] = reminder.due_datetime_utc
         context.user_data['current_recurrence_for_edit'] = reminder.recurrence_rule
@@ -1029,7 +1037,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                     reminder.is_active = False # Soft delete
                     db.commit()
                     deleted_successfully = True
-                else:
+    else:
                     await query.edit_message_text(text=MSG_REMINDER_NOT_FOUND_FOR_ACTION)
             except Exception as e:
                 db.rollback()
@@ -1107,7 +1115,7 @@ async def check_reminders(context: ContextTypes.DEFAULT_TYPE) -> None:
                     if reminder.recurrence_rule.lower() == "daily":
                         next_due_time = reminder.due_datetime_utc + datetime.timedelta(days=1)
                     elif reminder.recurrence_rule.lower() == "weekly":
-                        next_due_time = reminder.due_datetime_utc + datetime.timedelta(weeks=1)
+                         next_due_time = reminder.due_datetime_utc + datetime.timedelta(weeks=1)
                     elif reminder.recurrence_rule.lower() == "monthly":
                         next_month = reminder.due_datetime_utc.month + 1
                         next_year = reminder.due_datetime_utc.year
@@ -1321,13 +1329,13 @@ async def received_primary_event_time(update: Update, context: ContextTypes.DEFA
         }
     gc.collect()
     return ConversationHandler.END
-    
+
 def main() -> None:
     """Start the bot with memory optimization and full conversation logic."""
     log_memory_usage("bot startup")
     try:
-        init_db()
-        logger.info("Database initialized.")
+    init_db()
+    logger.info("Database initialized.")
         log_memory_usage("after DB init")
     except Exception as e:
         logger.error(f"Database initialization error: {e}")
@@ -1411,7 +1419,7 @@ def main() -> None:
     application.add_handler(manage_reminders_conv)
     # Add a standalone voice handler for non-conversational voice inputs if needed, or ensure it enters set_reminder_conv
     # For now, handle_voice_message is an entry point to set_reminder_conv
-
+    
     # Fallback cancel command if user is stuck somehow
     application.add_handler(CommandHandler("cancel", cancel_conversation))
     application.add_handler(MessageHandler(filters.Regex(persian_cancel_regex), cancel_conversation))
