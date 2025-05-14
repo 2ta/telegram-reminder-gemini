@@ -29,10 +29,6 @@ def extract_reminder_details_gemini(text: str, current_context: str | None = Non
         logger.error("NLU Error: Gemini model (Vertex AI) not initialized.")
         return None
 
-    # Trim input to reduce memory usage
-    if len(text) > 500:
-        text = text[:500]
-        logger.info(f"Input text truncated to 500 chars to save memory")
 
     current_jalali_year = get_current_jalali_year()
     context_instruction = ""
@@ -126,34 +122,3 @@ def extract_reminder_details_gemini(text: str, current_context: str | None = Non
     except Exception as e:
         logger.error(f"NLU Error: interacting with Gemini API: {e}")
         return None
-
-# ... (keep or update the if __name__ == '__main__': test block from the previous nlu.py version) ...
-if __name__ == '__main__':
-    logging.basicConfig(level=logging.DEBUG) # Set logging level for testing
-    if not gemini_model_vertex:
-        logger.error("NLU: Gemini model (Vertex AI) not available for testing.")
-    else:
-        # (Add comprehensive test cases here, similar to the previous nlu.py if __name__ block)
-        test_cases = [
-            ("Initial: یادم بنداز فردا به مادرم زنگ بزنم", None),
-            ("Initial: Remind me to call mom", None),
-            ("Contextual Date: فردا", "awaiting_full_datetime"),
-            ("Contextual Time: ساعت ۳ بعد از ظهر", "awaiting_time_only"),
-            ("Contextual AM/PM: صبح", "awaiting_am_pm_clarification"),
-            ("Full reminder: هر جمعه ساعت ۷ صبح یادم بنداز برم خرید", None),
-            ("List command: یادآورهای من", None),
-            ("Delete command: شماره ۲ رو پاک کن", "awaiting_delete_number_confirm"), # Context here is bot state
-            ("Cancel command: لغو", "awaiting_task_description"),
-            ("Ambiguous time: ساعت ۱۲ یادم بنداز", None), # Should give raw_time_input
-            ("Voice transcription: فردا ساعت ۲ به دوستم زنگ بزنم", "voice_transcription"),
-            ("Voice transcription: بلافاصله به دوستم زنگ بزنم", "voice_transcription"),
-            ("Voice transcription: زود به دوستم زنگ بزنم", "voice_transcription")
-        ]
-        for desc, text_input, context_input in test_cases:
-            print(f"\n--- NLU Testing ({desc}) ---")
-            print(f"Input: '{text_input}', Context: '{context_input}'")
-            details = extract_reminder_details_gemini(text_input, current_context=context_input)
-            if details:
-                print(f"NLU Extracted: {json.dumps(details, ensure_ascii=False, indent=2)}")
-            else:
-                print("NLU: Failed to extract details.")
