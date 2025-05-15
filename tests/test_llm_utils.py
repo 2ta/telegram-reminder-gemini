@@ -3,13 +3,13 @@ import asyncio
 from unittest.mock import patch, MagicMock, AsyncMock
 
 from src.llm_utils import get_llm_response, get_llm_json_response
-from config import config # To potentially modify settings for tests
+from config.config import settings # To potentially modify settings for tests
 
 # Fixture to temporarily set API key for tests if needed, or ensure it's None
 @pytest.fixture(autouse=True)
 def mock_settings_api_key(monkeypatch):
     # For most tests, we want to ensure API key is set so ValueError isn't raised prematurely
-    monkeypatch.setattr(config.settings, 'GEMINI_API_KEY', 'test_api_key')
+    monkeypatch.setattr(settings, 'GEMINI_API_KEY', 'test_api_key')
 
 @pytest.mark.asyncio
 async def test_get_llm_response_success():
@@ -31,12 +31,12 @@ async def test_get_llm_response_success():
             response = await get_llm_response("test prompt")
             assert response == "Hello World"
             mock_configure.assert_called_once_with(api_key='test_api_key')
-            mock_generative_model_class.assert_called_once_with(config.settings.GEMINI_MODEL_NAME)
+            mock_generative_model_class.assert_called_once_with(settings.GEMINI_MODEL_NAME)
             mock_model_instance.generate_content.assert_called_once_with("test prompt")
 
 @pytest.mark.asyncio
 async def test_get_llm_response_api_key_missing(monkeypatch):
-    monkeypatch.setattr(config.settings, 'GEMINI_API_KEY', None)
+    monkeypatch.setattr(settings, 'GEMINI_API_KEY', None)
     with pytest.raises(ValueError, match="Gemini API key is not configured"):
         await get_llm_response("test prompt")
 
@@ -83,7 +83,7 @@ async def test_get_llm_json_response_success():
         assert json_response == {"key": "value", "number": 123}
         mock_get_raw_response.assert_called_once_with(
             prompt="Test template: test_data", 
-            model_name=config.settings.GEMINI_MODEL_NAME
+            model_name=settings.GEMINI_MODEL_NAME
         )
 
 @pytest.mark.asyncio
