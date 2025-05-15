@@ -1,5 +1,5 @@
-from sqlalchemy import create_engine, Column, Integer, String, DateTime, BigInteger, Boolean
-from sqlalchemy.orm import sessionmaker, declarative_base
+from sqlalchemy import create_engine, Column, Integer, String, DateTime, BigInteger, Boolean, Float, Text, ForeignKey
+from sqlalchemy.orm import sessionmaker, declarative_base, relationship
 from sqlalchemy.sql import func
 from config import DATABASE_URL
 
@@ -24,6 +24,48 @@ class Reminder(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     # last_interacted_with = Column(DateTime(timezone=True), nullable=True) # For future "modify last one"
 
+class User(Base):
+    __tablename__ = "users"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(BigInteger, unique=True, nullable=False)
+    chat_id = Column(BigInteger, nullable=False)
+    username = Column(String, nullable=True)
+    first_name = Column(String, nullable=True)
+    last_name = Column(String, nullable=True)
+    language_code = Column(String, nullable=True)
+    
+    is_premium = Column(Boolean, default=False, nullable=False)
+    premium_until = Column(DateTime(timezone=True), nullable=True)
+    
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    
+    # Relationships
+    payments = relationship("Payment", back_populates="user")
+
+class Payment(Base):
+    __tablename__ = "payments"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(BigInteger, ForeignKey("users.user_id"), nullable=False)
+    chat_id = Column(BigInteger, nullable=False)
+    
+    track_id = Column(String, unique=True, nullable=False)
+    amount = Column(Integer, nullable=False)  # Amount in Rials
+    status = Column(Integer, nullable=False)  # See PaymentStatus class in payment.py
+    
+    ref_id = Column(String, nullable=True)  # Reference ID from payment gateway
+    card_number = Column(String, nullable=True)  # Masked card number
+    
+    response_data = Column(Text, nullable=True)  # Raw JSON response from payment gateway
+    
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    verified_at = Column(DateTime(timezone=True), nullable=True)
+    
+    # Relationships
+    user = relationship("User", back_populates="payments")
+
 if "sqlite" in DATABASE_URL:
     engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 else:
@@ -43,4 +85,4 @@ def get_db():
 
 if __name__ == "__main__":
     init_db()
-    print("Database initialized (with recurrence_rule, is_active, and boolean is_sent).")
+    print("Database initialized (with User and Payment models added).")

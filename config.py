@@ -14,9 +14,13 @@ GEMINI_PROJECT_ID = os.getenv("GEMINI_PROJECT_ID")
 GEMINI_LOCATION = os.getenv("GEMINI_LOCATION")
 GEMINI_MODEL_NAME = os.getenv("GEMINI_MODEL_NAME", "gemini-1.0-pro-001")
 
-
 # Database Configuration
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///reminders.db")
+
+# Payment Configuration (Zibal)
+ZIBAL_MERCHANT_KEY = os.getenv("ZIBAL_MERCHANT_KEY")
+TELEGRAM_BOT_URL = os.getenv("TELEGRAM_BOT_URL", "https://yourdomain.com/bot")  # Base URL for callbacks
+PAYMENT_AMOUNT = int(os.getenv("PAYMENT_AMOUNT", "100000"))  # Default: 10,000 Rials (100,000 is actually 10,000 Toman)
 
 # Logging Configuration
 LOG_FILE = "bot.log"
@@ -36,6 +40,7 @@ MSG_HELP = """راهنما:
 - برای حذف یا ویرایش یادآور: از دکمه‌های زیر لیست یادآورها استفاده کن.
 - برای لغو عملیات فعلی: بگو "لغو"
 - برای تعویق یادآور: بعد از دریافت اعلان، می‌توانید با ارسال زمان جدید (مثلا "نیم ساعت دیگه") آن را به تعویق بیندازید.
+- برای ارتقا به نسخه حرفه‌ای: دستور /pay را ارسال کنید.
 """
 MSG_CANCELLED = "عملیات لغو شد."
 MSG_DONE = "انجام شد."
@@ -54,6 +59,14 @@ MSG_VOICE_UNRECOGNIZED = "متاسفانه نتوانستم صحبت شما را
 MSG_VOICE_SUCCESS_BUT_NLU_FAILED = "پیام صوتی شما با موفقیت به متن تبدیل شد، اما در درک منظور شما مشکلی پیش آمد."
 MSG_PROCESSING_VOICE = "در حال پردازش پیام صوتی شما..."
 
+# Payment Messages
+MSG_PAYMENT_PROMPT = "💎 برای ارتقا به نسخه حرفه‌ای و استفاده از امکانات بیشتر، می‌توانید با پرداخت {amount} تومان اشتراک ۳۰ روزه دریافت کنید."
+MSG_PAYMENT_BUTTON = "💳 پرداخت و ارتقا"
+MSG_PAYMENT_SUCCESS = "✅ پرداخت شما با موفقیت انجام شد! اکنون شما کاربر ویژه هستید و می‌توانید از تمامی امکانات ربات استفاده کنید.\n\nاشتراک شما تا تاریخ {expiry_date} معتبر است."
+MSG_PAYMENT_FAILED = "❌ پرداخت ناموفق بود. لطفاً دوباره تلاش کنید یا با پشتیبانی تماس بگیرید."
+MSG_PAYMENT_CANCELLED = "⚠️ پرداخت لغو شد. هر زمان که تمایل داشتید می‌توانید با ارسال دستور /pay اقدام به پرداخت نمایید."
+MSG_PAYMENT_ERROR = "⚠️ خطا در ارتباط با درگاه پرداخت. لطفاً بعداً دوباره تلاش کنید."
+MSG_ALREADY_PREMIUM = "✨ شما در حال حاضر کاربر ویژه هستید! اشتراک شما تا تاریخ {expiry_date} معتبر است."
 
 # Reminder Setup Flow
 MSG_CONFIRMATION = "باشه، یادآوری تنظیم شد.\\n📝 متن: {task}\\n⏰ زمان: {date}، ساعت {time}{recurrence_info}"
@@ -90,7 +103,16 @@ MSG_SNOOZE_ASK_TIME = "برای چه زمانی می‌خواهید یادآور
 MSG_GENERAL_ERROR = "متأسفانه خطایی در سیستم رخ داد. لطفاً بعداً تلاش کنید." # Corrected version
 
 # Ensure all required environment variables are loaded
-if not all([TELEGRAM_BOT_TOKEN, GOOGLE_APPLICATION_CREDENTIALS, GEMINI_PROJECT_ID, GEMINI_LOCATION, GEMINI_MODEL_NAME]):
+required_vars = [
+    TELEGRAM_BOT_TOKEN,
+    GOOGLE_APPLICATION_CREDENTIALS,
+    GEMINI_PROJECT_ID,
+    GEMINI_LOCATION,
+    GEMINI_MODEL_NAME,
+    ZIBAL_MERCHANT_KEY
+]
+
+if not all([var for var in required_vars if var is not None]):
     # Simplified error message for startup
     print("FATAL ERROR: Required environment variables are missing. Please check your .env file or environment configuration.")
     print(f"TELEGRAM_BOT_TOKEN: {'OK' if TELEGRAM_BOT_TOKEN else 'MISSING'}")
@@ -98,6 +120,7 @@ if not all([TELEGRAM_BOT_TOKEN, GOOGLE_APPLICATION_CREDENTIALS, GEMINI_PROJECT_I
     print(f"GEMINI_PROJECT_ID: {'OK' if GEMINI_PROJECT_ID else 'MISSING'}")
     print(f"GEMINI_LOCATION: {'OK' if GEMINI_LOCATION else 'MISSING'}")
     print(f"GEMINI_MODEL_NAME: {'OK' if GEMINI_MODEL_NAME else 'MISSING'}")
+    print(f"ZIBAL_MERCHANT_KEY: {'OK' if ZIBAL_MERCHANT_KEY else 'MISSING'}")
     exit(1)
 
 # Validate that GOOGLE_APPLICATION_CREDENTIALS points to an existing file

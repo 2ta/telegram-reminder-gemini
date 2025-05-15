@@ -16,10 +16,11 @@ from telegram.ext import (
 from sqlalchemy.orm import Session
 
 from config import * 
-from database import init_db, get_db, Reminder
+from database import init_db, get_db, Reminder, User
 from stt import transcribe_voice_persian
 from nlu import extract_reminder_details_gemini
 from utils import parse_persian_datetime_to_utc, format_jalali_datetime_for_display, normalize_persian_numerals, calculate_relative_reminder_time
+from payment import create_payment_link, verify_payment, is_user_premium, PaymentStatus
 
 # Simple logging with file backup but minimal memory usage
 if not os.path.exists('logs'):
@@ -61,7 +62,7 @@ def log_memory_usage(context_info: str = ""):
         logger.info(f"Memory usage {context_info}: {mem_mb:.2f}MB (RSS)")
         
         # Force garbage collection if memory exceeds threshold
-        if mem_mb > 500:  # 500MB threshold -> Adjusted from 150MB, consider server capacity
+        if mem_mb > 1800:  # 500MB threshold -> Adjusted from 150MB, consider server capacity
             logger.warning(f"High memory usage detected ({mem_mb:.2f}MB). Running garbage collection...")
             gc.collect()
             
@@ -86,8 +87,201 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
     ]
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
     await update.message.reply_text(MSG_WELCOME, reply_markup=reply_markup)
+    
+    # Create or update user in database
+    user_id = update.effective_user.id
+    chat_id = update.effective_chat.id
+    username = update.effective_user.username
+    first_name = update.effective_user.first_name
+    last_name = update.effective_user.last_name
+    language_code = update.effective_user.language_code
+    
+    db = next(get_db())
+    try:
+        user = db.query(User).filter(User.user_id == user_id).first()
+        if not user:
+            user = User(
+                user_id=user_id,
+                chat_id=chat_id,
+                username=username,
+                first_name=first_name,
+                last_name=last_name,
+                language_code=language_code
+            )
+            db.add(user)
+        else:
+            # Update user data
+            user.chat_id = chat_id
+            user.username = username
+            user.first_name = first_name
+            user.last_name = last_name
+            user.language_code = language_code
+            
+        db.commit()
+        logger.info(f"User {user_id} data saved/updated in database")
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error saving user data: {e}")
+    finally:
+        db.close()
+    
     log_memory_usage("after start command")
     return ConversationHandler.END
+
+# Payment command handler
+async def payment_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle the /pay command to initiate payment process"""
+    user_id = update.effective_user.id
+    chat_id = update.effective_chat.id
+    
+    logger.info(f"User {user_id} requested payment")
+    
+    # Check if user is already premium
+    if is_user_premium(user_id):
+        db = next(get_db())
+        try:
+            user = db.query(User).filter(User.user_id == user_id).first()
+            if user and user.premium_until:
+                # Format premium expiration date
+                premium_until_tehran = user.premium_until.astimezone(pytz.timezone('Asia/Tehran'))
+                # Format date to Persian
+                jalali_date, _ = format_jalali_datetime_for_display(premium_until_tehran)
+                
+                await update.message.reply_text(
+                    MSG_ALREADY_PREMIUM.format(expiry_date=jalali_date)
+                )
+                return
+        except Exception as e:
+            logger.error(f"Error checking premium status: {e}")
+        finally:
+            db.close()
+    
+    # Create payment link
+    success, message, payment_url = create_payment_link(user_id, chat_id, PAYMENT_AMOUNT)
+    
+    if success and payment_url:
+        # Format amount in toman (1 toman = 10 rials)
+        amount_toman = PAYMENT_AMOUNT // 10
+        
+        # Create payment keyboard with link button
+        keyboard = [
+            [InlineKeyboardButton(MSG_PAYMENT_BUTTON, url=payment_url)]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await update.message.reply_text(
+            MSG_PAYMENT_PROMPT.format(amount="{:,}".format(amount_toman)),
+            reply_markup=reply_markup
+        )
+    else:
+        await update.message.reply_text(MSG_PAYMENT_ERROR)
+        logger.error(f"Failed to create payment link: {message}")
+
+# Payment callback handler (webhook endpoint)
+async def handle_payment_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle payment callbacks from Zibal"""
+    # In a real webhook implementation, this would be handled differently
+    # For demonstration, this is how you would process the callback data
+    if not update.callback_query:
+        return
+    
+    callback_data = update.callback_query.data
+    user_id = update.effective_user.id
+    
+    if not callback_data.startswith("payment_"):
+        return
+    
+    # Extract track_id from callback data
+    # In a real implementation, this would come from the webhook payload
+    _, track_id, status = callback_data.split("_")
+    
+    if status == "success":
+        # Verify payment with Zibal
+        verification_result = verify_payment(track_id)
+        
+        if verification_result["success"]:
+            # Format premium expiration date
+            db = next(get_db())
+            try:
+                user = db.query(User).filter(User.user_id == user_id).first()
+                if user and user.premium_until:
+                    premium_until_tehran = user.premium_until.astimezone(pytz.timezone('Asia/Tehran'))
+                    jalali_date, _ = format_jalali_datetime_for_display(premium_until_tehran)
+                    
+                    await update.callback_query.message.reply_text(
+                        MSG_PAYMENT_SUCCESS.format(expiry_date=jalali_date)
+                    )
+                else:
+                    await update.callback_query.message.reply_text(MSG_PAYMENT_SUCCESS.format(expiry_date="۳۰ روز آینده"))
+            except Exception as e:
+                logger.error(f"Error formatting premium date: {e}")
+                await update.callback_query.message.reply_text(MSG_PAYMENT_SUCCESS.format(expiry_date="۳۰ روز آینده"))
+            finally:
+                db.close()
+        else:
+            await update.callback_query.message.reply_text(MSG_PAYMENT_FAILED)
+            
+    elif status == "failed":
+        await update.callback_query.message.reply_text(MSG_PAYMENT_FAILED)
+    elif status == "cancelled":
+        await update.callback_query.message.reply_text(MSG_PAYMENT_CANCELLED)
+    else:
+        await update.callback_query.message.reply_text(MSG_PAYMENT_ERROR)
+
+# Add this function after handle_payment_callback
+
+async def handle_zibal_webhook(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle the webhook callback from Zibal payment gateway"""
+    # This would be a standalone webhook handler in a real implementation
+    # For demonstration, we'll use a command to simulate the webhook callback
+    if not update.message or not update.message.text.startswith("/callback"):
+        return
+        
+    # In a real webhook, we would extract parameters from the request
+    # For this simulation, we'll parse them from the command arguments
+    args = update.message.text.split()
+    if len(args) < 3:
+        await update.message.reply_text("Invalid callback format. Usage: /callback <track_id> <success|failed|cancelled>")
+        return
+        
+    track_id = args[1]
+    status = args[2].lower()
+    user_id = update.effective_user.id
+    
+    logger.info(f"Received payment callback for track_id {track_id} with status {status}")
+    
+    if status == "success":
+        # Verify payment with Zibal
+        verification_result = verify_payment(track_id)
+        
+        if verification_result["success"]:
+            # Format premium expiration date
+            db = next(get_db())
+            try:
+                user = db.query(User).filter(User.user_id == user_id).first()
+                if user and user.premium_until:
+                    premium_until_tehran = user.premium_until.astimezone(pytz.timezone('Asia/Tehran'))
+                    jalali_date, _ = format_jalali_datetime_for_display(premium_until_tehran)
+                    
+                    await update.message.reply_text(
+                        MSG_PAYMENT_SUCCESS.format(expiry_date=jalali_date)
+                    )
+                else:
+                    await update.message.reply_text(MSG_PAYMENT_SUCCESS.format(expiry_date="۳۰ روز آینده"))
+            except Exception as e:
+                logger.error(f"Error formatting premium date: {e}")
+                await update.message.reply_text(MSG_PAYMENT_SUCCESS.format(expiry_date="۳۰ روز آینده"))
+            finally:
+                db.close()
+        else:
+            await update.message.reply_text(MSG_PAYMENT_FAILED)
+            
+    elif status == "failed":
+        await update.message.reply_text(MSG_PAYMENT_FAILED)
+    elif status == "cancelled":
+        await update.message.reply_text(MSG_PAYMENT_CANCELLED)
+    else:
+        await update.message.reply_text(MSG_PAYMENT_ERROR)
 
 # Message handler
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -222,8 +416,8 @@ async def save_or_update_reminder_in_db(user_id: int, chat_id: int, context_data
         due_datetime_utc = due_datetime_utc_calculated
         logger.info(f"Using pre-calculated UTC datetime for saving: {due_datetime_utc}")
     else:
-    date_str = context_data.get('date_str')
-    time_str = context_data.get('time_str')
+        date_str = context_data.get('date_str')
+        time_str = context_data.get('time_str')
         if not date_str: return None, "تاریخ یادآور مشخص نشده است."
         if not time_str: return None, "زمان یادآور مشخص نشده است."
         
@@ -1334,24 +1528,31 @@ def main() -> None:
     """Start the bot with memory optimization and full conversation logic."""
     log_memory_usage("bot startup")
     try:
-    init_db()
-    logger.info("Database initialized.")
+        init_db()
+        logger.info("Database initialized.")
         log_memory_usage("after DB init")
     except Exception as e:
-        logger.error(f"Database initialization error: {e}")
-
-    if not TELEGRAM_BOT_TOKEN:
-        logger.critical("TELEGRAM_BOT_TOKEN not found! Exiting.")
+        logger.error(f"Error initializing database: {e}")
         return
     
-    # Ensure Google credentials are set for STT/NLU
-    google_creds_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
-    if not google_creds_path or not os.path.exists(google_creds_path):
-        logger.critical(f"GOOGLE_APPLICATION_CREDENTIALS file not found at path: {google_creds_path}. STT/NLU will likely fail.")
-        # We can let the bot run, but STT/NLU will not work.
-
-    gc.collect()
+    # Create the Application and pass it your bot's token
     application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
+    
+    # Command handlers
+    application.add_handler(CommandHandler("start", start_command))
+    application.add_handler(CommandHandler("help", help_command))
+    application.add_handler(CommandHandler("pay", payment_command))
+    application.add_handler(CommandHandler("list", list_reminders_entry))
+    
+    # Payment callback command (simulates webhook in this implementation)
+    application.add_handler(CommandHandler("callback", handle_zibal_webhook))
+    
+    # Add callback handler for payment callbacks
+    application.add_handler(CallbackQueryHandler(handle_payment_callback, pattern="^payment_"))
+    
+    # Button handlers
+    application.add_handler(MessageHandler(filters.Regex(r'^یادآورهای من$'), list_reminders_entry))
+    application.add_handler(MessageHandler(filters.Regex(r'^راهنما$'), help_command))
 
     persian_cancel_regex = r'^(لغو|کنسل|بیخیال|نه ممنون)$'.strip()
 
@@ -1408,12 +1609,6 @@ def main() -> None:
         name="manage_reminders_conversation",
         persistent=False
     )
-
-    application.add_handler(CommandHandler("start", start_command))
-    application.add_handler(CommandHandler("help", help_command))
-    application.add_handler(CommandHandler("list", list_reminders_entry))
-    application.add_handler(MessageHandler(filters.Regex(r'^یادآورهای من$'), list_reminders_entry)) # Handle button
-    application.add_handler(MessageHandler(filters.Regex(r'^راهنما$'), help_command)) # Handle button
 
     application.add_handler(set_reminder_conv)
     application.add_handler(manage_reminders_conv)

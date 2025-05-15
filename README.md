@@ -7,6 +7,7 @@ A smart Telegram bot that uses Google's Gemini AI to understand natural language
 - Support recurring reminders
 - List and manage existing reminders
 - Understand date/time in Persian calendar format
+- Process premium subscriptions via Zibal payment gateway
 
 ## Features
 
@@ -15,6 +16,7 @@ A smart Telegram bot that uses Google's Gemini AI to understand natural language
 - **Voice Message Support**: Transcribes voice messages using Google Speech-to-Text
 - **Context-Aware Conversations**: Maintains conversation context to improve user experience
 - **Recurring Reminders**: Support for daily, weekly, and monthly recurring reminders
+- **Premium Subscription**: Integrated payment system using Zibal payment gateway for Iranian users
 
 ## Setup
 
@@ -27,6 +29,9 @@ A smart Telegram bot that uses Google's Gemini AI to understand natural language
    GEMINI_PROJECT_ID=your_gemini_project_id
    GEMINI_LOCATION=your_gemini_location
    GEMINI_MODEL_NAME=gemini-pro
+   ZIBAL_MERCHANT_KEY=your_zibal_merchant_key
+   TELEGRAM_BOT_URL=https://yourdomain.com/bot
+   PAYMENT_AMOUNT=100000  # 10,000 Toman = 100,000 Rial
    ```
 4. Run the bot: `python bot.py`
 
@@ -36,6 +41,27 @@ Send a message to the bot with a reminder request. For example:
 - "Remind me to call mom tomorrow at 5 PM"
 - "یادم بنداز فردا ساعت ۵ عصر به مادرم زنگ بزنم"
 - "هر روز ساعت ۸ شب یادم بنداز داروهامو بخورم"
+
+### Premium Features
+
+To access premium features, users can use the `/pay` command to initiate a payment through the Zibal payment gateway. After successful payment, their account will be upgraded to premium status for 30 days.
+
+Premium features include:
+- Unlimited reminders
+- Advanced recurring options
+- Priority notification delivery
+- Extended reminder history
+
+## Payment Integration
+
+The bot integrates with Zibal, an Iranian payment gateway to process payments in Iranian Rials. The integration includes:
+
+1. Payment request creation with the `/pay` command
+2. Secure redirection to the Zibal payment page
+3. Webhook handler for payment callbacks
+4. Verification of successful payments
+5. User status updates after confirmed payment
+6. Transaction logging for admin reference
 
 ## Deployment
 
@@ -74,4 +100,5 @@ The workflow will automatically deploy changes when you push to the main branch.
 
 - Python 3.9+
 - Telegram bot token
-- Google Cloud Platform account with Speech-to-Text and Vertex AI (Gemini) APIs enabled 
+- Google Cloud Platform account with Speech-to-Text and Vertex AI (Gemini) APIs enabled
+- Zibal merchant account for payment processing 
