@@ -26,11 +26,11 @@
 
 ## 3. Telegram Bot Core
 
-- [ ] Initialize Telegram bot using `python-telegram-bot`
-- [ ] Implement `/start`, `/help`, `/privacy` commands (Persian)
-- [ ] Implement user registration/update on first contact
-- [ ] Implement basic text message handler (log messages, acknowledge)
-- [ ] Add test coverage for handlers and user logic
+- [x] Initialize Telegram bot using `python-telegram-bot` (in `src/bot_runner.py`)
+- [x] Implement `/start`, `/help`, `/privacy` commands (Persian) (in `src/bot_handlers.py`)
+- [x] Implement user registration/update on first contact (in `src/bot_handlers.py` within `start_command`)
+- [x] Implement basic text message handler (log messages, acknowledge) (in `src/bot_handlers.py`)
+- [x] Add test coverage for handlers and user logic (in `tests/test_bot_handlers.py`)
 
 ## 4. Voice Message Support
 
