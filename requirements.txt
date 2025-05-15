@@ -8,3 +8,5 @@ jdatetime
 pytest
 python-dotenv
 psutil
+pydantic
+pydantic-settings

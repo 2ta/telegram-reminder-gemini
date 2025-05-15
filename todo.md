@@ -8,21 +8,21 @@
 ## 1. Project Setup & Foundation
 
 - [x] Set up project directory structure (`src/`, `tests/`, `resources/`, `logs/`, `config/`)
-- [x] Create and populate `requirements.txt` (Python 3.9+, `python-telegram-bot`, `langgraph`, `google-cloud-speech`, `google-generativeai`, `sqlalchemy`, `alembic`, `jdatetime`, `pytest`, `python-dotenv`, `psutil`)
-- [x] Implement `config.py` for environment variable management (Telegram token, DB, API keys, etc.)
-- [ ] Set up logging with Python `logging` (console + rotating file handler, proper levels)
+- [x] Create and populate `requirements.txt` (Python 3.9+, `python-telegram-bot`, `langgraph`, `google-cloud-speech`, `google-generativeai`, `sqlalchemy`, `alembic`, `jdatetime`, `pytest`, `python-dotenv`, `psutil`, `pydantic`, `pydantic-settings`)
+- [x] Implement `config/config.py` for environment variable management (Telegram token, DB, API keys, etc.) using Pydantic
+- [x] Set up logging with Python `logging` (console + rotating file handler, proper levels) in `src/logging_config.py`
 - [x] Write initial `README.md` with setup and project description
-- [ ] Add a basic test to verify environment and test runner
+- [x] Add a basic test to verify environment and test runner (`tests/test_initial_setup.py`)
 
 ## 2. Database & Models
 
-- [ ] Design database schema for users, reminders, and subscriptions
-- [ ] Implement SQLAlchemy models:
-    - [ ] User (telegram_id, name, language, tier, expiry, reminder count)
-    - [ ] Reminder (user_id, task, jalali_date, time, is_active, is_notified, notification_sent_at)
-    - [ ] Subscription/payment tracking (for upgrades)
-- [ ] Create DB connection/session utilities
-- [ ] Write unit tests for all models and CRUD operations
+- [x] Design database schema for users, reminders, and subscriptions
+- [x] Implement SQLAlchemy models in `src/models.py`:
+    - [x] User (telegram_id, name, language, tier, expiry, reminder count)
+    - [x] Reminder (user_id, task, jalali_date, time, is_active, is_notified, notification_sent_at)
+    - [ ] Subscription/payment tracking (for upgrades) - *Deferred until payment integration*
+- [x] Create DB connection/session utilities in `src/database.py`
+- [x] Write unit tests for all models and CRUD operations in `tests/test_database.py`
 
 ## 3. Telegram Bot Core
 
