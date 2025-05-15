@@ -5,6 +5,7 @@ from telegram.ext import ContextTypes, CommandHandler, MessageHandler, filters
 from config.config import settings
 from src.database import get_db
 from src.models import User, SubscriptionTier
+from src.voice_utils import process_voice_message
 
 logger = logging.getLogger(__name__)
 
@@ -75,9 +76,9 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         "/help - نمایش این پیام راهنما\n"
         "/privacy - مشاهده سیاست‌های حریم خصوصی\n"
         "\n"
-        "برای ایجاد یک یادآور جدید، کافیست آن را به صورت متنی برای من ارسال کنید. مثال:\n"
-        "'یادآوری کن فردا ساعت ۱۰ صبح جلسه با تیم فروش'\n"
-        "'پس فردا ساعت ۳ بعد از ظهر خرید از فروشگاه'"
+        "می‌توانید پیام‌های خود را به صورت متنی یا صوتی ارسال کنید.\n"
+        "مثال برای ایجاد یادآور:\n"
+        "'یادآوری کن فردا ساعت ۱۰ صبح جلسه با تیم فروش'"
     )
     await update.message.reply_text(help_text)
 
@@ -94,22 +95,44 @@ async def privacy_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
 
 # --- Message Handlers ---
-async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handles general text messages (potential reminders or other interactions)."""
+async def handle_text_or_transcribed_voice(text: str, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Common logic to handle text input (original or transcribed)."""
     user_id = update.effective_user.id
-    text = update.message.text
-    logger.info(f"Text message received from user_id: {user_id}. Message: '{text}'")
-
+    logger.info(f"Handling text from user_id {user_id}: '{text}'")
     # For now, just acknowledge. LangGraph will handle this later.
-    await update.message.reply_text(f"پیام شما دریافت شد: '{text}'. به زودی این بخش هوشمندتر خواهد شد!")
+    await update.message.reply_text(f"پیام شما دریافت شد (متن): '{text}'. به زودی این بخش هوشمندتر خواهد شد!")
+
+async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handles general text messages."""
+    await handle_text_or_transcribed_voice(update.message.text, update, context)
+
+async def voice_message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handles voice messages by transcribing and then passing to text handling."""
+    user_id = update.effective_user.id
+    logger.info(f"Voice message received from user_id: {user_id}")
+
+    # Show typing action while processing
+    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
+
+    transcribed_text = await process_voice_message(update, context)
+    if transcribed_text:
+        # Store transcribed text in context if needed by other parts of an agent later
+        # context.user_data['transcribed_text'] = transcribed_text 
+        logger.info(f"Voice message from user {user_id} transcribed to: '{transcribed_text}'")
+        await handle_text_or_transcribed_voice(transcribed_text, update, context)
+    else:
+        logger.warning(f"Voice message from user {user_id} could not be transcribed or was handled (e.g. too long).")
+        # Error messages are sent by process_voice_message itself if transcription fails
 
 # --- Error Handler ---
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Log Errors caused by Updates."""
     logger.error(msg="Exception while handling an update:", exc_info=context.error)
-    # Optionally, notify user or admin
     if isinstance(update, Update) and update.effective_message:
-        await update.effective_message.reply_text("متاسفانه مشکلی در پردازش درخواست شما پیش آمده است.")
+        try:
+            await update.effective_message.reply_text("متاسفانه مشکلی در پردازش درخواست شما پیش آمده است.")
+        except Exception as e:
+            logger.error(f"Failed to send error message to user: {e}")
 
 # --- Handler Registration (example, to be used in bot_runner.py) ---
 # def register_handlers(application):

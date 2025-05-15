@@ -9,6 +9,7 @@ from src.bot_handlers import (
     help_command,
     privacy_command,
     text_message_handler,
+    voice_message_handler,
     error_handler
 )
 
@@ -37,6 +38,7 @@ def run_bot():
     application.add_handler(CommandHandler("privacy", privacy_command))
 
     # Register message handlers
+    application.add_handler(MessageHandler(filters.VOICE, voice_message_handler))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_message_handler))
 
     # Register error handler

@@ -34,11 +34,11 @@
 
 ## 4. Voice Message Support
 
-- [ ] Detect and handle incoming Telegram voice messages
-- [ ] Download and prepare voice files for transcription
-- [ ] Integrate Google Cloud Speech-to-Text for Persian voice transcription
-- [ ] Handle errors (timeouts, API issues, unsupported formats)
-- [ ] Unit test all voice processing logic (mocking APIs)
+- [x] Detect and handle incoming Telegram voice messages (in `src/bot_handlers.py` via `MessageHandler(filters.VOICE, voice_message_handler)`)
+- [x] Download and prepare voice files for transcription (in `src/voice_utils.py` -> `download_voice_message`)
+- [x] Integrate Google Cloud Speech-to-Text for Persian voice transcription (in `src/voice_utils.py` -> `transcribe_persian_voice`)
+- [x] Handle errors (timeouts, API issues, unsupported formats) (within `src/voice_utils.py` and `src/bot_handlers.py`)
+- [x] Unit test all voice processing logic (mocking APIs) (in `tests/test_voice_utils.py`)
 
 ## 5. LangGraph Integration
 
