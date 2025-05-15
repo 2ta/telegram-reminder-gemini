@@ -19,7 +19,7 @@ jobs:
       
       - name: Deploy to Server
         run: |
-          scp -r bot.py config.py database.py nlu.py stt.py utils.py requirements.txt test_scenarios.md telegram-reminder-bot.service ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }}:${{ secrets.DEPLOY_PATH }}
+          scp -r bot.py config.py database.py nlu.py stt.py utils.py payment.py requirements.txt telegram-reminder-bot.service ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }}:${{ secrets.DEPLOY_PATH }}
       
       - name: Restart Bot Service
         run: |
