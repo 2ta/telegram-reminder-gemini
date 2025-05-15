@@ -7,11 +7,11 @@
 
 ## 1. Project Setup & Foundation
 
-- [ ] Set up project directory structure (`src/`, `tests/`, `resources/`, `logs/`, `config/`)
-- [ ] Create and populate `requirements.txt` (Python 3.9+, `python-telegram-bot`, `langgraph`, `google-cloud-speech`, `google-generativeai`, `sqlalchemy`, `alembic`, `jdatetime`, `pytest`)
-- [ ] Implement `config.py` for environment variable management (Telegram token, DB, API keys, etc.)
+- [x] Set up project directory structure (`src/`, `tests/`, `resources/`, `logs/`, `config/`)
+- [x] Create and populate `requirements.txt` (Python 3.9+, `python-telegram-bot`, `langgraph`, `google-cloud-speech`, `google-generativeai`, `sqlalchemy`, `alembic`, `jdatetime`, `pytest`, `python-dotenv`, `psutil`)
+- [x] Implement `config.py` for environment variable management (Telegram token, DB, API keys, etc.)
 - [ ] Set up logging with Python `logging` (console + rotating file handler, proper levels)
-- [ ] Write initial `README.md` with setup and project description
+- [x] Write initial `README.md` with setup and project description
 - [ ] Add a basic test to verify environment and test runner
 
 ## 2. Database & Models
