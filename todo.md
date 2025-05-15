@@ -54,12 +54,12 @@
 
 ## 6. NLU & LLM Integration
 
-- [ ] Integrate Google Gemini API for NLU
-- [ ] Design Persian prompts for intent detection (create/view/edit/delete reminder)
-- [ ] Implement intent detection node in LangGraph
-- [ ] Implement parameter extraction (task, date, time) node
-- [ ] Handle Persian relative/Jalali dates and time parsing
-- [ ] Test intent/parameter extraction with various Persian inputs
+- [x] Integrate Google Gemini API for NLU (via `src/llm_utils.py`)
+- [x] Design Persian prompts for intent detection (create/view/edit/delete reminder) (in `resources/prompts.py`)
+- [x] Implement intent detection node in LangGraph (updated `determine_intent_node` in `src/graph_nodes.py`)
+- [x] Implement parameter extraction (task, date, time) node (new `extract_parameters_node` in `src/graph_nodes.py`)
+- [ ] Handle Persian relative/Jalali dates and time parsing (LLM extracts raw strings, normalization is Step 7)
+- [x] Test intent/parameter extraction with various Persian inputs (via `tests/test_llm_utils.py` and updated `tests/test_graph.py`)
 
 ## 7. Reminder Management Flows
 

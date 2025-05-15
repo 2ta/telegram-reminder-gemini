@@ -1,7 +1,7 @@
 import os
 from typing import Optional, Union, Literal
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import Field, PostgresDsn, AnyHttpUrl
+from pydantic import Field, PostgresDsn, AnyHttpUrl, AliasChoices
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file='.env', env_file_encoding='utf-8', extra='ignore')
@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     GEMINI_PROJECT_ID: Optional[str] = None
     GEMINI_LOCATION: Optional[str] = None
     GEMINI_MODEL_NAME: str = "gemini-1.0-pro-001"
+    GEMINI_API_KEY: Optional[str] = Field(default=None, validation_alias=AliasChoices('GOOGLE_API_KEY', 'GEMINI_API_KEY'))
 
     # Payment Gateway (Zibal) Configuration
     ZIBAL_MERCHANT_KEY: Optional[str] = None
