@@ -50,3 +50,6 @@ Thumbs.db
 *.swp
 *.swo
 *~ 
+
+# Cursor
+.cursor/ 
