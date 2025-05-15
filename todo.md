@@ -42,15 +42,15 @@
 
 ## 5. LangGraph Integration
 
-- [ ] Set up LangGraph with state schema (user context, memory, intent, etc.)
-- [ ] Define graph nodes for:
-    - [ ] Message reception
-    - [ ] Message type detection (text/voice)
-    - [ ] Routing by intent
-    - [ ] Response formatting
-- [ ] Implement conversation memory management
-- [ ] Integrate LangGraph with Telegram handlers
-- [ ] Write tests for graph structure and transitions
+- [x] Set up LangGraph with state schema (user context, memory, intent, etc.) (in `src/graph_state.py`)
+- [x] Define graph nodes for: (in `src/graph_nodes.py`)
+    - [x] Message reception (`entry_node`)
+    - [x] Message type detection (text/voice) (handled before graph or by `entry_node` implicitly)
+    - [x] Routing by intent (`determine_intent_node` and `route_after_intent_determination`)
+    - [x] Response formatting (`format_response_node`)
+- [x] Implement conversation memory management (via `SqliteSaver` checkpointer and `add_messages` in `src/graph.py` and `src/graph_state.py`)
+- [x] Integrate LangGraph with Telegram handlers (in `src/bot_handlers.py` using `invoke_graph_with_input`)
+- [x] Write tests for graph structure and transitions (basic tests in `tests/test_graph.py`)
 
 ## 6. NLU & LLM Integration
 
@@ -143,12 +143,4 @@
 
 ---
 
-**Use this checklist as a living document and check off each item as you implement and test it.**
-```
-
-<div style="text-align: center">⁂</div>
-
-[^1]: spec.md
-
-[^2]: spec.md
 
