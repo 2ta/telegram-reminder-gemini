@@ -3,6 +3,7 @@ import datetime
 import pytz
 import re
 import logging
+from typing import Union, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +28,7 @@ PERSIAN_WEEKDAYS_JALALI_OFFSET = {
 def get_current_jalali_year() -> int:
     return jdatetime.datetime.now(TEHRAN_TZ).year
 
-def normalize_persian_numerals(text: str | None) -> str | None:
+def normalize_persian_numerals(text: Optional[str]) -> Optional[str]:
     if text is None:
         return None
     persian_to_english_numerals = str.maketrans("۰۱۲۳۴۵۶۷۸۹", "0123456789")
@@ -37,7 +38,7 @@ def normalize_persian_numerals(text: str | None) -> str | None:
     text = text.translate(arabic_to_english_numerals)
     return text
 
-def parse_persian_datetime_to_utc(date_str: str | None, time_str: str | None) -> datetime.datetime | None:
+def parse_persian_datetime_to_utc(date_str: Optional[str], time_str: Optional[str]) -> Optional[datetime.datetime]:
     if not date_str or not time_str:
         logger.warning(f"Date string or time string is missing for parsing. Date: '{date_str}', Time: '{time_str}'")
         return None
@@ -48,7 +49,7 @@ def parse_persian_datetime_to_utc(date_str: str | None, time_str: str | None) ->
     logger.debug(f"Normalized inputs for parsing: date='{date_str}', time='{time_str}' (Originals: '{original_date_str}', '{original_time_str}')")
 
     now_jalali_tehran = jdatetime.datetime.now(TEHRAN_TZ)
-    parsed_date_jalali_obj: jdatetime.date | None = None
+    parsed_date_jalali_obj: Optional[jdatetime.date] = None
 
     try:
         # 1. Handle Persian relative dates
@@ -144,7 +145,7 @@ def parse_persian_datetime_to_utc(date_str: str | None, time_str: str | None) ->
         logger.error(f"Unhandled exception in parse_persian_datetime_to_utc for date='{original_date_str if 'original_date_str' in locals() else date_str}', time='{original_time_str if 'original_time_str' in locals() else time_str}': {e}", exc_info=True)
         return None
 
-def format_jalali_datetime_for_display(dt_utc: datetime.datetime) -> tuple[str, str]:
+def format_jalali_datetime_for_display(dt_utc: datetime.datetime) -> Tuple[str, str]:
     if not isinstance(dt_utc, datetime.datetime):
         logger.error(f"Invalid input for formatting: expected datetime, got {type(dt_utc)}")
         return "تاریخ نامعتبر", "زمان نامعتبر"
@@ -195,7 +196,7 @@ def format_jalali_datetime_for_display(dt_utc: datetime.datetime) -> tuple[str, 
     
     return date_display, time_display
 
-def calculate_relative_reminder_time(primary_event_time_utc: datetime.datetime, relative_offset_description: str) -> datetime.datetime | None:
+def calculate_relative_reminder_time(primary_event_time_utc: datetime.datetime, relative_offset_description: str) -> Optional[datetime.datetime]:
     """Calculates the actual reminder datetime based on a primary event time and a relative offset string."""
     if not primary_event_time_utc or not relative_offset_description:
         return None

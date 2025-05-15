@@ -3,6 +3,7 @@ from vertexai.generative_models import GenerativeModel, Part, GenerationConfig
 from config import GEMINI_PROJECT_ID, GEMINI_LOCATION, GEMINI_MODEL_NAME, GOOGLE_APPLICATION_CREDENTIALS
 import os
 import logging
+from typing import Dict, Optional, Any, Union
 from utils import get_current_jalali_year, normalize_persian_numerals # Ensure these are correctly imported
 
 logger = logging.getLogger(__name__)
@@ -24,7 +25,7 @@ except Exception as e:
     logger.warning(f"NLU WARNING: Error initializing Vertex AI: {e}. NLU will fail.", exc_info=True)
 
 
-def extract_reminder_details_gemini(text: str, current_context: str | None = None) -> dict | None:
+def extract_reminder_details_gemini(text: str, current_context: Optional[str] = None) -> Optional[Dict[str, Any]]:
     if not gemini_model_vertex:
         logger.error("NLU Error: Gemini model (Vertex AI) not initialized.")
         return None

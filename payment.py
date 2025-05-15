@@ -222,4 +222,41 @@ def is_user_premium(user_id: int) -> bool:
         logger.error(f"Error checking premium status for user {user_id}: {e}")
         return False
     finally:
-        db.close() 
+        db.close()
+
+if __name__ == "__main__":
+    import sys
+    logging.basicConfig(level=logging.INFO, 
+                       format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    
+    # Test payment flow
+    print("\n------ Testing Zibal Payment Integration ------\n")
+    
+    # Check if required environment variables are set
+    if not ZIBAL_MERCHANT_KEY:
+        print("ERROR: ZIBAL_MERCHANT_KEY is not set in environment variables")
+        sys.exit(1)
+    
+    if not TELEGRAM_BOT_URL:
+        print("WARNING: TELEGRAM_BOT_URL is not set. Using default callback URL for testing.")
+    
+    # Simple test case
+    test_user_id = 12345
+    test_chat_id = 12345
+    test_amount = 10000  # 10,000 Rials
+    
+    # Create a payment link
+    print(f"Creating payment link for user_id: {test_user_id}, amount: {test_amount} Rials")
+    success, message, payment_url = create_payment_link(test_user_id, test_chat_id, test_amount)
+    
+    if success:
+        print(f"SUCCESS: Payment link created: {payment_url}")
+        print("\nTo complete the test:")
+        print("1. Visit the link above in a browser")
+        print("2. Complete or cancel the payment")
+        print("3. The callback URL should be called automatically")
+        print("4. Check your database to verify the payment status was updated")
+    else:
+        print(f"ERROR: Failed to create payment link. Message: {message}")
+    
+    print("\n------ End of Payment Test ------\n") 

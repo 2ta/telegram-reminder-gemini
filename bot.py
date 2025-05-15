@@ -5,7 +5,7 @@ import datetime
 import pytz
 import re
 import gc  # Garbage collection for memory management
-from typing import Dict, Any, Tuple
+from typing import Dict, Any, Tuple, Optional, List, Union
 
 # Import only what we need from telegram to reduce memory usage
 from telegram import Update, ReplyKeyboardMarkup, InlineKeyboardMarkup, InlineKeyboardButton
@@ -405,7 +405,7 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     # Force garbage collection after voice processing
     gc.collect()
 
-async def save_or_update_reminder_in_db(user_id: int, chat_id: int, context_data: Dict[str, Any], reminder_id_to_update: int | None = None) -> Tuple[Reminder | None, str | None]:
+async def save_or_update_reminder_in_db(user_id: int, chat_id: int, context_data: Dict[str, Any], reminder_id_to_update: Optional[int] = None) -> Tuple[Optional[Reminder], Optional[str]]:
     task = context_data.get('task')
     recurrence = context_data.get('recurrence')
     due_datetime_utc_calculated = context_data.get('due_datetime_utc_calculated') # For relative reminders
@@ -718,8 +718,6 @@ async def received_full_datetime(update: Update, context: ContextTypes.DEFAULT_T
             # Clean up memory and return
             gc.collect()
             return ConversationHandler.END
-    gc.collect()
-            return ConversationHandler.END
 
 
 async def received_time_only(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -734,6 +732,12 @@ async def received_time_only(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await update.message.reply_text(MSG_GENERAL_ERROR + " (اطلاعات یادآور قبلی برای تغییر ساعت یافت نشد. لطفاً از ابتدا شروع کنید.)")
         return ConversationHandler.END
 
+    # Add missing NLU data extraction
+    nlu_data = extract_reminder_details_gemini(text, current_context="time_update")
+    log_memory_usage(f"after NLU for received_time_only from {user_id}")
+    if not nlu_data:
+        await update.message.reply_text(MSG_NLU_ERROR)
+        return AWAITING_TIME_ONLY
 
     if nlu_data.get("intent") not in ["provide_time", "set_reminder"] or not nlu_data.get("time"):
         await update.message.reply_text(MSG_DATE_PARSE_ERROR + " (فرمت ساعت نامفهوم است).\\n" + MSG_REQUEST_TIME_ONLY)
@@ -920,7 +924,9 @@ async def handle_voice_message(update: Update, context: ContextTypes.DEFAULT_TYP
             elif context.user_data['task'] and context.user_data['date_str'] and not context.user_data['time_str']:
                 context.user_data['time_str'] = "09:00"
                 reminder, error = await save_or_update_reminder_in_db(user_id, chat_id, context.user_data)
-                if error: await update.message.reply_text(error); return ConversationHandler.END
+                if error: 
+                    await update.message.reply_text(error)
+                    return ConversationHandler.END
                 if reminder:
                     jalali_date, _ = format_jalali_datetime_for_display(reminder.due_datetime_utc)
                     context.user_data['last_reminder_id_for_time_update'] = reminder.id
@@ -941,11 +947,13 @@ async def handle_voice_message(update: Update, context: ContextTypes.DEFAULT_TYP
                         await update.message.reply_text(MSG_ASK_AM_PM.format(time_hour=str(ambiguous_hour)))
                         return AWAITING_AM_PM_CLARIFICATION
                 reminder, error = await save_or_update_reminder_in_db(user_id, chat_id, context.user_data)
-                if error: await update.message.reply_text(error); return ConversationHandler.END
+                if error: 
+                    await update.message.reply_text(error)
+                    return ConversationHandler.END
                 if reminder:
                     jalali_date, time_disp = format_jalali_datetime_for_display(reminder.due_datetime_utc)
                     rec_info = f" (تکرار: {reminder.recurrence_rule})" if reminder.recurrence_rule else ""
-            await update.message.reply_text(MSG_CONFIRMATION.format(task=reminder.task_description, date=jalali_date, time=time_disp, recurrence_info=rec_info))
+                    await update.message.reply_text(MSG_CONFIRMATION.format(task=reminder.task_description, date=jalali_date, time=time_disp, recurrence_info=rec_info))
                     # Store context for potential quick edit
                     context.user_data['last_confirmed_reminder'] = {
                         'id': reminder.id,
@@ -955,13 +963,15 @@ async def handle_voice_message(update: Update, context: ContextTypes.DEFAULT_TYP
                     return ConversationHandler.END
             else:
                 if not context.user_data['task']:
-                    await update.message.reply_text(MSG_REQUEST_TASK); return AWAITING_TASK_DESCRIPTION
+                    await update.message.reply_text(MSG_REQUEST_TASK)
+                    return AWAITING_TASK_DESCRIPTION
                 else:
-                    await update.message.reply_text(MSG_REQUEST_FULL_DATETIME); return AWAITING_FULL_DATETIME
+                    await update.message.reply_text(MSG_REQUEST_FULL_DATETIME)
+                    return AWAITING_FULL_DATETIME
         else:
             await update.message.reply_text(MSG_FAILURE_EXTRACTION)
-    return ConversationHandler.END
-
+        
+        return ConversationHandler.END
     except Exception as e:
         logger.error(f"Error processing voice message: {e}", exc_info=True)
         await update.message.reply_text(MSG_GENERAL_ERROR + " (خطای پردازش پیام صوتی)")
@@ -1082,7 +1092,8 @@ async def handle_edit_reminder_request(update: Update, context: ContextTypes.DEF
         reminder = db.query(Reminder).filter(Reminder.id == reminder_id, Reminder.user_id == update.effective_user.id).first()
         if not reminder:
             await update.callback_query.edit_message_text(text=MSG_REMINDER_NOT_FOUND_FOR_ACTION)
-    return ConversationHandler.END
+            return ConversationHandler.END
+            
         context.user_data['current_task_for_edit'] = reminder.task_description
         context.user_data['current_due_for_edit'] = reminder.due_datetime_utc
         context.user_data['current_recurrence_for_edit'] = reminder.recurrence_rule
@@ -1231,7 +1242,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                     reminder.is_active = False # Soft delete
                     db.commit()
                     deleted_successfully = True
-    else:
+                else:
                     await query.edit_message_text(text=MSG_REMINDER_NOT_FOUND_FOR_ACTION)
             except Exception as e:
                 db.rollback()

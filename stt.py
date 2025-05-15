@@ -1,10 +1,11 @@
 from google.cloud import speech
 import os
 import logging
+from typing import Union, Optional
 
 logger = logging.getLogger(__name__)
 
-def transcribe_voice_persian(audio_file_path: str) -> str | None:
+def transcribe_voice_persian(audio_file_path: str) -> Optional[str]:
     try:
         # Check file size before processing to avoid memory issues
         file_size_mb = os.path.getsize(audio_file_path) / (1024 * 1024)
