@@ -19,11 +19,11 @@ jobs:
       
       - name: Remove Obsolete Files from Server
         run: |
-          ssh ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }} "rm -f ${{ secrets.DEPLOY_PATH }}/config.py ${{ secrets.DEPLOY_PATH }}/resources/prompts.py ${{ secrets.DEPLOY_PATH }}/src/llm_utils.py"
+          ssh ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }} "rm -f ${{ secrets.DEPLOY_PATH }}/config.py ${{ secrets.DEPLOY_PATH }}/resources/prompts.py ${{ secrets.DEPLOY_PATH }}/src/llm_utils.py && rm -rf ${{ secrets.DEPLOY_PATH }}/resources"
 
       - name: Deploy to Server
         run: |
-          scp -r bot.py database.py nlu.py stt.py utils.py payment.py requirements.txt telegram-reminder-bot.service config src resources ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }}:${{ secrets.DEPLOY_PATH }}
+          scp -r bot.py database.py nlu.py stt.py utils.py payment.py requirements.txt telegram-reminder-bot.service config src ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }}:${{ secrets.DEPLOY_PATH }}
       
       - name: Restart Bot Service
         run: |
