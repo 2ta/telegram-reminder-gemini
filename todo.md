@@ -1,145 +1,203 @@
-<img src="https://r2cdn.perplexity.ai/pplx-full-logo-primary-dark%402x.png" class="logo" width="120"/>
-
-# Can you make a `todo.md` that I can use as a checklist? Be thorough.
-
-```markdown
-# TODO Checklist for Telegram Reminder Bot (Phase 1)
+# TODO Checklist for Telegram Reminder Bot
 
 ## 1. Project Setup & Foundation
 
 - [x] Set up project directory structure (`src/`, `tests/`, `resources/`, `logs/`, `config/`)
-- [x] Create and populate `requirements.txt` (Python 3.9+, `python-telegram-bot`, `langgraph`, `google-cloud-speech`, `google-generativeai`, `sqlalchemy`, `alembic`, `jdatetime`, `pytest`, `python-dotenv`, `psutil`, `pydantic`, `pydantic-settings`)
-- [x] Implement `config/config.py` for environment variable management (Telegram token, DB, API keys, etc.) using Pydantic
-- [x] Set up logging with Python `logging` (console + rotating file handler, proper levels) in `src/logging_config.py`
-- [x] Write initial `README.md` with setup and project description
-- [x] Add a basic test to verify environment and test runner (`tests/test_initial_setup.py`)
+- [x] Create and populate `requirements.txt`
+- [x] Implement `config/config.py` for environment variables (Pydantic)
+- [x] Set up logging (Python `logging`, console + rotating file in `config/config.py`)
+- [x] Write initial `README.md`
+- [x] Add basic test (`tests/test_initial_setup.py`)
+- [x] Ensure Python 3.9 compatibility for type hints (stt.py, utils.py, nlu.py, bot.py done)
 
 ## 2. Database & Models
 
-- [x] Design database schema for users, reminders, and subscriptions
-- [x] Implement SQLAlchemy models in `src/models.py`:
-    - [x] User (telegram_id, name, language, tier, expiry, reminder count)
-    - [x] Reminder (user_id, task, jalali_date, time, is_active, is_notified, notification_sent_at)
-    - [ ] Subscription/payment tracking (for upgrades) - *Deferred until payment integration*
-- [x] Create DB connection/session utilities in `src/database.py`
-- [x] Write unit tests for all models and CRUD operations in `tests/test_database.py`
+- [x] Design database schema (users, reminders, payments)
+- [x] Implement SQLAlchemy models (`database.py`):
+    - [x] `User` (telegram_id, chat_id, name, language, is_premium, premium_until, created_at, updated_at)
+    - [x] `Reminder` (user_db_id, telegram_user_id, chat_id, task_description, due_datetime_utc, recurrence_rule, is_active, is_sent, created_at, updated_at)
+    - [x] `Payment` (user_db_id, track_id, amount, status, ref_id, payment_date, created_at, updated_at)
+    - [x] Refined Reminder-User relationship (ForeignKey from `Reminder.user_db_id` to `User.id`)
+    - [ ] Define `SubscriptionTier` model/enum and link to `User` (if more complex than `is_premium` boolean)
+- [x] Create DB connection/session utilities (`database.py` -> `get_db`, `init_db`)
+- [ ] Write comprehensive unit tests for models and CRUD operations (`tests/test_database.py`)
 
-## 3. Telegram Bot Core
+## 3. Telegram Bot Core (`bot.py`)
 
-- [x] Initialize Telegram bot using `python-telegram-bot` (in `src/bot_runner.py`)
-- [x] Implement `/start`, `/help`, `/privacy` commands (Persian) (in `src/bot_handlers.py`)
-- [x] Implement user registration/update on first contact (in `src/bot_handlers.py` within `start_command`)
-- [x] Implement basic text message handler (log messages, acknowledge) (in `src/bot_handlers.py`)
-- [x] Add test coverage for handlers and user logic (in `tests/test_bot_handlers.py`)
+- [x] Initialize Telegram bot (`Application.builder`)
+- [x] Implement `/start`, `/help` commands (Persian)
+- [x] Implement `/privacy` command (Persian, display privacy policy)
+- [x] Implement user registration/update on `/start` (saves/updates `User` in DB)
+- [x] Implement main message handler (`handle_message`) for routing and NLU entry
+- [x] Implement voice message handler (`handle_voice`) with STT and NLU entry
+- [x] Implement `ConversationHandler` for multi-step reminder creation/editing
+- [x] Implement `CallbackQueryHandler` (`button_callback`) for inline button interactions
+- [ ] Add test coverage for handlers and user logic (`tests/test_bot.py`)
 
 ## 4. Voice Message Support
 
-- [x] Detect and handle incoming Telegram voice messages (in `src/bot_handlers.py` via `MessageHandler(filters.VOICE, voice_message_handler)`)
-- [x] Download and prepare voice files for transcription (in `src/voice_utils.py` -> `download_voice_message`)
-- [x] Integrate Google Cloud Speech-to-Text for Persian voice transcription (in `src/voice_utils.py` -> `transcribe_persian_voice`)
-- [x] Handle errors (timeouts, API issues, unsupported formats) (within `src/voice_utils.py` and `src/bot_handlers.py`)
-- [x] Unit test all voice processing logic (mocking APIs) (in `tests/test_voice_utils.py`)
+- [x] Detect and handle incoming Telegram voice messages (`bot.py` -> `handle_voice`)
+- [x] Download and prepare voice files for transcription (`bot.py` -> `handle_voice` using `tempfile`)
+- [x] Integrate Google Cloud Speech-to-Text (`stt.py` -> `transcribe_voice_persian`)
+- [x] Handle STT errors (within `stt.py` and `bot.py`)
+- [ ] Unit test voice processing logic (mocking APIs) (`tests/test_stt.py`)
 
-## 5. LangGraph Integration
+## 5. Core Logic & LangGraph Integration (High Priority - Architectural Shift)
 
-- [x] Set up LangGraph with state schema (user context, memory, intent, etc.) (in `src/graph_state.py`)
-- [x] Define graph nodes for: (in `src/graph_nodes.py`)
-    - [x] Message reception (`entry_node`)
-    - [x] Message type detection (text/voice) (handled before graph or by `entry_node` implicitly)
-    - [x] Routing by intent (`determine_intent_node` and `route_after_intent_determination`)
-    - [x] Response formatting (`format_response_node`)
-- [x] Implement conversation memory management (via `SqliteSaver` checkpointer and `add_messages` in `src/graph.py` and `src/graph_state.py`)
-- [x] Integrate LangGraph with Telegram handlers (in `src/bot_handlers.py` using `invoke_graph_with_input`)
-- [x] Write tests for graph structure and transitions (basic tests in `tests/test_graph.py`)
+- [ ] **Architect bot flows using LangGraph with Gemini for intent processing and task execution.**
+    - [x] Define core `GraphState` (`src/graph_state.py`) to manage conversational context (user info, NLU results, history, current step, etc.).
+    - [x] Implement initial NLU node in LangGraph (`src/graph_nodes.py`) using Gemini (`determine_intent_node`) for intent classification and parameter extraction.
+    - [~] Develop basic action nodes for simple commands (e.g., `/start`, `/help`) within the graph structure. (e.g. `execute_start_command_node` is present)
+    - [~] Refactor `bot.py` (`handle_message`, `handle_voice`) to delegate primary input processing to the LangGraph executor.
+        - [x] Refactor `CommandHandler`s (`/start`, `/help`, `/pay`, `/reminders` entry) to initialize `AgentState` and invoke LangGraph.
+        - [x] Refactor `CallbackQueryHandler` (`button_callback`) to parse `callback_data`, initialize `AgentState`, and invoke LangGraph.
+        - [x] Refactor simulated Zibal webhook (`/callback` command) to extract parameters, initialize `AgentState`, and invoke LangGraph for payment processing.
+        - [x] Ensure `main()` in `bot.py` registers the refactored handlers correctly.
+    - [ ] Design and implement LangGraph flow for reminder creation (replacing existing `ConversationHandler`):
+        - [x] Node: Initial NLU for reminder intent (`determine_intent_node`).
+        - [x] Nodes: Clarification for missing task, date, time, AM/PM (if needed) (`validate_and_clarify_reminder_node`, `determine_intent_node` for callback, `handle_intent_node` for messaging).
+        - [x] Node: Confirmation of reminder details with user (`confirm_reminder_details_node`, `handle_intent_node` for messaging).
+        - [x] Node: Save reminder to DB (calling `save_or_update_reminder_in_db` - done by `create_reminder_node`).
+        - [x] Node: Send response to user (`handle_intent_node`).
+    - [ ] Integrate reminder viewing (`list_reminders_entry`) as a LangGraph callable action/node.
+        - [ ] Handle pagination and filtering parameters via graph state or node inputs.
+    - [ ] Adapt reminder editing and deletion flows to be LangGraph compatible (nodes or sub-graphs).
+    - [ ] Integrate Zibal payment flow (`/pay` command) as a LangGraph-managed process.
+    - [ ] Ensure robust error handling and state transitions within the graph.
+    - [ ] Implement conversation memory within LangGraph if complex multi-turn interactions beyond single commands are common.
+    - [ ] Write specific tests for LangGraph flows, node transitions, and overall graph behavior (`tests/test_graph.py` or similar).
+- [~] ~~Initial LangGraph setup (`src/graph_state.py`, `src/graph_nodes.py`) - *Currently less central...*~~ (Superseded by above)
+- [ ] ~~Define graph state schema if LangGraph is expanded~~ (Superseded)
+- [ ] ~~Define graph nodes for any complex sub-flows...~~ (Superseded)
+- [ ] ~~Implement conversation memory if LangGraph is used more extensively~~ (Superseded by specific item above)
+- [ ] ~~Write tests for any LangGraph components if their usage is expanded~~ (Superseded by specific item above)
 
 ## 6. NLU & LLM Integration
 
-- [x] Integrate Google Gemini API for NLU (via `src/llm_utils.py`)
-- [x] Design Persian prompts for intent detection (create/view/edit/delete reminder) (in `resources/prompts.py`)
-- [x] Implement intent detection node in LangGraph (updated `determine_intent_node` in `src/graph_nodes.py`)
-- [x] Implement parameter extraction (task, date, time) node (new `extract_parameters_node` in `src/graph_nodes.py`)
-- [ ] Handle Persian relative/Jalali dates and time parsing (LLM extracts raw strings, normalization is Step 7)
-- [x] Test intent/parameter extraction with various Persian inputs (via `tests/test_llm_utils.py` and updated `tests/test_graph.py`)
+- [x] Integrate Google Gemini API for NLU (`nlu.py` -> `extract_reminder_details_gemini`)
+- [x] Design Persian prompts for intent detection and parameter extraction (used in `nlu.py`)
+- [x] Implement intent detection (part of `extract_reminder_details_gemini`)
+- [x] Implement parameter extraction (task, date, time, recurrence - part of `extract_reminder_details_gemini`)
+- [x] Handle Persian relative/Jalali dates and time parsing (`utils.py` -> `parse_persian_datetime_to_utc`, `nlu.py` leverages this)
+- [ ] Test intent/parameter extraction with diverse Persian inputs (`tests/test_nlu.py`, `tests/test_utils.py`)
 
-## 7. Reminder Management Flows
+## 7. Reminder Management Flows (`bot.py`)
 
 ### 7.1 Creation
 
-- [ ] Implement reminder creation flow in LangGraph:
-    - [ ] Detect intent, extract details, confirm with user (Persian)
-    - [ ] Allow natural language corrections (loop until confirmed)
-    - [ ] Save to DB if confirmed and under tier limit
-    - [ ] Respond with confirmation or error (Persian)
-- [ ] Test all creation/correction/confirmation paths
+- [x] Implement reminder creation flow (via `ConversationHandler` states in `bot.py`)
+    - [x] Detect intent, extract details (via `handle_initial_message`, `nlu.py`)
+    - [x] Clarify ambiguous time (e.g., AM/PM via `AWAITING_AM_PM_CLARIFICATION` state)
+    - [x] Handle default time suggestion and confirmation (via `AWAITING_TIME_ONLY` state)
+    - [x] Save to DB (`save_or_update_reminder_in_db`) if confirmed and under tier limit
+    - [x] Respond with confirmation or error (Persian)
+- [ ] Allow natural language corrections during creation (e.g., user corrects date after bot suggests time) - *Future enhancement*
+- [ ] Test all creation/correction/confirmation paths (`tests/test_bot.py` for conversation flows)
 
 ### 7.2 Viewing
 
-- [ ] Implement `/reminders` command and natural language triggers
-- [ ] Fetch and format active reminders (Jalali date/time, Persian)
-- [ ] Implement pagination if >10 reminders
-- [ ] Test viewing and pagination logic
+- [x] Implement `/reminders` command and "یادآورهای من" button (`list_reminders_entry` in `bot.py` - now via LangGraph `handle_intent_node` for `intent_view_reminders`)
+- [x] Fetch and format active reminders (Jalali date/time, Persian) (Done in LangGraph `handle_intent_node`)
+- [x] Implement pagination in `list_reminders_entry` if > X (e.g., 5-10) reminders (Done in LangGraph `handle_intent_node`)
+- [x] Add natural language filtering for viewing reminders (e.g., "reminders for tomorrow")
+    - [x] NLU for extracting filter phrases (`nlu.py -> extract_reminder_filters_gemini`)
+    - [x] Utility for resolving date phrases to ranges (`utils.py -> resolve_persian_date_phrase_to_range`)
+    - [x] Bot logic to apply filters and manage state (`bot.py -> handle_filtered_list_reminders, list_reminders_entry`)
+    - [x] "Clear Filters" button functionality
+- [ ] Test viewing, pagination, and filtering logic
 
 ### 7.3 Editing
 
-- [ ] Implement edit flow (detect target reminder, extract changes, confirm)
+- [ ] Implement edit flow (entry via inline button in `list_reminders_entry`):
+    - [ ] Create `ConversationHandler` for editing or expand existing one
+    - [ ] State: Ask user what to edit (task, time, recurrence) via inline buttons
+    - [ ] State: Receive new value for the chosen field
+    - [ ] State: Validate new value (e.g., parse new date/time)
+    - [ ] State: Confirm changes with the user
+    - [ ] Update DB (`save_or_update_reminder_in_db`) and confirm to user (Persian)
 - [ ] Handle ambiguous or unclear edit requests (clarification loop)
-- [ ] Update DB and confirm to user (Persian)
 - [ ] Test edit scenarios (clear/ambiguous/missing info)
 
 ### 7.4 Deletion
 
-- [ ] Implement delete flow (identify reminder, ask for explicit confirmation)
-- [ ] Delete from DB on confirmation, notify user (Persian)
+- [x] Implement delete flow (via inline button in `list_reminders_entry`, handled in `button_callback`)
+    - [x] Identify reminder to delete from callback_data
+    - [x] Perform soft delete (`is_active = False`)
+    - [x] Notify user (Persian)
+- [ ] Add explicit confirmation step for deletion (e.g., "Are you sure? Yes/No buttons")
 - [ ] Test deletion and confirmation logic
 
-### 7.5 Notifications
+### 7.5 Notifications & Snooze
 
-- [ ] Implement background scheduler for due reminders
-- [ ] Query and send notification messages (Persian) at correct Jalali date/time
-- [ ] Mark reminders as notified
-- [ ] Test notification sending and timing
+- [x] Implement background scheduler for due reminders (`check_reminders` job in `bot.py`)
+- [x] Query for due reminders
+- [x] Send notification messages (Persian) with snooze buttons (`check_reminders`)
+- [x] Mark reminders as notified/inactive or reschedule if recurring (`check_reminders` - basic logic implemented, needs robust recurrence handling)
+- [ ] Implement robust recurrence rescheduling logic in `check_reminders`
+- [ ] Implement snooze functionality (`handle_snooze_request` in `bot.py`):
+    - [ ] Parse reminder_id and snooze duration from callback_data
+    - [ ] Update `due_datetime_utc` of the reminder in DB
+    - [ ] Reset `is_sent` status
+    - [ ] Confirm snooze to user
+- [ ] Test notification sending, timing, recurrence, and snooze
 
 ## 8. Monetization & Subscription
 
-- [ ] Implement subscription tier logic (Free, Standard, Premium)
-- [ ] Enforce tier reminder limits on creation
-- [ ] Implement `/subscription` command (show tier, usage, expiry, upgrade options)
-- [ ] Integrate Zibal payment gateway:
-    - [ ] Payment request/URL generation
-    - [ ] Payment callback/webhook
-    - [ ] Payment verification
-    - [ ] Update DB and notify user on success/failure
-- [ ] Test payment and subscription flows
+- [~] Implement subscription tier logic (User model has `is_premium`, `premium_until`. Config has `MAX_REMINDERS_FREE_TIER`, `MAX_REMINDERS_PREMIUM_TIER`)
+- [x] Enforce tier reminder limits on creation (`save_or_update_reminder_in_db` in `bot.py`)
+- [ ] Implement `/subscription` command (show current tier, usage, expiry, upgrade options)
+- [~] Integrate Zibal payment gateway:
+    - [x] Payment request/URL generation (`payment.py` -> `create_payment_link`, called by `bot.py`)
+    - [ ] Implement **real** Zibal webhook endpoint (e.g., `/payment/zibal_callback`):
+        - [ ] Accessible publicly (needs a simple web server component or ngrok for local testing)
+        - [ ] Receives `trackId` and `status` (likely GET) from Zibal after payment attempt
+        - [ ] Calls `payment.py -> verify_payment(trackId)`
+        - [ ] Updates DB (`Payment` table, `User.is_premium`, `User.premium_until`)
+        - [ ] Notifies user of payment outcome via Telegram message (requires user_id mapping from payment)
+    - [x] Payment verification logic (`payment.py` -> `verify_payment`)
+    - [~] DB update and user notification on payment outcome (foundations exist in `payment.py` and `bot.py`'s simulated webhook, need integration with real webhook)
+    - [ ] Store `refNumber` from Zibal in `Payment` table upon successful verification.
+    - [ ] Handle Zibal API result codes robustly (consider using official numeric codes from Zibal docs).
+- [ ] Test payment and subscription flows end-to-end (including real webhook if possible with ngrok)
 
 ## 9. Internationalization (i18n)
 
-- [ ] Store all user-facing strings in resource files for Persian
-- [ ] Architect code for future language support
+- [ ] Store all user-facing strings in `config/messages.py` or similar resource files
+- [ ] Refactor `bot.py` and other modules to load strings from resource files
+- [ ] Architect code for potential future language support (e.g., language parameter in string loading functions)
 
 ## 10. Logging
 
-- [ ] Log all key events (user messages, NLU, DB ops, notifications, payments, errors)
-- [ ] Log LangGraph state transitions and memory (for debugging)
-- [ ] Ensure logs contain context (user ID, orderId, etc.)
-- [ ] Test log output and rotation
+- [x] Basic logging setup (`logging.basicConfig` in `bot.py`, configured via `config.settings`)
+- [ ] Log all key events with context (user messages, NLU calls/results, DB operations, reminder notifications, payment attempts/outcomes, errors)
+- [ ] For `ConversationHandler`, log state transitions and key `context.user_data` items for debugging
+- [ ] Test log output, rotation, and verbosity levels
 
-## 11. Testing
+## 11. Testing (`tests/`)
 
-- [ ] Write unit tests for all modules (LangGraph nodes, helpers, DB, payment, etc.)
-- [ ] Write integration tests for:
-    - [ ] Reminder creation (end-to-end)
-    - [ ] Editing/deletion flows
-    - [ ] Payment/upgrade flow
-    - [ ] Conversational memory
-- [ ] Mock external APIs (Google, Zibal) in tests
-- [ ] Ensure good coverage and maintainability
+- [ ] Write/expand unit tests for all modules:
+    - [ ] `test_database.py`: Models, CRUD, relationships
+    - [ ] `test_utils.py`: Date/time parsing, other utilities
+    - [ ] `test_nlu.py`: Intent/parameter extraction (mock Gemini)
+    - [ ] `test_stt.py`: Voice transcription (mock Google STT)
+    - [ ] `test_payment.py`: Payment link creation, verification logic (mock Zibal API)
+    - [ ] `test_bot.py`: Individual command handlers, conversation handler states, button callbacks (mock Telegram API, DB, NLU, etc.)
+- [ ] Write/expand integration tests for:
+    - [ ] Full reminder creation flow (text and voice)
+    - [ ] Reminder viewing and listing (with pagination if implemented)
+    - [ ] Reminder editing flow
+    - [ ] Reminder deletion flow
+    - [ ] Payment and subscription upgrade flow (mocking Zibal callback or using ngrok + test Zibal account)
+    - [ ] Notification sending and snooze functionality
+- [ ] Ensure good test coverage and maintainability
 
 ## 12. Error Handling & Privacy
 
-- [ ] Implement user-facing error messages as per spec (Persian)
-- [ ] Handle all exceptions in LangGraph and handlers gracefully
-- [ ] Implement `/privacy` command with policy link
-- [ ] Document data handling and third-party usage
+- [~] Basic error handling in place (try-except blocks in handlers)
+- [ ] Implement comprehensive user-facing error messages in Persian (from `config/messages.py`)
+- [ ] Gracefully handle all exceptions in `ConversationHandler` states, API calls, and DB operations
+- [ ] Ensure `/privacy` command is implemented and displays relevant privacy policy text.
+- [ ] Document data handling practices and third-party API usage in `README.md` or a separate `PRIVACY.md`.
 
 ---
 

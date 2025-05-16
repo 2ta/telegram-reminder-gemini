@@ -9,7 +9,8 @@ class Reminder(Base):
     __tablename__ = "reminders"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(BigInteger, nullable=False)
+    user_db_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    telegram_user_id = Column(BigInteger, nullable=False, index=True)
     chat_id = Column(BigInteger, nullable=False)
     task_description = Column(String, nullable=False)
     due_datetime_utc = Column(DateTime(timezone=True), nullable=False)
@@ -23,6 +24,8 @@ class Reminder(Base):
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     # last_interacted_with = Column(DateTime(timezone=True), nullable=True) # For future "modify last one"
+
+    user = relationship("User")
 
 class User(Base):
     __tablename__ = "users"
@@ -43,6 +46,7 @@ class User(Base):
     
     # Relationships
     payments = relationship("Payment", back_populates="user")
+    reminders = relationship("Reminder", back_populates="user")
 
 class Payment(Base):
     __tablename__ = "payments"

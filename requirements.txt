@@ -10,3 +10,6 @@ python-dotenv
 psutil
 pydantic
 pydantic-settings
+pytz
+langgraph-checkpoint-sqlite
+langchain-google-genai
