@@ -17,9 +17,13 @@ jobs:
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H ${{ secrets.SERVER_IP }} >> ~/.ssh/known_hosts
       
+      - name: Remove Obsolete Files from Server
+        run: |
+          ssh ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }} "rm -f ${{ secrets.DEPLOY_PATH }}/config.py ${{ secrets.DEPLOY_PATH }}/resources/prompts.py ${{ secrets.DEPLOY_PATH }}/src/llm_utils.py"
+
       - name: Deploy to Server
         run: |
-          scp -r bot.py config.py database.py nlu.py stt.py utils.py payment.py requirements.txt telegram-reminder-bot.service ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }}:${{ secrets.DEPLOY_PATH }}
+          scp -r bot.py database.py nlu.py stt.py utils.py payment.py requirements.txt telegram-reminder-bot.service config src resources ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }}:${{ secrets.DEPLOY_PATH }}
       
       - name: Restart Bot Service
         run: |
