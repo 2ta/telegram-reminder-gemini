@@ -21,6 +21,10 @@ def get_db() -> Session:
 def create_tables():
     Base.metadata.create_all(bind=engine)
 
+# Alias for backward compatibility with existing code
+def init_db():
+    create_tables()
+
 if __name__ == "__main__":
     # This is for initial table creation or migrations (if not using Alembic yet)
     print("Creating database tables...")

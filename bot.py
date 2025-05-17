@@ -22,7 +22,8 @@ from config.config import settings # For settings like API keys, PAYMENT_AMOUNT
 from config import * # For message constants, ensure these are defined.
 # It's recommended to move message constants to a dedicated config/messages.py or include them in config.config.py
 
-from database import init_db, get_db, Reminder, User
+from src.database import init_db, get_db
+from src.models import Reminder, User
 from payment import create_payment_link, verify_payment, is_user_premium, PaymentStatus, ZibalPaymentError
 
 # Import the LangGraph app

@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, Column, Integer, String, DateTime, Boolean, ForeignKey, Enum as SAEnum
+from sqlalchemy import create_engine, Column, Integer, String, DateTime, Boolean, ForeignKey, Enum as SAEnum, BigInteger, Text
 from sqlalchemy.orm import relationship, declarative_base
 from sqlalchemy.sql import func
 import enum
@@ -71,3 +71,22 @@ class Reminder(BaseModel):
     def gregorian_datetime(self):
         jd_dt = self.jalali_datetime
         return jd_dt.togregorian() if jd_dt else None 
+
+class Payment(BaseModel):
+    __tablename__ = "payments"
+    
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    chat_id = Column(BigInteger, nullable=False)
+    
+    track_id = Column(String, unique=True, nullable=False)
+    amount = Column(Integer, nullable=False)  # Amount in Rials
+    status = Column(Integer, nullable=False)  # See PaymentStatus class in payment.py
+    
+    ref_id = Column(String, nullable=True)  # Reference ID from payment gateway
+    card_number = Column(String, nullable=True)  # Masked card number
+    
+    response_data = Column(Text, nullable=True)  # Raw JSON response from payment gateway
+    verified_at = Column(DateTime(timezone=True), nullable=True)
+    
+    # Relationships
+    user = relationship("User")

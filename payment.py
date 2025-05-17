@@ -4,7 +4,8 @@ import datetime
 import requests
 from typing import Dict, Any, Optional, Tuple, Union
 
-from database import get_db, User, Payment
+from src.database import get_db
+from src.models import User, Payment
 from config import ZIBAL_MERCHANT_KEY, TELEGRAM_BOT_URL, PAYMENT_AMOUNT
 
 logger = logging.getLogger(__name__)
