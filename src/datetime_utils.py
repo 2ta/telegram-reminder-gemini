@@ -259,6 +259,88 @@ def parse_persian_datetime_to_utc(date_str: Optional[str], time_str: Optional[st
     logger.info(f"Parsed date_str='{date_str}', time_str='{time_str}' into Jalali DT='{final_jalali_datetime_naive}', UTC DT='{gregorian_datetime_utc}'")
     return gregorian_datetime_utc
 
+def resolve_persian_date_phrase_to_range(phrase: Optional[str]) -> Optional[Tuple[datetime, datetime]]:
+    """
+    Resolves a Persian date phrase like "امروز" (today) or "این هفته" (this week) 
+    to a start and end datetime range in UTC.
+    
+    Args:
+        phrase: A Persian date phrase to resolve
+        
+    Returns:
+        A tuple of (start_datetime_utc, end_datetime_utc) if the phrase can be resolved,
+        or None if the phrase cannot be resolved.
+    """
+    if not phrase:
+        return None
+
+    normalized_phrase = _convert_persian_numerals_to_latin(phrase.strip().lower())
+    now_tehran = datetime.now(TEHRAN_TZ)
+    today_tehran_start = now_tehran.replace(hour=0, minute=0, second=0, microsecond=0)
+
+    start_dt_tehran: Optional[datetime] = None
+    end_dt_tehran: Optional[datetime] = None
+
+    if normalized_phrase == "امروز":
+        start_dt_tehran = today_tehran_start
+        end_dt_tehran = today_tehran_start + timedelta(days=1, microseconds=-1)
+    elif normalized_phrase == "فردا":
+        start_dt_tehran = today_tehran_start + timedelta(days=1)
+        end_dt_tehran = start_dt_tehran + timedelta(days=1, microseconds=-1)
+    elif normalized_phrase == "دیروز":
+        start_dt_tehran = today_tehran_start - timedelta(days=1)
+        end_dt_tehran = start_dt_tehran + timedelta(days=1, microseconds=-1)
+    elif normalized_phrase == "این هفته":
+        # jdatetime: Saturday is 0, Friday is 6
+        # datetime: Monday is 0, Sunday is 6
+        # We'll use jdatetime's convention for "week" (Sat-Fri)
+        today_jalali = jdatetime.datetime.fromgregorian(datetime=now_tehran)
+        days_from_saturday = today_jalali.weekday() # 0 for Sat, 1 for Sun, ...
+        
+        start_of_week_jalali = today_jalali - jdatetime.timedelta(days=days_from_saturday)
+        start_dt_tehran_greg = start_of_week_jalali.togregorian()
+        start_dt_tehran = TEHRAN_TZ.localize(
+            datetime(start_dt_tehran_greg.year, start_dt_tehran_greg.month, start_dt_tehran_greg.day, 0, 0, 0)
+        )
+        end_dt_tehran = start_dt_tehran + timedelta(days=7, microseconds=-1)
+
+    elif normalized_phrase == "هفته آینده" or normalized_phrase == "هفته بعد":
+        today_jalali = jdatetime.datetime.fromgregorian(datetime=now_tehran)
+        days_from_saturday = today_jalali.weekday()
+        start_of_current_week_jalali = today_jalali - jdatetime.timedelta(days=days_from_saturday)
+        start_of_next_week_jalali = start_of_current_week_jalali + jdatetime.timedelta(days=7)
+        
+        start_dt_tehran_greg = start_of_next_week_jalali.togregorian()
+        start_dt_tehran = TEHRAN_TZ.localize(
+            datetime(start_dt_tehran_greg.year, start_dt_tehran_greg.month, start_dt_tehran_greg.day, 0, 0, 0)
+        )
+        end_dt_tehran = start_dt_tehran + timedelta(days=7, microseconds=-1)
+
+    elif normalized_phrase == "هفته گذشته" or normalized_phrase == "هفته قبل":
+        today_jalali = jdatetime.datetime.fromgregorian(datetime=now_tehran)
+        days_from_saturday = today_jalali.weekday()
+        start_of_current_week_jalali = today_jalali - jdatetime.timedelta(days=days_from_saturday)
+        start_of_last_week_jalali = start_of_current_week_jalali - jdatetime.timedelta(days=7)
+
+        start_dt_tehran_greg = start_of_last_week_jalali.togregorian()
+        start_dt_tehran = TEHRAN_TZ.localize(
+            datetime(start_dt_tehran_greg.year, start_dt_tehran_greg.month, start_dt_tehran_greg.day, 0, 0, 0)
+        )
+        end_dt_tehran = start_dt_tehran + timedelta(days=7, microseconds=-1)
+    
+    # Add more cases: "ماه آینده", "ماه گذشته", "پس فردا", specific dates like "۵ آبان" etc.
+    # For "۵ آبان", would need to assume current year or parse year.
+    # For "صبح فردا", would need to adjust times.
+
+    if start_dt_tehran and end_dt_tehran:
+        start_utc = start_dt_tehran.astimezone(timezone.utc)
+        end_utc = end_dt_tehran.astimezone(timezone.utc)
+        logger.info(f"Resolved phrase \'{phrase}\' to UTC range: {start_utc} - {end_utc}")
+        return start_utc, end_utc
+    else:
+        logger.warning(f"Could not resolve date phrase to a known range: \'{phrase}\'")
+        return None
+
 if __name__ == '__main__':
     # Basic tests (these should move to a proper test file)
     # For these tests to work well, we might need to mock get_current_tehran_times()

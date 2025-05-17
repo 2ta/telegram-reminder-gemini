@@ -78,8 +78,8 @@
 - [x] Design Persian prompts for intent detection and parameter extraction (used in `nlu.py`)
 - [x] Implement intent detection (part of `extract_reminder_details_gemini`)
 - [x] Implement parameter extraction (task, date, time, recurrence - part of `extract_reminder_details_gemini`)
-- [x] Handle Persian relative/Jalali dates and time parsing (`utils.py` -> `parse_persian_datetime_to_utc`, `nlu.py` leverages this)
-- [ ] Test intent/parameter extraction with diverse Persian inputs (`tests/test_nlu.py`, `tests/test_utils.py`)
+- [x] Handle Persian relative/Jalali dates and time parsing (`src/datetime_utils.py` -> `parse_persian_datetime_to_utc`, previously in `utils.py`)
+- [ ] Test intent/parameter extraction with diverse Persian inputs (`tests/test_nlu.py`, `tests/test_datetime_utils.py`)
 
 ## 7. Reminder Management Flows (`bot.py`)
 
@@ -101,7 +101,7 @@
 - [x] Implement pagination in `list_reminders_entry` if > X (e.g., 5-10) reminders (Done in LangGraph `handle_intent_node`)
 - [x] Add natural language filtering for viewing reminders (e.g., "reminders for tomorrow")
     - [x] NLU for extracting filter phrases (`nlu.py -> extract_reminder_filters_gemini`)
-    - [x] Utility for resolving date phrases to ranges (`utils.py -> resolve_persian_date_phrase_to_range`)
+    - [x] Utility for resolving date phrases to ranges (`src/datetime_utils.py -> resolve_persian_date_phrase_to_range`, previously in `utils.py`)
     - [x] Bot logic to apply filters and manage state (`bot.py -> handle_filtered_list_reminders, list_reminders_entry`)
     - [x] "Clear Filters" button functionality
 - [ ] Test viewing, pagination, and filtering logic
