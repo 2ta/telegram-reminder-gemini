@@ -22,7 +22,7 @@
 - [x] Create DB connection/session utilities (`database.py` -> `get_db`, `init_db`)
 - [ ] Write comprehensive unit tests for models and CRUD operations (`tests/test_database.py`)
 
-## 3. Telegram Bot Core (`bot.py`)
+## 3. Telegram Bot Core (`src/bot.py`)
 
 - [x] Initialize Telegram bot (`Application.builder`)
 - [x] Implement `/start`, `/help` commands (Persian)
