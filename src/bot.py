@@ -6,6 +6,7 @@ import pytz
 import re
 import gc  # Garbage collection for memory management
 import math # For math.ceil in pagination
+from pathlib import Path
 from typing import Dict, Any, Tuple, Optional, List, Union, Callable
 
 # Import only what we need from telegram to reduce memory usage
@@ -31,8 +32,9 @@ from .graph import lang_graph_app
 from .graph_state import AgentState # For type hinting initial state
 
 # Simple logging with file backup but minimal memory usage
-if not os.path.exists(settings.LOG_FILE_PATH).parent:
-    os.makedirs(settings.LOG_FILE_PATH.parent, exist_ok=True)
+log_path = Path(settings.LOG_FILE_PATH)
+if not log_path.parent.exists():
+    os.makedirs(log_path.parent, exist_ok=True)
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", 
