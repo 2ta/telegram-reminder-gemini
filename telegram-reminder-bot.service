@@ -4,9 +4,9 @@ After=network.target
 
 [Service]
 Type=simple
-User=root
-WorkingDirectory=/home/telegram-reminder-gemini
-ExecStart=/usr/bin/python3 bot.py
+User=ubuntu
+WorkingDirectory=/home/ubuntu/telegram-reminder-gemini
+ExecStart=/home/ubuntu/telegram-reminder-gemini/venv/bin/python /home/ubuntu/telegram-reminder-gemini/bot.py
 Restart=on-failure
 RestartSec=10
 StartLimitBurst=3
