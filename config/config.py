@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     GOOGLE_APPLICATION_CREDENTIALS: Optional[str] = None
     GEMINI_PROJECT_ID: Optional[str] = None
     GEMINI_LOCATION: Optional[str] = None
-    GEMINI_MODEL_NAME: str = "gemini-1.0-pro-001"
+    GEMINI_MODEL_NAME: str = "gemini-2.0-flash"
     GEMINI_API_KEY: Optional[str] = None
 
     # Payment Gateway (Zibal) Configuration
@@ -37,6 +37,9 @@ class Settings(BaseSettings):
     MAX_REMINDERS_FREE_TIER: int = Field(default=5, description="Maximum active reminders for free tier users")
     MAX_REMINDERS_PREMIUM_TIER: int = Field(default=100, description="Maximum active reminders for premium tier users")
     REMINDERS_PER_PAGE: int = Field(default=5, description="Number of reminders to show per page in lists")
+
+    # Feature flags
+    IGNORE_REMINDER_LIMITS: bool = Field(default=False, description="If True, ignores reminder limits for all users (development mode)")
 
     # Environment setting (dev, test, prod)
     APP_ENV: Literal["development", "testing", "production"] = "development"
@@ -118,4 +121,5 @@ MSG_REMINDER_SET = "یادآور شما برای \"{task}\" در تاریخ {dat
 MSG_REMINDER_NOT_FOUND = "یادآور مورد نظر یافت نشد."
 MSG_REMINDER_DELETED = "یادآور \"{task}\" حذف شد."
 MSG_REMINDER_LIMIT_REACHED_FREE = "شما به حداکثر تعداد یادآورهای مجاز ({limit}) برای کاربران رایگان رسیده‌اید. برای ثبت یادآورهای بیشتر، لطفاً اشتراک خود را ویژه کنید."
+MSG_REMINDER_LIMIT_REACHED_WITH_BUTTON = "شما به حداکثر تعداد یادآورهای مجاز ({limit}) برای کاربران {tier_name} رسیده‌اید. برای افزودن یادآوری‌های بیشتر، لطفاً اشتراک خود را ارتقا دهید."
 MSG_REMINDER_LIMIT_REACHED_PREMIUM = "شما به حداکثر تعداد یادآورهای مجاز ({limit}) برای کاربران ویژه رسیده‌اید." 

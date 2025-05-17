@@ -1,6 +1,5 @@
 import logging
 from langgraph.graph import StateGraph, END
-from langgraph.checkpoint.sqlite import SqliteSaver
 
 from src.graph_state import AgentState
 from src.graph_nodes import (
@@ -51,14 +50,16 @@ def route_after_intent_determination(state: AgentState):
     return "handle_intent_node"
 
 def route_after_validation_and_clarification(state: AgentState):
-    """Router after reminder parameters have been validated or clarification has been set up."""
+    """Router function after validation and clarification. Determines next step based on status."""
     user_id = state.get("user_id")
-    # reminder_creation_status is set by validate_and_clarify_reminder_node
-    creation_status = state.get("reminder_creation_status") 
-    logger.info(f"Router (after_validation_and_clarification) for user {user_id}: Status='{creation_status}'")
+    # Get status from within the reminder_creation_context
+    reminder_ctx = state.get("reminder_creation_context", {})
+    creation_status = reminder_ctx.get("status") 
+
+    logger.info(f"Router (after_validation_and_clarification) for user {user_id}: Status from context='{creation_status}'")
 
     if creation_status == "ready_for_confirmation":
-        logger.info("Details ready for confirmation. Routing to confirm_reminder_details_node.")
+        logger.info(f"Routing user {user_id} to confirm_reminder_details_node.")
         return "confirm_reminder_details_node"
     elif creation_status and ("clarification_needed" in creation_status or "error_limit_exceeded" in creation_status):
         # This includes: clarification_needed_task, clarification_needed_datetime, error_limit_exceeded
@@ -116,11 +117,9 @@ def create_graph():
         }
     )
 
-    # After confirm_reminder_details_node, the graph should effectively end to await user's callback.
-    # handle_intent_node will be responsible for sending the confirmation message with buttons.
+    # After confirm_reminder_details_node, the graph should send the confirmation prompt and then END, awaiting user's callback.
     # The callback (yes/no) will re-enter the graph, determine_intent_node will catch it and route to create_reminder_node or handle_intent_node.
-    workflow.add_edge("confirm_reminder_details_node", "handle_intent_node") 
-    # This ensures the confirmation message is sent. The `pending_confirmation` state is key here.
+    workflow.add_edge("confirm_reminder_details_node", "format_response_node")
 
     # After actual reminder creation (or failure like DB error during creation)
     workflow.add_edge("create_reminder_node", "handle_intent_node") # To send success/failure message
@@ -129,10 +128,9 @@ def create_graph():
     workflow.add_edge("handle_intent_node", "format_response_node")
     workflow.add_edge("format_response_node", END)
 
-    # Memory for checkpoints
-    memory = SqliteSaver.from_conn_string("sqlite:///./checkpoints/langgraph_checkpoints.db")
-    app = workflow.compile(checkpointer=memory)
-    logger.info("LangGraph app compiled successfully with new reminder creation flow.")
+    # Explicitly compile without a checkpointer
+    app = workflow.compile(checkpointer=None)
+    logger.info("LangGraph app compiled successfully (checkpointing explicitly disabled with checkpointer=None).")
     return app
 
 # Singleton instance of the graph
@@ -143,112 +141,16 @@ if __name__ == '__main__':
     os.makedirs("./checkpoints", exist_ok=True)
     from src.logging_config import setup_logging
     setup_logging()
-    logger.info("Testing LangGraph app execution (Reminder Creation Flow Focus)...")
-
-    # --- Test Scenario 1: Full initial input ---
-    config_user1 = {"configurable": {"thread_id": "user_reminder_test_1"}}
-    initial_input_full = {
-        "input_text": "یادآوری کن فردا ساعت ۲ بعد از ظهر جلسه تیم",
-        "user_id": "test_user_full",
-        "chat_id": "chat_full",
-        "message_type": "text",
-        "user_telegram_details": {"first_name": "TestFull", "username": "testfulluser"} # For user creation if needed
+    
+    # Test basic execution without full scenarios
+    test_input = {
+        "input_text": "/start",
+        "user_id": "test_user",
+        "chat_id": "test_chat",
+        "message_type": "command",
+        "user_telegram_details": {"first_name": "Tester", "username": "tester"}
     }
-    # To clear previous state for this thread_id (for clean test run):
-    # current_state = lang_graph_app.get_state(config_user1)
-    # if current_state:
-    #     logger.info(f"Previous state found for {config_user1['configurable']['thread_id']}, messages: {len(current_state.messages)}")
-        # lang_graph_app.update_state(config_user1, None) # This would clear, but be careful
-        # A better way is to use unique thread_ids for each test run if full reset is needed, or handle state accumulation.
-
-    logger.info(f"\n--- Invoking graph for: {initial_input_full['input_text']} ---")
-    final_state_1 = lang_graph_app.invoke(initial_input_full, config=config_user1)
-    logger.info(f"Graph run 1 (full initial) - User: {initial_input_full['user_id']}")
-    logger.info(f"  Intent: {final_state_1.get('current_intent')}")
-    logger.info(f"  Reminder Context: {final_state_1.get('reminder_creation_context')}")
-    logger.info(f"  Pending Confirmation: {final_state_1.get('pending_confirmation')}")
-    logger.info(f"  Response Text: {final_state_1.get('response_text')}")
-    logger.info(f"  Keyboard: {final_state_1.get('response_keyboard_markup')}")
-    logger.info(f"  Creation Status: {final_state_1.get('reminder_creation_status')}")
-
-    # --- Test Scenario 2: User confirms (simulated callback) ---
-    if final_state_1.get("pending_confirmation") == "create_reminder":
-        confirm_input = {
-            "input_text": "confirm_create_reminder:yes", # Simulating callback data
-            "user_id": "test_user_full",
-            "chat_id": "chat_full",
-            "message_type": "callback_query"
-        }
-        logger.info(f"\n--- Invoking graph for confirmation: {confirm_input['input_text']} ---")
-        final_state_2 = lang_graph_app.invoke(confirm_input, config=config_user1) # Same thread_id
-        logger.info(f"Graph run 2 (confirmation) - User: {confirm_input['user_id']}")
-        logger.info(f"  Intent: {final_state_2.get('current_intent')}")
-        logger.info(f"  Reminder Context: {final_state_2.get('reminder_creation_context')}")
-        logger.info(f"  Pending Confirmation: {final_state_2.get('pending_confirmation')}")
-        logger.info(f"  Response Text: {final_state_2.get('response_text')}")
-        logger.info(f"  Creation Status: {final_state_2.get('reminder_creation_status')}")
-
-    # --- Test Scenario 3: Task missing initially ---
-    config_user2 = {"configurable": {"thread_id": "user_reminder_test_2"}}
-    initial_input_no_task = {
-        "input_text": "یادآوری کن", # No task
-        "user_id": "test_user_no_task",
-        "chat_id": "chat_no_task",
-        "message_type": "text",
-        "user_telegram_details": {"first_name": "TestNoTask"}
-    }
-    logger.info(f"\n--- Invoking graph for: {initial_input_no_task['input_text']} ---")
-    state_no_task_1 = lang_graph_app.invoke(initial_input_no_task, config=config_user2)
-    logger.info(f"Graph run 3.1 (no task initial) - User: {initial_input_no_task['user_id']}")
-    logger.info(f"  Response Text: {state_no_task_1.get('response_text')}")
-    logger.info(f"  Reminder Context: {state_no_task_1.get('reminder_creation_context')}")
-    logger.info(f"  Creation Status: {state_no_task_1.get('reminder_creation_status')}")
-
-    # --- Test Scenario 3.2: User provides task ---
-    if state_no_task_1.get("reminder_creation_context", {}).get("pending_clarification_type") == "task":
-        provide_task_input = {
-            "input_text": "خرید بلیط سینما",
-            "user_id": "test_user_no_task",
-            "chat_id": "chat_no_task",
-            "message_type": "text"
-        }
-        logger.info(f"\n--- Invoking graph for providing task: {provide_task_input['input_text']} ---")
-        state_no_task_2 = lang_graph_app.invoke(provide_task_input, config=config_user2)
-        logger.info(f"Graph run 3.2 (provided task) - User: {provide_task_input['user_id']}")
-        logger.info(f"  Response Text: {state_no_task_2.get('response_text')}") # Should ask for datetime
-        logger.info(f"  Reminder Context: {state_no_task_2.get('reminder_creation_context')}")
-        logger.info(f"  Creation Status: {state_no_task_2.get('reminder_creation_status')}")
-
-        # --- Test Scenario 3.3: User provides datetime ---
-        if state_no_task_2.get("reminder_creation_context", {}).get("pending_clarification_type") == "datetime":
-            provide_datetime_input = {
-                "input_text": "پس فردا ساعت ۷ غروب",
-                "user_id": "test_user_no_task",
-                "chat_id": "chat_no_task",
-                "message_type": "text"
-            }
-            logger.info(f"\n--- Invoking graph for providing datetime: {provide_datetime_input['input_text']} ---")
-            state_no_task_3 = lang_graph_app.invoke(provide_datetime_input, config=config_user2)
-            logger.info(f"Graph run 3.3 (provided datetime) - User: {provide_datetime_input['user_id']}")
-            logger.info(f"  Response Text: {state_no_task_3.get('response_text')}") # Should be confirmation q
-            logger.info(f"  Keyboard: {state_no_task_3.get('response_keyboard_markup')}")
-            logger.info(f"  Pending Confirmation: {state_no_task_3.get('pending_confirmation')}")
-            logger.info(f"  Reminder Context: {state_no_task_3.get('reminder_creation_context')}")
-            logger.info(f"  Creation Status: {state_no_task_3.get('reminder_creation_status')}")
-
-            # --- Test Scenario 3.4: User confirms final details ---
-            if state_no_task_3.get("pending_confirmation") == "create_reminder":
-                confirm_final_input = {
-                    "input_text": "confirm_create_reminder:yes",
-                    "user_id": "test_user_no_task",
-                    "chat_id": "chat_no_task",
-                    "message_type": "callback_query"
-                }
-                logger.info(f"\n--- Invoking graph for final confirmation: {confirm_final_input['input_text']} ---")
-                state_no_task_4 = lang_graph_app.invoke(confirm_final_input, config=config_user2)
-                logger.info(f"Graph run 3.4 (final confirmation) - User: {confirm_final_input['user_id']}")
-                logger.info(f"  Response Text: {state_no_task_4.get('response_text')}") # Success message
-                logger.info(f"  Reminder Context: {state_no_task_4.get('reminder_creation_context')}")
-                logger.info(f"  Creation Status: {state_no_task_4.get('reminder_creation_status')}")
-
-    logger.info("\n--- LangGraph testing completed. Check logs for details. ---")
+    
+    logger.info("Testing basic LangGraph execution...")
+    result = lang_graph_app.invoke(test_input)
+    logger.info(f"Test result (START command): {result.get('response_text')}")

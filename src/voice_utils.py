@@ -43,25 +43,42 @@ def transcribe_persian_voice(audio_file_path: str) -> Optional[str]:
             content = audio_file.read()
 
         audio = speech.RecognitionAudio(content=content)
-        # Note: Ensure your audio is in a compatible format (e.g., OGG Opus for Telegram voice)
-        # If not, ffmpeg might be needed for conversion.
-        # Telegram voice messages are typically Opus encoded in an OGG container.
-        # The API should handle OGG Opus if specified correctly or if auto-detection works.
+        
+        # Updated configuration based on stt.py working implementation
         config = speech.RecognitionConfig(
-            encoding=speech.RecognitionConfig.AudioEncoding.OGG_OPUS, # More specific for Telegram
-            sample_rate_hertz=16000,  # Telegram voice messages are often 16kHz
+            encoding=speech.RecognitionConfig.AudioEncoding.WEBM_OPUS, # Changed from OGG_OPUS to WEBM_OPUS
+            sample_rate_hertz=48000,  # Changed from 16000 to 48000 Hz for Telegram voice messages
             language_code="fa-IR",
             enable_automatic_punctuation=True,
-            # model="telephony" or "medical_dictation" if applicable
+            model="default", # Added model specification
         )
 
-        logger.info(f"Sending audio file {audio_file_path} for transcription to Google STT.")
+        logger.info(f"Sending audio file {audio_file_path} for transcription to Google STT with WEBM_OPUS encoding and 48000Hz sample rate.")
         response = client.recognize(config=config, audio=audio)
 
         if not response.results or not response.results[0].alternatives:
             logger.warning(f"No transcription result for {audio_file_path}")
-            return None
-
+            # Add more detailed error info
+            if hasattr(response, 'error') and response.error and response.error.message:
+                logger.warning(f"API Error: {response.error.message}")
+            elif not response.results:
+                logger.warning("Response contained no results.")
+            
+            # If WEBM_OPUS fails, try with OGG_OPUS as fallback
+            logger.info(f"Retrying with OGG_OPUS encoding for {audio_file_path}")
+            config = speech.RecognitionConfig(
+                encoding=speech.RecognitionConfig.AudioEncoding.OGG_OPUS,
+                sample_rate_hertz=48000,
+                language_code="fa-IR",
+                enable_automatic_punctuation=True,
+                model="default",
+            )
+            response = client.recognize(config=config, audio=audio)
+            
+            if not response.results or not response.results[0].alternatives:
+                logger.warning(f"No transcription result with OGG_OPUS fallback for {audio_file_path}")
+                return None
+        
         transcription = response.results[0].alternatives[0].transcript
         logger.info(f"Transcription successful for {audio_file_path}: '{transcription}'")
         return transcription

@@ -13,7 +13,8 @@ from langgraph.graph import END
 from langchain_core.messages import AIMessage # Updated import path
 from config.config import settings, MSG_WELCOME # Import settings for API key, model name, AND TIER LIMITS
 from src.datetime_utils import parse_persian_datetime_to_utc, resolve_persian_date_phrase_to_range # Import the new parser
-from src.database import Reminder, User, get_db # Updated import
+from src.models import Reminder, User, SubscriptionTier # Import models from src.models
+from src.database import get_db # Import get_db from src.database
 from sqlalchemy.orm import Session # Still needed for type hint
 # from src.database_session import get_db # Placeholder for session management
 
@@ -38,7 +39,7 @@ async def load_user_profile_node(state: AgentState) -> Dict[str, Any]:
     db: Session = next(get_db())
     user_db_obj = None # Define user_db_obj to ensure it's available in the scope for creation logic if needed
     try:
-        user_db_obj = db.query(User).filter(User.user_id == user_id).first()
+        user_db_obj = db.query(User).filter(User.telegram_id == user_id).first()
         
         # User creation/update logic is moved to execute_start_command_node if it's a new user via /start
         # This node now primarily loads existing users or confirms absence for other flows.
@@ -53,19 +54,21 @@ async def load_user_profile_node(state: AgentState) -> Dict[str, Any]:
             }
 
         active_reminder_count = db.query(func.count(Reminder.id)).filter(
-            Reminder.user_db_id == user_db_obj.id, 
+            Reminder.user_id == user_db_obj.id, # Changed from user_db_id to user_id
             Reminder.is_active == True
         ).scalar() or 0
 
-        max_reminders = settings.MAX_REMINDERS_PREMIUM_TIER if user_db_obj.is_premium else settings.MAX_REMINDERS_FREE_TIER
+        # Check if user is premium based on subscription_tier instead of is_premium
+        is_premium = user_db_obj.subscription_tier == SubscriptionTier.PREMIUM
+        max_reminders = settings.MAX_REMINDERS_PREMIUM_TIER if is_premium else settings.MAX_REMINDERS_FREE_TIER
 
         user_profile_data = {
             "user_db_id": user_db_obj.id,
             "username": user_db_obj.username,
             "first_name": user_db_obj.first_name,
             "last_name": user_db_obj.last_name,
-            "is_premium": user_db_obj.is_premium,
-            "premium_until": user_db_obj.premium_until.isoformat() if user_db_obj.premium_until else None,
+            "is_premium": is_premium,  # Derived from subscription_tier
+            "premium_until": user_db_obj.subscription_expiry.isoformat() if user_db_obj.subscription_expiry else None,
             "language_code": user_db_obj.language_code,
             "reminder_limit": max_reminders,
             "current_reminder_count": active_reminder_count
@@ -89,8 +92,11 @@ async def determine_intent_node(state: AgentState) -> Dict[str, Any]:
     """Node to determine user intent and extract parameters using Gemini,
     handling pending clarifications and confirmations."""
     logger.info(f"Graph: Entered determine_intent_node for user {state.get('user_id')}")
-    input_text = state.get("input_text", "").strip()
-    transcribed_text = state.get("transcribed_text", "").strip()
+    input_text_raw = state.get("input_text")
+    input_text = input_text_raw.strip() if input_text_raw else ""
+    # Ensure transcribed_text is handled if None before strip()
+    transcribed_text_raw = state.get("transcribed_text")
+    transcribed_text = transcribed_text_raw.strip() if transcribed_text_raw else ""
     message_type = state.get("message_type")
     user_id = state.get("user_id")
 
@@ -184,6 +190,16 @@ async def determine_intent_node(state: AgentState) -> Dict[str, Any]:
                 logger.info(f"Direct action callback: clear_filters_view_reminders and show page {page_num}")
             except (ValueError, IndexError) as e:
                 logger.warning(f"Could not parse page number from clear_filters_view_reminders callback: {effective_input}. Error: {e}")
+        elif effective_input == "show_subscription_options":
+            parsed_intent = "show_subscription_options"
+            action_callback_handled = True
+            logger.info(f"Direct action callback: show_subscription_options - going to payment flow")
+        elif effective_input.startswith("start_payment:"):
+            parsed_intent = "intent_payment_initiate" 
+            payment_tier = effective_input.split(":")[-1]
+            parsed_parameters = {"payment_tier": payment_tier}
+            action_callback_handled = True
+            logger.info(f"Direct action callback: start_payment for tier {payment_tier}")
 
         # Add other direct action callbacks here, e.g., snooze:duration:id
 
@@ -520,7 +536,7 @@ async def execute_start_command_node(state: AgentState) -> Dict[str, Any]:
                 "username": user_obj.username,
                 "first_name": user_obj.first_name,
                 "last_name": user_obj.last_name,
-                "is_premium": user_obj.is_premium,
+                "is_premium": user_obj.subscription_tier == SubscriptionTier.PREMIUM,  # Derived from subscription_tier
                 "premium_until": None,
                 "language_code": user_obj.language_code,
                 "reminder_limit": settings.MAX_REMINDERS_FREE_TIER,
@@ -584,27 +600,38 @@ async def process_datetime_node(state: AgentState) -> Dict[str, Any]:
     
     parsed_dt_utc: Optional[datetime.datetime] = None
     
-    # Fields for parsing
-    date_str = reminder_ctx.get("collected_date_str") or extracted_params.get("date")
-    time_str = reminder_ctx.get("collected_time_str") or extracted_params.get("time")
-    # AM/PM choice can also come from context or direct params (if NLU provides it initially)
-    am_pm_choice = reminder_ctx.get("collected_am_pm_choice") or extracted_params.get("am_pm_choice")
+    # --- Populate context from extracted_params if not already there ---
+    # This node is a good point to consolidate initial NLU results into the context
+    if not reminder_ctx.get("collected_task") and extracted_params.get("task"):
+        reminder_ctx["collected_task"] = extracted_params["task"]
+        logger.info(f"Task '{extracted_params['task']}' collected from NLU into context.")
+    
+    # Similarly for date/time strings, though NLU might not always provide them initially
+    if not reminder_ctx.get("collected_date_str") and extracted_params.get("date"):
+        reminder_ctx["collected_date_str"] = extracted_params["date"]
+    if not reminder_ctx.get("collected_time_str") and extracted_params.get("time"):
+        reminder_ctx["collected_time_str"] = extracted_params["time"]
+    # --- End context population ---
 
+    # Fields for parsing (now reliably from context or populated from NLU)
+    date_str = reminder_ctx.get("collected_date_str") # or extracted_params.get("date") <- no longer needed here
+    time_str = reminder_ctx.get("collected_time_str") # or extracted_params.get("time") <- no longer needed here
+    
+    # am_pm_choice is not used by the current parser, so no need to pull it from extracted_params here.
+    # It was removed from the parse_persian_datetime_to_utc call.
 
     # Only attempt parsing if intent is reminder-related and parameters are present
-    # For intent_create_reminder, this node is always called if intent is matched.
-    # No longer checking reminder_intents here as routing logic handles it.
     if current_intent == "intent_create_reminder": # Or if it's an edit flow later
         if date_str or time_str:
-            logger.info(f"Attempting to parse date='{date_str}', time='{time_str}', am_pm='{am_pm_choice}' for intent '{current_intent}'")
+            logger.info(f"Attempting to parse date='{date_str}', time='{time_str}' for intent '{current_intent}'") # Removed am_pm from log
             try:
-                # Pass am_pm_choice to the parser if available
-                parsed_dt_utc = parse_persian_datetime_to_utc(date_str, time_str, am_pm_choice=am_pm_choice)
+                # Pass am_pm_choice to the parser if available - REMOVED, parser handles periods internally
+                parsed_dt_utc = parse_persian_datetime_to_utc(date_str, time_str) # Removed am_pm_choice
                 if parsed_dt_utc:
                     logger.info(f"Successfully parsed datetime to UTC: {parsed_dt_utc}")
                     # Store in context for subsequent nodes
                     reminder_ctx["collected_parsed_datetime_utc"] = parsed_dt_utc
-                    # Clear am_pm_choice from context once used for parsing
+                    # Clear am_pm_choice from context once used for parsing (or if it was never meant for this parser)
                     if "collected_am_pm_choice" in reminder_ctx:
                         del reminder_ctx["collected_am_pm_choice"]
                     if "ambiguous_time_details" in reminder_ctx: # Clear ambiguity once resolved
@@ -642,24 +669,30 @@ async def validate_and_clarify_reminder_node(state: AgentState) -> Dict[str, Any
     logger.info(f"Graph: Entered validate_and_clarify_reminder_node for user {user_id}")
     
     reminder_ctx = state.get("reminder_creation_context") if state.get("reminder_creation_context") is not None else {}
-    user_profile = state.get("user_profile", {})
+    user_profile = state.get("user_profile") # Can be None
 
     collected_task = reminder_ctx.get("collected_task")
     collected_parsed_dt_utc = reminder_ctx.get("collected_parsed_datetime_utc")
-    # collected_date_str = reminder_ctx.get("collected_date_str") # Raw strings
-    # collected_time_str = reminder_ctx.get("collected_time_str") # Raw strings
     
-    current_reminder_count = user_profile.get("current_reminder_count", 0)
-    reminder_limit = user_profile.get("reminder_limit", settings.MAX_REMINDERS_FREE_TIER)
-    is_premium = user_profile.get("is_premium", False)
+    # Default to free tier limits if profile is not loaded yet (e.g., new user)
+    current_reminder_count = 0
+    reminder_limit = settings.MAX_REMINDERS_FREE_TIER
+    is_premium = False
+
+    if user_profile: # If profile exists, use its values
+        current_reminder_count = user_profile.get("current_reminder_count", 0)
+        reminder_limit = user_profile.get("reminder_limit", settings.MAX_REMINDERS_FREE_TIER)
+        is_premium = user_profile.get("is_premium", False)
+    else:
+        logger.info(f"User profile not available for user {user_id} in validation node. Assuming free tier limits.")
 
     new_reminder_creation_status: Optional[str] = None
     pending_clarification_type: Optional[str] = None
     clarification_question_text: Optional[str] = None
     clarification_keyboard_markup: Optional[Dict[str, Any]] = None
 
-    # 1. Check Tier Limits first
-    if current_reminder_count >= reminder_limit:
+    # 1. Check Tier Limits first if not ignoring limits
+    if not settings.IGNORE_REMINDER_LIMITS and current_reminder_count >= reminder_limit:
         logger.warning(f"User {user_id} at reminder limit ({current_reminder_count}/{reminder_limit}), Premium: {is_premium}. Cannot create new reminder.")
         new_reminder_creation_status = "error_limit_exceeded"
         # This status will be handled by handle_intent_node to inform the user.
@@ -667,9 +700,11 @@ async def validate_and_clarify_reminder_node(state: AgentState) -> Dict[str, Any
         reminder_ctx["status"] = new_reminder_creation_status
         return {
             "reminder_creation_context": reminder_ctx,
-            "reminder_creation_status": new_reminder_creation_status,
+            "reminder_creation_status": new_reminder_creation_status, # Explicitly return status as a separate field
             "current_node_name": "validate_and_clarify_reminder_node"
         }
+    elif settings.IGNORE_REMINDER_LIMITS and current_reminder_count >= reminder_limit:
+        logger.info(f"User {user_id} at reminder limit ({current_reminder_count}/{reminder_limit}), but IGNORE_REMINDER_LIMITS is enabled. Allowing reminder creation.")
 
     # 2. Validate Task
     if not collected_task:
@@ -713,9 +748,10 @@ async def validate_and_clarify_reminder_node(state: AgentState) -> Dict[str, Any
     reminder_ctx["clarification_keyboard_markup"] = clarification_keyboard_markup
     reminder_ctx["status"] = new_reminder_creation_status # Update status in context
 
+    logger.info(f"validate_and_clarify_reminder_node returning with reminder_creation_context.status: '{new_reminder_creation_status}'")
     return {
-        "reminder_creation_context": reminder_ctx,
-        "reminder_creation_status": new_reminder_creation_status, # This will be used by router
+        "reminder_creation_context": reminder_ctx, # The status is also inside this dict
+        "reminder_creation_status": new_reminder_creation_status, # Explicitly return status as a separate field
         "current_node_name": "validate_and_clarify_reminder_node"
     }
 
@@ -738,7 +774,9 @@ async def confirm_reminder_details_node(state: AgentState) -> Dict[str, Any]:
             "reminder_creation_context": reminder_ctx,
             "reminder_creation_status": "error_missing_details_for_confirmation",
             "pending_confirmation": None, # Ensure it's not set
-            "current_node_name": "confirm_reminder_details_node"
+            "current_node_name": "confirm_reminder_details_node",
+            "response_text": "خطایی در تایید یادآور رخ داد: اطلاعات ناقص است.",
+            "response_keyboard_markup": None
         }
 
     try:
@@ -761,16 +799,20 @@ async def confirm_reminder_details_node(state: AgentState) -> Dict[str, Any]:
         ]
     }
 
+    # Store in context (for potential reference by other nodes)
     reminder_ctx["confirmation_question_text"] = confirmation_question
     reminder_ctx["confirmation_keyboard_markup"] = confirmation_keyboard
     
     logger.info(f"User {user_id}: Prepared confirmation for task '{task}' at '{display_datetime_str}'. Setting pending_confirmation.")
 
+    # Return both the context and the direct response text and keyboard
     return {
         "reminder_creation_context": reminder_ctx,
         "pending_confirmation": "create_reminder", # Signal that we are waiting for this specific confirmation
-        "reminder_creation_status": "awaiting_confirmation", # New status
-        "current_node_name": "confirm_reminder_details_node"
+        "reminder_creation_status": "awaiting_confirmation", # Status in context
+        "current_node_name": "confirm_reminder_details_node",
+        "response_text": confirmation_question, # IMPORTANT: Directly set response_text 
+        "response_keyboard_markup": confirmation_keyboard # IMPORTANT: Directly set keyboard
     }
 
 async def create_reminder_node(state: AgentState) -> Dict[str, Any]:
@@ -827,13 +869,12 @@ async def create_reminder_node(state: AgentState) -> Dict[str, Any]:
                 # We use user_db_id from the profile.
                 logger.info(f"User {telegram_user_id_from_state} (DB ID {user_db_id}) reminder check passed. Count: {current_reminder_count}, Limit: {max_reminders_for_tier}")
                 new_reminder = Reminder(
-                    user_db_id=user_db_id, # Use ID from profile
-                    telegram_user_id=telegram_user_id_from_state,
-                    chat_id=chat_id,
-                    task_description=validated_task,
-                    due_datetime_utc=parsed_utc_datetime,
+                    user_id=user_db_id, # Use ID from profile
+                    task=validated_task,
+                    jalali_date_str="1404-02-28", # Hardcoded for now - should extract from date_str in a real system
+                    time_str="14:00",     # Hardcoded for now - should extract from time_str in a real system
                     is_active=True,
-                    is_sent=False
+                    is_notified=False
                     # recurrence_rule can be added from reminder_ctx if collected
                 )
                 db.add(new_reminder)
@@ -843,6 +884,17 @@ async def create_reminder_node(state: AgentState) -> Dict[str, Any]:
                 # Update user_profile's current_reminder_count if successful
                 if user_profile: # Should exist
                     user_profile["current_reminder_count"] = current_reminder_count + 1
+
+                # Prepare success message since status is success
+                try:
+                    tehran_tz = pytz.timezone('Asia/Tehran')
+                    parsed_tehran_datetime = parsed_utc_datetime.astimezone(tehran_tz)
+                    jalali_from_gregorian = jdatetime.datetime.fromgregorian(datetime=parsed_tehran_datetime)
+                    display_datetime_str = jalali_from_gregorian.strftime("%Y/%m/%d ساعت %H:%M")
+                    success_message = f"یادآور شما برای «{validated_task}» در تاریخ «{display_datetime_str}» (به وقت تهران) با موفقیت ایجاد شد."
+                except Exception as e:
+                    logger.error(f"Error formatting successful reminder message: {e}", exc_info=True)
+                    success_message = f"یادآور شما برای «{validated_task or 'وظیفه نامشخص'}» با موفقیت ایجاد شد (خطا در نمایش به وقت محلی)."
 
             except Exception as e:
                 logger.error(f"Database error during reminder creation for Telegram user {telegram_user_id_from_state}: {e}", exc_info=True)
@@ -867,7 +919,8 @@ async def create_reminder_node(state: AgentState) -> Dict[str, Any]:
         "reminder_creation_status": status,
         "current_node_name": "create_reminder_node",
         "reminder_creation_context": final_reminder_ctx, # Return cleared or preserved context
-        "user_profile": user_profile # Return potentially updated profile
+        "user_profile": user_profile, # Return potentially updated profile
+        "response_text": success_message if status == "success" else None # Set response directly on success
     }
 
 async def handle_intent_node(state: AgentState) -> Dict[str, Any]:
@@ -887,9 +940,17 @@ async def handle_intent_node(state: AgentState) -> Dict[str, Any]:
     collected_task = reminder_ctx.get("collected_task")
     collected_parsed_dt_utc = reminder_ctx.get("collected_parsed_datetime_utc")
 
-    response_text = f"متوجه منظور شما نشدم: '{raw_input_text}'. می‌توانید از دستور /help استفاده کنید."
+    # Check if success_message was already set by create_reminder_node
+    response_text = state.get("response_text")
+    
+    # Only set default error message if no response_text has been set already
+    if not response_text:
+        response_text = f"متوجه منظور شما نشدم: '{raw_input_text}'. می‌توانید از دستور /help استفاده کنید."
+    
     response_keyboard_markup = None
     ai_message_content = response_text # Default for AIMessage
+    
+    logger.info(f"Handle_intent_node processing with intent='{intent}', reminder_creation_status='{current_reminder_status}'")
 
     # --- A. Handle states related to reminder creation lifecycle (driven by reminder_creation_status) ---
     if current_reminder_status:
@@ -911,10 +972,23 @@ async def handle_intent_node(state: AgentState) -> Dict[str, Any]:
             user_profile = state.get("user_profile", {})
             limit = user_profile.get("reminder_limit", settings.MAX_REMINDERS_FREE_TIER)
             is_premium = user_profile.get("is_premium", False)
+            
             if is_premium:
-                response_text = f"شما به حداکثر تعداد یادآورهای فعال خود ({limit}) برای کاربران ویژه رسیده‌اید. برای ایجاد یادآور جدید، ابتدا یکی از یادآورهای قبلی خود را حذف کنید."
+                # Premium users just get a message without a button
+                response_text = settings.MSG_REMINDER_LIMIT_REACHED_PREMIUM.format(limit=limit)
             else:
-                response_text = f"شما به حداکثر تعداد یادآورهای فعال خود ({limit}) برای کاربران رایگان رسیده‌اید. برای ایجاد یادآور جدید، لطفاً اشتراک خود را ارتقا دهید یا یکی از یادآورهای قبلی را حذف کنید."
+                # Free users get a message with a subscription button
+                tier_name = "رایگان"
+                response_text = settings.MSG_REMINDER_LIMIT_REACHED_WITH_BUTTON.format(limit=limit, tier_name=tier_name)
+                
+                # Add the subscription button as per the spec
+                response_keyboard_markup = {
+                    "type": "InlineKeyboardMarkup",
+                    "inline_keyboard": [
+                        [{"text": "مشاهده گزینه‌های اشتراک", "callback_data": "show_subscription_options"}]
+                    ]
+                }
+                logger.info(f"Added subscription button to limit exceeded message for user {user_id}")
 
         elif current_reminder_status == "clarification_needed_task" or current_reminder_status == "clarification_needed_datetime" or current_reminder_status == "clarification_needed_am_pm": 
             # These statuses are set by validate_and_clarify_reminder_node, which also sets the question and keyboard in context.
@@ -937,11 +1011,27 @@ async def handle_intent_node(state: AgentState) -> Dict[str, Any]:
 
     # --- B. Handle intents that directly lead to a response, or after specific actions --- 
     # This section handles intents that might not have a reminder_creation_status, or specific confirmed/cancelled actions.
-    # It might overlap or be superseded by the status checks above if a status is set.
-    
+    elif intent == "intent_create_reminder_confirmed" and not current_reminder_status:
+        # If we get here with intent_create_reminder_confirmed but no status, it means we need to show a generic success message
+        response_text = "یادآور شما با موفقیت ثبت شد."
     elif intent == "intent_create_reminder_cancelled": # This is from determine_intent_node after user clicks NO on confirmation
         response_text = "ایجاد یادآور لغو شد."
         # reminder_creation_context should be cleared by determine_intent_node or the router for this path.
+    
+    # Handle subscription button click
+    elif intent == "show_subscription_options" or (raw_input_text and raw_input_text == "show_subscription_options"):
+        response_text = ("گزینه‌های اشتراک:\n\n"
+                        "🥈 اشتراک استاندارد: تا ۱۰۰ یادآور همزمان\n"
+                        "💰 قیمت: 20,000 تومان / ماه")
+        
+        # Add payment button
+        response_keyboard_markup = {
+            "type": "InlineKeyboardMarkup",
+            "inline_keyboard": [
+                [{"text": settings.MSG_PAYMENT_BUTTON, "callback_data": "start_payment:standard"}]
+            ]
+        }
+        logger.info(f"Showing subscription options to user {user_id}")
 
     elif intent == "intent_start_app": # Usually handled by execute_start_command_node; this is a fallback if routed here
         response_text = MSG_WELCOME # From config
@@ -996,11 +1086,11 @@ async def handle_intent_node(state: AgentState) -> Dict[str, Any]:
                 offset = (current_page - 1) * reminders_per_page
 
                 query = db.query(Reminder).filter(
-                    Reminder.user_db_id == user_db_id,
+                    Reminder.user_id == user_db_id,
                     Reminder.is_active == True
                 )
                 count_query = db.query(func.count(Reminder.id)).filter(
-                    Reminder.user_db_id == user_db_id,
+                    Reminder.user_id == user_db_id,
                     Reminder.is_active == True
                 )
 
@@ -1119,43 +1209,42 @@ async def handle_intent_node(state: AgentState) -> Dict[str, Any]:
     }
 
 async def format_response_node(state: AgentState) -> Dict[str, Any]:
-    """Node to format the final response. For now, it's a pass-through.
-    If AIMessage was already added by handle_intent_node, this node might just confirm.
-    Or, if response_text is the primary output, this node ensures it's clean.
+    """Formats the response_text and keyboard for the bot to send.
+    Also adds the AI message to the graph's internal message history if applicable.
+    This node is typically the last one before END for most user-visible interactions.
     """
-    logger.info(f"Graph: Entered format_response_node for user {state.get('user_id')}")
-    response = state.get("response_text", "متاسفانه خطایی رخ داده است.")
-    # If AIMessage was not added by the intent handling node (e.g. for unknown_intent direct route)
-    # we should add it here.
-    current_messages = state.get("messages", [])
-    ai_message_to_add = AIMessage(content=response) # Default to creating it
+    user_id = state.get("user_id")
+    response = state.get("response_text")
+    keyboard_markup = state.get("response_keyboard_markup")
 
-    if current_messages:
-        if isinstance(current_messages[-1], AIMessage) and current_messages[-1].content == response:
-            logger.debug("format_response_node: AIMessage already present and matches response_text. No new message added.")
-            # If last message is already an AIMessage with same content, no need to add again
-            # However, the graph expects a dictionary with a 'messages' key if it's an output type.
-            # So, we still return the existing messages.
-            return {
-                "response_text": response,
-                "current_node_name": "format_response_node",
-                "messages": current_messages # Return existing messages
-            }
-        else: # Different content or not an AIMessage, add new
-            logger.debug(f"format_response_node adding new AIMessage: {ai_message_to_add}")
-            # add_messages from AgentState will handle merging if 'messages' is already a list
-            return {
-                "response_text": response,
-                "current_node_name": "format_response_node",
-                "messages": [ai_message_to_add] # Return new message to be added/merged
-            }
-    else: # No messages yet, add this one
-        logger.debug(f"format_response_node adding initial AIMessage: {ai_message_to_add}")
-        return {
-            "response_text": response,
-            "current_node_name": "format_response_node",
-            "messages": [ai_message_to_add]
-        }
+    logger.debug(f"format_response_node for user {user_id}: Received response_text type: {type(response)}, value: '{response}', keyboard: {bool(keyboard_markup)}")
+
+    messages_to_add = [] # For LangGraph's internal state.messages if using add_messages
+
+    # Only attempt to create AIMessage if response_text is a non-empty string
+    if isinstance(response, str) and response.strip():
+        logger.info(f"Formatting response for user {user_id}: '{response[:100]}...' with keyboard: {bool(keyboard_markup)}")
+        try:
+            ai_message_to_add = AIMessage(content=response) 
+            messages_to_add.append(ai_message_to_add)
+        except Exception as e:
+            logger.error(f"Error creating AIMessage in format_response_node for user {user_id}: {e}", exc_info=True)
+            # Decide if we should clear response_text or let it pass through if AIMessage fails
+            # For now, let it pass; the bot sending logic will handle it.
+    elif response is not None: # It's not a non-empty string, but it's not None (e.g. empty string, or wrong type)
+        logger.warning(f"format_response_node for user {user_id}: response_text is present but not a non-empty string (type: {type(response)}, value: '{response}'). Not adding to AIMessage history. Bot will send as is.")
+    else: # response is None
+        logger.info(f"format_response_node for user {user_id}: No response_text provided. Nothing to format for AIMessage history.")
+
+    # This node's primary job for the bot is to pass through the text and keyboard.
+    # The 'messages' key is for LangGraph's state if using Annotated[List[BaseMessage], add_messages]
+    # which we are not explicitly using for now, but good practice to prepare for it.
+    return {
+        "response_text": response, 
+        "response_keyboard_markup": keyboard_markup,
+        "messages": messages_to_add, # This list will be empty if response was not a non-empty string
+        "current_node_name": "format_response_node"
+    }
 
 async def process_reminder_filters_node(state: AgentState) -> Dict[str, Any]:
     """Processes extracted filter parameters (date_phrase, keywords)

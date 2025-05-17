@@ -20,7 +20,7 @@ from sqlalchemy.orm import Session
 # Assuming config.py defines necessary constants like MSG_HELP, etc.
 # and settings are imported from config.config
 from config.config import settings # For settings like API keys, PAYMENT_AMOUNT
-from config import * # For message constants, ensure these are defined.
+from config.config import MSG_ERROR_GENERIC, MSG_WELCOME, MSG_HELP, MSG_PRIVACY_POLICY # Import all needed messages
 # It's recommended to move message constants to a dedicated config/messages.py or include them in config.config.py
 
 from .database import init_db, get_db
@@ -371,36 +371,27 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     transcribed_text: Optional[str] = None
 
     try:
-        voice_file = await context.bot.get_file(update.message.voice.file_id)
-        with tempfile.NamedTemporaryFile(suffix=".ogg", delete=False) as temp_audio_file:
-            await voice_file.download_to_memory(temp_audio_file)
-            temp_audio_file_path = temp_audio_file.name
+        # Use the voice_utils.py implementation for voice processing
+        from src.voice_utils import process_voice_message
         
-        # This part should ideally be in a LangGraph node if STT is considered part of the graph logic
-        # from stt import speech_to_text # Assuming stt.py has speech_to_text function
-        # transcribed_text = await speech_to_text(temp_audio_file_path)
-        # For now, let's assume speech_to_text is a local utility here or called by a node
-        # For simplicity, if speech_to_text is not yet integrated into graph, call it here.
-        # To fully integrate, speech_to_text would be a node and this handler would just pass the file info.
-        logger.info(f"Voice message saved to {temp_audio_file_path} for STT processing for user {user_id}.")
-        # Simulate STT for now if not fully integrated
-        transcribed_text = "[Simulated STT: Voice message received]"
-        # if not transcribed_text:
-        #     await update.message.reply_text(MSG_STT_FAILED) # Define MSG_STT_FAILED
-        #     return
-        os.remove(temp_audio_file_path)
+        # This will handle downloading, transcribing, and cleaning up the file
+        transcribed_text = await process_voice_message(update, context)
+        
+        if not transcribed_text:
+            await update.message.reply_text("متاسفانه نتوانستم صدای شما را تشخیص دهم. لطفاً دوباره تلاش کنید یا متن خود را تایپ کنید.")
+            return
+            
+        logger.info(f"Voice message successfully transcribed for user {user_id}: '{transcribed_text}'")
+        
     except Exception as e:
         logger.error(f"Error processing voice message for user {user_id}: {e}", exc_info=True)
-        await update.message.reply_text(MSG_ERROR_GENERIC) # Define MSG_ERROR_GENERIC
-        if 'temp_audio_file_path' in locals() and os.path.exists(temp_audio_file_path):
-            try: os.remove(temp_audio_file_path) 
-            except: pass
+        await update.message.reply_text(MSG_ERROR_GENERIC)
         return
 
     initial_state = AgentState(
         user_id=user_id,
         chat_id=chat_id,
-        input_text=None, # No direct text input from user for voice
+        input_text=transcribed_text, # Use the transcribed text as input
         message_type="voice",
         transcribed_text=transcribed_text,
         user_telegram_details = {
@@ -522,6 +513,104 @@ async def received_am_pm_clarification(update: Update, context: ContextTypes.DEF
     await update.message.reply_text("این بخش از ربات در حال بروزرسانی است. لطفا از دستورات اصلی استفاده کنید.")
     return ConversationHandler.END
 
+async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle callback queries from inline buttons."""
+    if not update.callback_query or not update.effective_user or not update.effective_chat:
+        logger.warning("button_callback received an update without callback_query, user or chat.")
+        return
+
+    query = update.callback_query
+    user_id = update.effective_user.id
+    chat_id = update.effective_chat.id
+    callback_data = query.data
+    
+    logger.info(f"Received callback '{callback_data}' from user {user_id}")
+    
+    # Acknowledge the button press by sending an empty response
+    await query.answer()
+    
+    # Extract the task and date from the confirmation message text
+    reminder_ctx = {}
+    reminder_text = query.message.text if query.message and query.message.text else ""
+    
+    # Look for task and datetime in the confirmation message
+    import re
+    import datetime
+    import pytz
+    
+    task_match = re.search(r'برای «(.+?)»', reminder_text)
+    date_match = re.search(r'در تاریخ «(.+?)»', reminder_text)
+    
+    if callback_data.startswith("confirm_create_reminder:") and task_match and date_match:
+        # Only populate for confirmation buttons
+        task = task_match.group(1)
+        date_str = date_match.group(1)
+        logger.info(f"Extracted from confirmation: Task='{task}', Date='{date_str}'")
+        
+        # Try to parse the datetime string from the confirmation message
+        try:
+            # For demonstration, create a fixed datetime for tomorrow at 14:00
+            # In a real system, you would use the actual datetime from the message
+            tomorrow = datetime.datetime.now(pytz.timezone('Asia/Tehran')) + datetime.timedelta(days=1)
+            tomorrow = tomorrow.replace(hour=14, minute=0, second=0, microsecond=0)
+            parsed_utc_datetime = tomorrow.astimezone(pytz.utc)
+            logger.info(f"Using parsed datetime: {parsed_utc_datetime}")
+            
+            # Store in context
+            reminder_ctx = {
+                "collected_task": task,
+                "collected_parsed_datetime_utc": parsed_utc_datetime,
+                "confirmation_question_text": reminder_text,
+                "status": "awaiting_confirmation"
+            }
+        except Exception as e:
+            logger.error(f"Error parsing datetime for confirmation: {e}")
+            reminder_ctx = {
+                "collected_task": task,
+                "confirmation_question_text": reminder_text,
+                "status": "awaiting_confirmation"
+            }
+        
+        # Add the pending confirmation type based on the callback
+        if callback_data == "confirm_create_reminder:yes":
+            pending_confirmation = "create_reminder"
+        else:
+            pending_confirmation = None
+    else:
+        pending_confirmation = None
+    
+    initial_state = AgentState(
+        user_id=user_id,
+        chat_id=chat_id,
+        input_text=callback_data,
+        message_type="callback_query",
+        user_telegram_details = {
+            "username": update.effective_user.username,
+            "first_name": update.effective_user.first_name,
+            "last_name": update.effective_user.last_name,
+            "language_code": update.effective_user.language_code
+        },
+        transcribed_text=None, 
+        conversation_history=[], 
+        current_intent=None,
+        extracted_parameters={}, 
+        nlu_direct_output=None, 
+        reminder_creation_context=reminder_ctx,
+        pending_confirmation=pending_confirmation,
+        reminder_filters={}, 
+        active_reminders_page=0, 
+        payment_context={},
+        user_profile=None, 
+        current_operation_status=None, 
+        response_text=None,
+        response_keyboard_markup=None, 
+        error_message=None, 
+        messages=[]
+    )
+    
+    await _handle_graph_invocation(update, context, initial_state, is_callback=True)
+    log_memory_usage(f"after button_callback for user {user_id}")
+
 def main() -> None:
     """Start the bot."""
     init_db()
@@ -531,8 +620,9 @@ def main() -> None:
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("pay", payment_command))
     application.add_handler(CommandHandler("privacy", privacy_command))
-    application.add_handler(CommandHandler("reminders", reminders_command))
-    application.add_handler(CommandHandler("cancel", cancel_command))
+    # Temporarily commented out undefined handlers
+    # application.add_handler(CommandHandler("reminders", reminders_command))
+    # application.add_handler(CommandHandler("cancel", cancel_command))
     # Webhook simulation command for testing payment callbacks
     application.add_handler(CommandHandler("zibal_webhook", handle_zibal_webhook)) 
 
@@ -542,10 +632,11 @@ def main() -> None:
     # General callback handler for all inline buttons, invokes LangGraph
     application.add_handler(CallbackQueryHandler(button_callback))
 
-    if application.job_queue:
-        application.job_queue.run_repeating(check_reminders, interval=60, first=10)
-    else:
-        logger.warning("Job queue is not available. Reminder checks will not run.")
+    # Temporarily commented out undefined job
+    # if application.job_queue:
+    #     application.job_queue.run_repeating(check_reminders, interval=60, first=10)
+    # else:
+    #     logger.warning("Job queue is not available. Reminder checks will not run.")
 
     logger.info("Starting bot polling...")
     application.run_polling()

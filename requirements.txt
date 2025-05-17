@@ -1,5 +1,7 @@
 python-telegram-bot
 langgraph
+aiosqlite
+langgraph-checkpoint-sqlite
 google-cloud-speech
 google-generativeai
 sqlalchemy
@@ -11,5 +13,4 @@ psutil
 pydantic
 pydantic-settings
 pytz
-langgraph-checkpoint-sqlite
 langchain-google-genai

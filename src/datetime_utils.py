@@ -184,6 +184,11 @@ def parse_persian_datetime_to_utc(date_str: Optional[str], time_str: Optional[st
                         if period_str == "صبح" and hour == 12: hour = 0 # 12 AM
                         elif period_str in ["بعد از ظهر", "عصر", "غروب", "شب"] and 1 <= hour < 12:
                             hour += 12
+                    # Handle context-based time interpretation for evening terms like "امشب"
+                    elif date_str and ("امشب" in date_str or "شب" in date_str) and 1 <= hour <= 11:
+                        # If the date context is "tonight" and hour is 1-11 without AM/PM indicator, assume PM
+                        hour += 12
+                        logger.info(f"Date context '{date_str}' suggests evening - interpreting '{hour-12}' as {hour}:00 (PM)")
                     
                     if 0 <= hour <= 23 and 0 <= minute <= 59:
                          target_jalali_time = jdatetime.time(hour, minute)

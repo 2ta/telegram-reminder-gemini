@@ -18,6 +18,7 @@ class AgentState(TypedDict):
     # Input Processing
     input_text: Optional[str]                   # Raw text from user or command arguments
     transcribed_text: Optional[str]             # Output from STT if input was voice
+    message_type: Optional[str]                 # Type of incoming message (e.g., "command", "text", "voice", "callback_query")
     # telegram_update_json: Optional[str]       # Full update object as JSON string if needed for deep inspection by tools
 
     # Conversation History & NLU

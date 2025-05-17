@@ -32,7 +32,7 @@ jobs:
       - name: Copy Systemd Service File
         run: |
           ssh ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }} "sudo cp ${{ secrets.DEPLOY_PATH }}/telegram-reminder-bot.service /etc/systemd/system/telegram-reminder.service && sudo systemctl daemon-reload"
-          
+      
       - name: Restart Bot Service
         run: |
           ssh ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }} "sudo systemctl restart telegram-reminder.service" 
