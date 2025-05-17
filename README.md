@@ -58,6 +58,10 @@ A Persian-language Telegram bot for setting reminders, powered by Google's Gemin
 - `tests/`: Unit and integration tests.
 - `logs/`: Application logs.
 - `migrations/`: Alembic database migration scripts (if Alembic is used).
+- `docs/`: Project documentation.
+  - `specs/`: Technical specifications.
+  - `planning/`: Project planning and development tracking.
+  - `testing/`: Test scenarios and documentation.
 
 ## Contributing
 
