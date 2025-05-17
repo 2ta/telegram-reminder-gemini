@@ -19,12 +19,20 @@ jobs:
       
       - name: Remove Obsolete Files from Server
         run: |
-          ssh ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }} "rm -f ${{ secrets.DEPLOY_PATH }}/config.py ${{ secrets.DEPLOY_PATH }}/resources/prompts.py ${{ secrets.DEPLOY_PATH }}/src/llm_utils.py && rm -rf ${{ secrets.DEPLOY_PATH }}/resources"
+          ssh ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }} "rm -f ${{ secrets.DEPLOY_PATH }}/bot.py ${{ secrets.DEPLOY_PATH }}/database.py ${{ secrets.DEPLOY_PATH }}/nlu.py ${{ secrets.DEPLOY_PATH }}/stt.py ${{ secrets.DEPLOY_PATH }}/utils.py ${{ secrets.DEPLOY_PATH }}/payment.py ${{ secrets.DEPLOY_PATH }}/config.py && mkdir -p ${{ secrets.DEPLOY_PATH }}/src"
 
       - name: Deploy to Server
         run: |
-          scp -r bot.py database.py nlu.py stt.py utils.py payment.py requirements.txt telegram-reminder-bot.service config src ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }}:${{ secrets.DEPLOY_PATH }}
+          scp -r bot_runner.py requirements.txt telegram-reminder-bot.service config src ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }}:${{ secrets.DEPLOY_PATH }}
       
+      - name: Setup Environment and Install Dependencies
+        run: |
+          ssh ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }} "cd ${{ secrets.DEPLOY_PATH }} && python3 -m venv venv && source venv/bin/activate && pip install -r requirements.txt"
+          
+      - name: Copy Systemd Service File
+        run: |
+          ssh ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }} "sudo cp ${{ secrets.DEPLOY_PATH }}/telegram-reminder-bot.service /etc/systemd/system/ && sudo systemctl daemon-reload"
+          
       - name: Restart Bot Service
         run: |
-          ssh ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }} "cd ${{ secrets.DEPLOY_PATH }} && python3 -m venv venv && source venv/bin/activate && pip install -r requirements.txt && sudo systemctl restart telegram-reminder.service" 
+          ssh ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }} "sudo systemctl restart telegram-reminder-bot.service" 
