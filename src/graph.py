@@ -1,5 +1,9 @@
 import logging
 from langgraph.graph import StateGraph, END
+import os
+import asyncio
+from pathlib import Path
+from typing import Dict, Any, Optional
 
 from src.graph_state import AgentState
 from src.graph_nodes import (
@@ -19,34 +23,21 @@ logger = logging.getLogger(__name__)
 # --- Conditional Edges (Router functions) ---
 
 def route_after_intent_determination(state: AgentState):
-    """Router function after intent determination, directing to various flows."""
-    intent = state.get("current_intent")
-    reminder_ctx = state.get("reminder_creation_context", {})
-    user_id = state.get("user_id")
-    logger.info(f"Router (after_intent_determination) for user {user_id}: Intent='{intent}'")
+    """Routes to specific nodes based on determined intent."""
+    intent = state.get("current_intent", "unknown_intent")
+    logger.info(f"Router (after_intent_determination) for user {state.get('user_id')}: Intent='{intent}'")
 
+    # Handle intent_create_reminder specially to check reminder_creation_context
     if intent == "intent_create_reminder":
-        # If NLU picked up task and datetime in the first go, and they are already processed (e.g. from a loop-back after clarification)
-        # This check might be too simplistic; process_datetime and validate_and_clarify should handle it robustly.
-        # For now, always go to process_datetime first for intent_create_reminder to ensure data is in context.
-        logger.info(f"Routing '{intent}' to process_datetime_node.")
-        return "process_datetime_node"
-    
+        return "process_datetime_node" # First step in reminder creation flow
     elif intent == "intent_create_reminder_confirmed":
-        logger.info(f"Routing '{intent}' to create_reminder_node.")
-        return "create_reminder_node"
-        
+        return "create_reminder_node" # When user confirms creating the reminder
     elif intent == "intent_create_reminder_cancelled":
-        logger.info(f"Routing '{intent}' (cancelled) to handle_intent_node for feedback.")
-        return "handle_intent_node" # To give cancellation feedback
-        
-    elif intent in ["intent_start_app", "intent_help", "intent_show_privacy_policy", "intent_view_reminders", "intent_payment_initiate", "intent_cancel_operation", "intent_greeting", "intent_farewell", "intent_affirmation", "intent_negation", "unknown_intent", "intent_clarification_needed", "intent_payment_callback_process"]:
-        # Most other intents go directly to handle_intent_node to formulate a response or execute simple actions.
-        logger.info(f"Routing '{intent}' to handle_intent_node.")
+        # When user cancels, clean up context and send to handle_intent_node for cancellation msg
         return "handle_intent_node"
-        
-    # Fallback: if an intent isn't explicitly routed, it goes to handle_intent for a generic response.
-    logger.warning(f"Intent '{intent}' has no explicit route in route_after_intent_determination. Defaulting to handle_intent_node.")
+
+    # All other intents go to handle_intent_node
+    logger.info(f"Routing '{intent}' to handle_intent_node.")
     return "handle_intent_node"
 
 def route_after_validation_and_clarification(state: AgentState):
@@ -128,9 +119,10 @@ def create_graph():
     workflow.add_edge("handle_intent_node", "format_response_node")
     workflow.add_edge("format_response_node", END)
 
-    # Explicitly compile without a checkpointer
-    app = workflow.compile(checkpointer=None)
-    logger.info("LangGraph app compiled successfully (checkpointing explicitly disabled with checkpointer=None).")
+    # For now, let's compile without a checkpointer to at least make the bot functional
+    # We can add a proper checkpointer later when we have more time to debug the issue
+    app = workflow.compile()
+    logger.info("LangGraph app compiled successfully (without checkpointing).")
     return app
 
 # Singleton instance of the graph
@@ -152,5 +144,10 @@ if __name__ == '__main__':
     }
     
     logger.info("Testing basic LangGraph execution...")
-    result = lang_graph_app.invoke(test_input)
-    logger.info(f"Test result (START command): {result.get('response_text')}")
+    
+    async def test_async():
+        result = await lang_graph_app.ainvoke(test_input)
+        logger.info(f"Test result (START command): {result.get('response_text')}")
+    
+    # Run the async test
+    asyncio.run(test_async())
