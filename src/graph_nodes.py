@@ -335,7 +335,7 @@ async def execute_start_command_node(state: AgentState) -> Dict[str, Any]:
         welcome_keyboard = {
             "type": "InlineKeyboardMarkup",
             "inline_keyboard": [
-                [{"text": "تهیه اشتراک ویژه 👑", "callback_data": "show_subscription_options"}]
+                [{"text": "یادآور نامحدود 👑", "callback_data": "show_subscription_options"}]
             ]
         }
         logger.info(f"Created welcome keyboard markup: {welcome_keyboard}")
@@ -478,7 +478,7 @@ async def validate_and_clarify_reminder_node(state: AgentState) -> Dict[str, Any
             limit_exceeded_keyboard = {
                 "type": "InlineKeyboardMarkup",
                 "inline_keyboard": [
-                    [{"text": "تهیه اشتراک ویژه 👑", "callback_data": "show_subscription_options"}]
+                    [{"text": "یادآور نامحدود 👑", "callback_data": "show_subscription_options"}]
                 ]
             }
 
