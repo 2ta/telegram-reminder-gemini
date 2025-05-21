@@ -853,19 +853,27 @@ async def handle_intent_node(state: AgentState) -> Dict[str, Any]:
                 page_size = settings.REMINDERS_PER_PAGE
                 offset = (page - 1) * page_size
 
+                logger.info(f"User {user_id}: Preparing to query reminders. user_db_id={user_db_id}, page={page}, page_size={page_size}, offset={offset}") # MODIFIED: Added log
+
                 # Query for active reminders with pagination
+                # Order by Jalali date string and then time string for chronological order
                 reminders_query = db.query(Reminder).filter(
                     Reminder.user_id == user_db_id,
                     Reminder.is_active == True
-                ).order_by(Reminder.due_datetime_utc.asc())
+                ).order_by(Reminder.jalali_date_str.asc(), Reminder.time_str.asc()) # MODIFIED: Changed order_by
                 
+                logger.info(f"User {user_id}: reminders_query object created.") # MODIFIED: Added log
                 total_reminders_count = reminders_query.count()
+                logger.info(f"User {user_id}: Total reminders count = {total_reminders_count}") # MODIFIED: Added log
                 reminders = reminders_query.offset(offset).limit(page_size).all()
+                logger.info(f"User {user_id}: Fetched reminders list (length {len(reminders)})") # MODIFIED: Added log
 
                 if not reminders and total_reminders_count == 0: # No reminders at all for this user
+                    logger.info(f"User {user_id}: No reminders found. Using MSG_LIST_EMPTY_NO_REMINDERS.") # MODIFIED: Added log
                     response_text = MSG_LIST_EMPTY_NO_REMINDERS
                     response_keyboard_markup = None # No pagination needed
                 elif not reminders and total_reminders_count > 0: # No reminders on this specific page, but they exist
+                    logger.info(f"User {user_id}: Reminders exist, but current page {page} is empty.") # MODIFIED: Added log
                     response_text = f"صفحه {to_persian_numerals(str(page))} خالی است. به صفحه قبل برگردید."
                     # Potentially add a "back to page 1" button or similar if page > 1
                     buttons = []
@@ -874,29 +882,42 @@ async def handle_intent_node(state: AgentState) -> Dict[str, Any]:
                     response_keyboard_markup = {"type": "InlineKeyboardMarkup", "inline_keyboard": buttons} if buttons else None
 
                 else:
-                    reminder_list_str = f"یادآورهای فعال شما (صفحه {to_persian_numerals(str(page))} از {to_persian_numerals(str((total_reminders_count + page_size - 1) // page_size))}):\n\n"
+                    reminder_list_str = f"یادآورهای فعال شما (صفحه {to_persian_numerals(str(page))} از {to_persian_numerals(str((total_reminders_count + page_size - 1) // page_size))}):\\n\\n"
                     for reminder in reminders:
                         try:
-                            # Convert UTC from DB to Tehran time for display
-                            utc_time = pytz.utc.localize(reminder.due_datetime_utc)
-                            tehran_time = utc_time.astimezone(pytz.timezone('Asia/Tehran'))
+                            # Get Gregorian datetime from the model property
+                            gregorian_dt = reminder.gregorian_datetime
+                            if not gregorian_dt:
+                                logger.warning(f"Could not convert Jalali to Gregorian for reminder ID {reminder.id}. Skipping display of this reminder.")
+                                reminder_list_str += f"⚠️ اطلاعات تاریخ و زمان برای یادآور با شناسه {reminder.id} نامعتبر است.\\n--------------------\\n"
+                                continue
+
+                            # Convert Gregorian (naive) to UTC, then to Tehran for display
+                            # Assuming the gregorian_datetime property is naive, make it timezone-aware (e.g., system's local, then convert)
+                            # For simplicity, if we assume the stored Jalali time was intended for Tehran, 
+                            # we can localize it to Tehran then convert to UTC for consistency, then back to Tehran for display.
+                            # However, the property reminder.gregorian_datetime should ideally return a timezone-aware datetime if possible,
+                            # or a naive datetime that is understood to be in a specific timezone (e.g. Tehran if that's the input assumption)
                             
-                            # Format Jalali date and time
-                            jalali_date_str = format_jalali_date(jdatetime.datetime.fromgregorian(datetime=tehran_time))
-                            time_str = tehran_time.strftime('%H:%M')
+                            # Let's assume gregorian_datetime is naive and represents Tehran time directly for now.
+                            tehran_tz = pytz.timezone('Asia/Tehran')
+                            aware_tehran_dt = tehran_tz.localize(gregorian_dt) # Make it timezone-aware as Tehran time
+                            
+                            # Format Jalali date and time from the already aware Tehran time
+                            jalali_date_str = format_jalali_date(jdatetime.datetime.fromgregorian(datetime=aware_tehran_dt))
+                            time_str = aware_tehran_dt.strftime('%H:%M')
                             
                             # Include day name
-                            day_name = get_persian_day_name(tehran_time.weekday())
+                            day_name = get_persian_day_name(aware_tehran_dt.weekday())
                             
                             reminder_list_str += (
-                                f"📝 **یادآور**: {reminder.task}\n"
-                                f"⏰ **زمان**: {day_name}، {jalali_date_str}، ساعت {to_persian_numerals(time_str)}\n"
-                                f"🆔 `{reminder.id}` (/del_{reminder.id} برای حذف)\n"
-                                "--------------------\n"
+                                f"📝 **یادآور**: {reminder.task}\\n"
+                                f"⏰ **زمان**: {day_name}، {jalali_date_str}، ساعت {to_persian_numerals(time_str)}\\n"
+                                f"🆔 `{reminder.id}` (/del_{reminder.id} برای حذف)\\n"
+                                "--------------------\\n"
                             )
                         except Exception as e:
                             logger.error(f"Error formatting reminder ID {reminder.id} for display: {e}", exc_info=True)
-                            reminder_list_str += f"⚠️ خطا در نمایش یادآور با شناسه {reminder.id}.\n--------------------\n"
                     
                     response_text = reminder_list_str.strip()
                     
