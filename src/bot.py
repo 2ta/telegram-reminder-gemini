@@ -78,7 +78,8 @@ async def _handle_graph_invocation(
     update_obj: Union[Update, None],
     context: ContextTypes.DEFAULT_TYPE,
     initial_state: AgentState,
-    is_callback: bool = False
+    is_callback: bool = False,
+    is_start_command: bool = False # Added flag for start command
 ) -> None:
     """Helper function to invoke LangGraph and handle its response."""
     if not update_obj or not update_obj.effective_user:
@@ -107,7 +108,13 @@ async def _handle_graph_invocation(
             return
         
         reply_markup = None
-        if response_keyboard_markup_dict:
+        # Define the persistent reply keyboard
+        persistent_reply_keyboard = ReplyKeyboardMarkup(
+            [["یادآورهای من", "یادآور نامحدود 👑"]],
+            resize_keyboard=True
+        )
+
+        if response_keyboard_markup_dict: # If graph wants to send a specific InlineKeyboard
             if response_keyboard_markup_dict.get("type") == "InlineKeyboardMarkup":
                 buttons = []
                 for row_data in response_keyboard_markup_dict.get("inline_keyboard", []):
@@ -120,31 +127,29 @@ async def _handle_graph_invocation(
                     buttons.append(button_row)
                 if buttons:
                     reply_markup = InlineKeyboardMarkup(buttons)
-            elif response_keyboard_markup_dict.get("type") == "ReplyKeyboardMarkup":
-                buttons = []
-                for row_data in response_keyboard_markup_dict.get("keyboard", []):
-                    button_row = [btn.get("text") for btn in row_data] 
-                    buttons.append(button_row)
-                if buttons:
-                    reply_markup = ReplyKeyboardMarkup(
-                        buttons, 
-                        resize_keyboard=response_keyboard_markup_dict.get("resize_keyboard", True),
-                        one_time_keyboard=response_keyboard_markup_dict.get("one_time_keyboard", False)
-                    )
+            # Note: We are not supporting the graph sending a custom ReplyKeyboardMarkup anymore, 
+            # as we now have a persistent one. If an inline keyboard is not specified,
+            # the persistent one will be used for /start, or no specific markup for other messages if not inline.
         
+        if is_start_command:
+            reply_markup = persistent_reply_keyboard # Always show persistent keyboard on /start
+
         if response_text:
             if is_callback and action_to_take == "edit" and target_message_id:
                 await context.bot.edit_message_text(
                     chat_id=response_target.chat_id,
                     message_id=target_message_id,
                     text=response_text,
-                    reply_markup=reply_markup
+                    reply_markup=reply_markup # This will be an InlineKeyboardMarkup or None
                 )
             elif is_callback and action_to_take == "delete" and target_message_id:
                 await context.bot.delete_message(chat_id=response_target.chat_id, message_id=target_message_id)
                 if response_text != "" and response_text is not None: # Send if confirmation text for deletion
                     await context.bot.send_message(chat_id=response_target.chat_id, text=response_text, reply_markup=reply_markup)
             else: # Default to sending a new message
+                # If it's the start command, reply_markup is persistent_reply_keyboard.
+                # If it's another command/message and graph provided an inline keyboard, reply_markup is that.
+                # Otherwise, reply_markup is None, and Telegram client keeps showing the last active ReplyKeyboard (our persistent one).
                 await response_target.reply_text(response_text, reply_markup=reply_markup)
         elif not response_text and is_callback and action_to_take == "delete" and target_message_id:
             # If no text but action is delete (e.g. message was deleted and no further text needed)
@@ -188,7 +193,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         user_profile=None, current_operation_status=None, response_text=None,
         response_keyboard_markup=None, error_message=None, messages=[]
     )
-    await _handle_graph_invocation(update, context, initial_state)
+    await _handle_graph_invocation(update, context, initial_state, is_start_command=True) # Pass is_start_command=True
     log_memory_usage(f"after start_command for user {user_id}")
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
