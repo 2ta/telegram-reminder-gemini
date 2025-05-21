@@ -857,7 +857,7 @@ async def handle_intent_node(state: AgentState) -> Dict[str, Any]:
                 reminders_query = db.query(Reminder).filter(
                     Reminder.user_id == user_db_id,
                     Reminder.is_active == True
-                ).order_by(Reminder.reminder_time.asc())
+                ).order_by(Reminder.due_datetime_utc.asc())
                 
                 total_reminders_count = reminders_query.count()
                 reminders = reminders_query.offset(offset).limit(page_size).all()
@@ -878,7 +878,7 @@ async def handle_intent_node(state: AgentState) -> Dict[str, Any]:
                     for reminder in reminders:
                         try:
                             # Convert UTC from DB to Tehran time for display
-                            utc_time = pytz.utc.localize(reminder.reminder_time)
+                            utc_time = pytz.utc.localize(reminder.due_datetime_utc)
                             tehran_time = utc_time.astimezone(pytz.timezone('Asia/Tehran'))
                             
                             # Format Jalali date and time
