@@ -61,15 +61,6 @@ MSG_WELCOME: str = (
     "- (به‌زودی) پرداخت و فعال‌سازی اشتراک «یادآور نامحدود» برای امکانات بیشتر\n\n"
     "در نسخه رایگان می‌تونی تا ۵ یادآور فعال داشته باشی."
 )
-MSG_HELP: str = (
-    "راهنمای ربات یادآور:\n"
-    "- برای ایجاد یادآور: مثلا بنویسید: 'یادآوری کن فردا ساعت ۱۰ صبح جلسه دارم'\n"
-    "- برای دیدن یادآورها: /reminders یا 'یادآورهای من'\n"
-    "- برای لغو عملیات فعلی: /cancel\n"
-    "- برای دریافت این راهنما: /help\n"
-    "- برای اطلاع از وضعیت اشتراک و پرداخت: /pay\n"
-    "- برای مشاهده سیاست حفظ حریم خصوصی: /privacy"
-)
 MSG_PRIVACY_POLICY: str = (
     "سیاست حفظ حریم خصوصی ربات یادآور:\n\n"
     "ما به حریم خصوصی شما احترام می‌گذاریم.\n"
@@ -98,7 +89,6 @@ if __name__ == "__main__":
     print(settings.model_dump_json(indent=2))
     print("\nModule-level messages:")
     print(f"MSG_WELCOME: {MSG_WELCOME}")
-    print(f"MSG_HELP: {MSG_HELP}")
     print(f"MSG_PRIVACY_POLICY: {MSG_PRIVACY_POLICY}")
     print(f"MSG_PAYMENT_PROMPT: {MSG_PAYMENT_PROMPT}")
 

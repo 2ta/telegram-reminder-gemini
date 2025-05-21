@@ -163,9 +163,6 @@ async def determine_intent_node(state: AgentState) -> Dict[str, Any]:
         if input_text == '/start':
             logger.info(f"Detected /start command from user {state.get('user_id')}")
             return {"current_intent": "intent_start", "current_node_name": "determine_intent_node"}
-        elif input_text == '/help':
-            logger.info(f"Detected /help command from user {state.get('user_id')}")
-            return {"current_intent": "intent_help", "current_node_name": "determine_intent_node"}
         elif input_text == '/reminders' or input_text.startswith('/reminders '):
             logger.info(f"Detected /reminders command from user {state.get('user_id')}")
             return {"current_intent": "intent_view_reminders", "extracted_parameters": {"page": 1}, "current_node_name": "determine_intent_node"}
@@ -813,7 +810,7 @@ async def handle_intent_node(state: AgentState) -> Dict[str, Any]:
     logger.info(f"Graph: Entered handle_intent_node for user {user_id}, intent: {current_intent}, params: {extracted_parameters}, status: {current_operation_status}")
 
     # Default response text
-    default_response_text = "کاری که از من خواستید را متوجه نشدم. لطفاً واضح‌تر بگویید یا از دستور /help استفاده کنید."
+    default_response_text = "کاری که از من خواستید را متوجه نشدم. لطفاً واضح‌تر بگویید."
     
     # Try to get response_text from the state, which might have been set by a previous node (like create_reminder_node)
     response_text_from_state = state.get("response_text")
@@ -844,11 +841,6 @@ async def handle_intent_node(state: AgentState) -> Dict[str, Any]:
         response_keyboard_markup = None
         logger.info(f"handle_intent_node processing intent_start for user {user_id}. MSG_WELCOME will be used.")
         
-    elif current_intent == "intent_help":
-        from config.config import MSG_HELP
-        response_text = MSG_HELP
-        logger.info(f"handle_intent_node: Prepared help message for user {user_id}.")
-
     elif current_intent == "intent_view_reminders":
         # ... (existing view reminders logic remains the same)
         logger.info(f"handle_intent_node: Preparing to view reminders for user {user_id}.")
@@ -1001,7 +993,10 @@ async def handle_intent_node(state: AgentState) -> Dict[str, Any]:
     elif current_intent == "unknown_intent":
         if response_text_from_state and response_text == default_response_text : # If determine_intent_node already set a specific error
              response_text = response_text_from_state
-        logger.info(f"handle_intent_node: Handling unknown_intent for user {user_id}. Response: '{response_text}'")
+        else: # Ensure our new default_response_text is used if no specific error was set by determine_intent_node
+            response_text = default_response_text
+
+        logger.info(f"handle_intent_node: Handling unknown_intent for user {user_id}. Input was: '{state.get('extracted_parameters', {}).get('input_was', 'N/A')}'. Response: '{response_text}'")
 
     elif current_intent == "intent_show_payment_options":
         logger.info(f"handle_intent_node: Showing payment options for user {user_id}")
