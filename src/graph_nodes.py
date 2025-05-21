@@ -810,8 +810,8 @@ async def handle_intent_node(state: AgentState) -> Dict[str, Any]:
     user_profile = state.get("user_profile")
     extracted_parameters = state.get("extracted_parameters", {})
     # Get status from create_reminder_node if available
-    reminder_creation_status = state.get("reminder_creation_status") 
-    logger.info(f"Graph: Entered handle_intent_node for user {user_id}, intent: {current_intent}, params: {extracted_parameters}, status: {reminder_creation_status}")
+    current_operation_status = state.get("current_operation_status") # MODIFIED to use current_operation_status
+    logger.info(f"Graph: Entered handle_intent_node for user {user_id}, intent: {current_intent}, params: {extracted_parameters}, status: {current_operation_status}") # MODIFIED
 
     # Initialize with default, but prioritize pre-set text for specific intents/statuses.
     response_text = "کاری که از من خواستید را متوجه نشدم. لطفاً واضح‌تر بگویید یا از دستور /help استفاده کنید."
@@ -1032,7 +1032,7 @@ async def handle_intent_node(state: AgentState) -> Dict[str, Any]:
         response_keyboard_markup = payment_keyboard
     
     # After reminder creation (success or failure)
-    if reminder_creation_status == "success":
+    if current_operation_status == "success": # MODIFIED
         # reminder_details should be in state, set by create_reminder_node
         reminder_details = state.get("reminder_details", {})
         task = reminder_details.get("task", "وظیفه شما")
@@ -1056,11 +1056,11 @@ async def handle_intent_node(state: AgentState) -> Dict[str, Any]:
             response_text = f"یادآور شما برای «{task}» با موفقیت تنظیم شد، اما خطایی در نمایش تاریخ و زمان رخ داد."
 
         logger.info(f"handle_intent_node: Reminder created successfully for user {user_id}. Task: {task}")
-        updated_state_dict["reminder_creation_status"] = None # Clear status
+        updated_state_dict["current_operation_status"] = None # MODIFIED: Clear status
         updated_state_dict["reminder_details"] = None # Clear details
         # No specific keyboard needed for this confirmation
 
-    elif reminder_creation_status == "limit_reached_free":
+    elif current_operation_status == "limit_reached_free": # MODIFIED
         response_text = settings.MSG_REMINDER_LIMIT_REACHED_FREE.format(limit=settings.MAX_REMINDERS_FREE_TIER)
         # Keyboard to offer upgrade
         limit_exceeded_keyboard = {
@@ -1071,23 +1071,23 @@ async def handle_intent_node(state: AgentState) -> Dict[str, Any]:
         }
         response_keyboard_markup = limit_exceeded_keyboard
         logger.info(f"handle_intent_node: Free tier limit reached for user {user_id}.")
-        updated_state_dict["reminder_creation_status"] = None # Clear status
+        updated_state_dict["current_operation_status"] = None # MODIFIED: Clear status
 
-    elif reminder_creation_status == "limit_reached_premium":
+    elif current_operation_status == "limit_reached_premium": # MODIFIED
         response_text = settings.MSG_REMINDER_LIMIT_REACHED_PREMIUM.format(limit=settings.MAX_REMINDERS_PREMIUM_TIER)
         logger.info(f"handle_intent_node: Premium tier limit reached for user {user_id}.")
-        updated_state_dict["reminder_creation_status"] = None # Clear status
+        updated_state_dict["current_operation_status"] = None # MODIFIED: Clear status
         # No specific keyboard for premium limit reached by default, unless we add one.
 
-    elif reminder_creation_status == "error_db":
+    elif current_operation_status == "error_db": # MODIFIED
         response_text = "متاسفانه هنگام ذخیره یادآور شما خطایی در پایگاه داده رخ داد. لطفاً دوباره تلاش کنید."
         logger.error(f"handle_intent_node: DB error during reminder creation for user {user_id}.")
-        updated_state_dict["reminder_creation_status"] = None # Clear status
+        updated_state_dict["current_operation_status"] = None # MODIFIED: Clear status
     
-    elif reminder_creation_status == "error_missing_data":
+    elif current_operation_status == "error_missing_data": # MODIFIED
         response_text = "اطلاعات کافی برای ایجاد یادآور (مانند متن یا زمان) دریافت نشد. لطفاً دوباره سعی کنید."
         logger.warning(f"handle_intent_node: Missing data for reminder creation for user {user_id}.")
-        updated_state_dict["reminder_creation_status"] = None
+        updated_state_dict["current_operation_status"] = None # MODIFIED
 
     # --- Final preparations before returning from handle_intent_node ---
     updated_state_dict["response_text"] = response_text
