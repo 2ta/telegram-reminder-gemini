@@ -13,6 +13,7 @@ from src.graph_nodes import (
     process_datetime_node,
     validate_and_clarify_reminder_node,
     confirm_reminder_details_node,
+    confirm_delete_reminder_node,
     create_reminder_node,
     handle_intent_node,
     format_response_node,
@@ -37,6 +38,15 @@ def route_after_intent_determination(state: AgentState):
         return "create_reminder_node" # When user confirms creating the reminder
     elif intent == "intent_create_reminder_cancelled":
         # When user cancels, clean up context and send to handle_intent_node for cancellation msg
+        return "handle_intent_node"
+    elif intent == "intent_confirm_delete_reminder":
+        logger.info(f"Routing '{intent}' to confirm_delete_reminder_node.")
+        return "confirm_delete_reminder_node"
+    elif intent == "intent_delete_reminder_confirmed":
+        logger.info(f"Routing '{intent}' to handle_intent_node for final deletion processing.")
+        return "handle_intent_node"
+    elif intent == "intent_delete_reminder_cancelled":
+        logger.info(f"Routing '{intent}' to handle_intent_node for delete cancellation message.")
         return "handle_intent_node"
 
     # All other intents go to handle_intent_node
@@ -77,6 +87,7 @@ def create_graph():
     workflow.add_node("process_datetime_node", process_datetime_node)
     workflow.add_node("validate_and_clarify_reminder_node", validate_and_clarify_reminder_node)
     workflow.add_node("confirm_reminder_details_node", confirm_reminder_details_node)
+    workflow.add_node("confirm_delete_reminder_node", confirm_delete_reminder_node)
     workflow.add_node("create_reminder_node", create_reminder_node)
     workflow.add_node("handle_intent_node", handle_intent_node)
     workflow.add_node("format_response_node", format_response_node)
@@ -96,6 +107,7 @@ def create_graph():
             "execute_start_command_node": "execute_start_command_node",
             "process_datetime_node": "process_datetime_node",
             "create_reminder_node": "create_reminder_node",
+            "confirm_delete_reminder_node": "confirm_delete_reminder_node",
             "handle_intent_node": "handle_intent_node"
         }
     )
@@ -117,6 +129,9 @@ def create_graph():
     # The callback (yes/no) will re-enter the graph, determine_intent_node will catch it and route to create_reminder_node or handle_intent_node.
     workflow.add_edge("confirm_reminder_details_node", "format_response_node")
     
+    # After confirm_delete_reminder_node, also send the confirmation prompt and END, awaiting user's callback.
+    workflow.add_edge("confirm_delete_reminder_node", "format_response_node")
+
     workflow.add_edge("execute_start_command_node", "format_response_node")
 
     # After actual reminder creation (or failure like DB error during creation)

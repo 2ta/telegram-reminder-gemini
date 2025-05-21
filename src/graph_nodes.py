@@ -146,6 +146,40 @@ async def determine_intent_node(state: AgentState) -> Dict[str, Any]:
                 "reminder_creation_context": {},
                 "pending_confirmation": None
             }
+        elif effective_input.startswith("confirm_delete_reminder:"):
+            try:
+                reminder_id_str = effective_input.split("confirm_delete_reminder:", 1)[1]
+                reminder_id = int(reminder_id_str)
+                logger.info(f"DEBUG: Matched callback for 'confirm_delete_reminder:{reminder_id}'")
+                return {
+                    "current_intent": "intent_confirm_delete_reminder",
+                    "extracted_parameters": {"reminder_id_to_confirm_delete": reminder_id},
+                    "current_node_name": "determine_intent_node"
+                }
+            except (ValueError, IndexError) as e:
+                logger.error(f"Error processing confirm_delete_reminder callback '{effective_input}': {e}", exc_info=True)
+                return {"current_intent": "unknown_intent", "response_text": "خطا در پردازش درخواست حذف.", "current_node_name": "determine_intent_node"}
+        elif effective_input.startswith("execute_delete_reminder:"):
+            try:
+                reminder_id_str = effective_input.split("execute_delete_reminder:", 1)[1]
+                reminder_id = int(reminder_id_str)
+                logger.info(f"DEBUG: Matched callback for 'execute_delete_reminder:{reminder_id}'")
+                return {
+                    "current_intent": "intent_delete_reminder_confirmed", # This will trigger actual deletion
+                    "extracted_parameters": {"reminder_id_to_delete": reminder_id}, # Use the key expected by delete logic
+                    "current_node_name": "determine_intent_node"
+                }
+            except (ValueError, IndexError) as e:
+                logger.error(f"Error processing execute_delete_reminder callback '{effective_input}': {e}", exc_info=True)
+                return {"current_intent": "unknown_intent", "response_text": "خطا در پردازش دستور حذف.", "current_node_name": "determine_intent_node"}
+        elif effective_input == "cancel_delete_reminder":
+            logger.info(f"DEBUG: Matched callback for 'cancel_delete_reminder'")
+            return {
+                "current_intent": "intent_delete_reminder_cancelled",
+                "response_text": "باشه، حذفش نکردم. یادآور شما فعال باقی می‌مونه 👍",
+                "current_node_name": "determine_intent_node"
+            }
+
     # --- END: Handle direct known CREATION confirmation callbacks FIRST ---
 
     # Get reminder creation context (if any) for clarification flows
@@ -800,6 +834,94 @@ async def create_reminder_node(state: AgentState) -> Dict[str, Any]:
     finally:
         db.close()
 
+async def confirm_delete_reminder_node(state: AgentState) -> Dict[str, Any]:
+    """Asks the user to confirm if they want to delete the specified reminder."""
+    user_id = state.get("user_id")
+    extracted_params = state.get("extracted_parameters", {})
+    reminder_id_to_confirm = extracted_params.get("reminder_id_to_confirm_delete")
+
+    logger.info(f"Graph: Entered confirm_delete_reminder_node for user {user_id}, reminder_id: {reminder_id_to_confirm}")
+
+    if reminder_id_to_confirm is None:
+        logger.error(f"confirm_delete_reminder_node: reminder_id_to_confirm_delete is missing from extracted_parameters for user {user_id}")
+        return {
+            "response_text": "خطا: شناسه یادآور برای تایید حذف مشخص نیست.",
+            "current_node_name": "confirm_delete_reminder_node"
+        }
+
+    db: Session = next(get_db())
+    try:
+        user_db_id = state.get("user_profile", {}).get("user_db_id")
+        if not user_db_id:
+            logger.error(f"confirm_delete_reminder_node: user_db_id not found in profile for user {user_id}")
+            return {"response_text": "خطا: اطلاعات کاربری برای تایید حذف یافت نشد.", "current_node_name": "confirm_delete_reminder_node"}
+
+        reminder = db.query(Reminder).filter(
+            Reminder.id == reminder_id_to_confirm,
+            Reminder.user_id == user_db_id,
+            Reminder.is_active == True 
+        ).first()
+
+        if not reminder:
+            logger.warning(f"confirm_delete_reminder_node: Reminder ID {reminder_id_to_confirm} not found, not active, or doesn't belong to user {user_id}.")
+            return {
+                "response_text": "یادآور مورد نظر برای حذف یافت نشد یا قبلاً حذف شده است.",
+                "current_node_name": "confirm_delete_reminder_node"
+            }
+
+        # Format reminder details for confirmation message
+        task_preview = reminder.task[:50] + "..." if len(reminder.task) > 50 else reminder.task
+        try:
+            gregorian_dt = reminder.gregorian_datetime
+            if not gregorian_dt:
+                formatted_datetime_persian = "[تاریخ نامشخص]"
+            else:
+                tehran_tz = pytz.timezone("Asia/Tehran")
+                dt_tehran = gregorian_dt.astimezone(tehran_tz)
+                jalali_date_obj = jdatetime.datetime.fromgregorian(datetime=dt_tehran)
+                
+                persian_day_name = get_persian_day_name(jalali_date_obj)
+                persian_month_name = get_persian_month_name(jalali_date_obj)
+                persian_day_num = to_persian_numerals(str(jalali_date_obj.day))
+                persian_year_num = to_persian_numerals(str(jalali_date_obj.year))
+                persian_time_str = to_persian_numerals(dt_tehran.strftime("%H:%M"))
+                formatted_datetime_persian = f"{persian_day_name} {persian_day_num} {persian_month_name} {persian_year_num}، ساعت {persian_time_str}"
+        except Exception as e:
+            logger.error(f"Error formatting date for reminder {reminder.id} in confirm_delete: {e}")
+            formatted_datetime_persian = "[خطا در نمایش تاریخ]"
+
+        confirmation_message = (
+            f"⚠️ آیا از حذف یادآور زیر مطمئن هستید؟\n\n"
+            f"📝 **یادآور**: {task_preview}\n"
+            f"⏰ **زمان**: {formatted_datetime_persian}"
+        )
+        
+        confirmation_keyboard = {
+            "type": "InlineKeyboardMarkup",
+            "inline_keyboard": [
+                [
+                    {"text": "بله، حذف کن ✅", "callback_data": f"execute_delete_reminder:{reminder.id}"},
+                    {"text": "نه، منصرف شدم ❌", "callback_data": "cancel_delete_reminder"}
+                ]
+            ]
+        }
+        logger.info(f"Prepared delete confirmation for user {user_id}, reminder ID {reminder.id}")
+        return {
+            "response_text": confirmation_message,
+            "response_keyboard_markup": confirmation_keyboard,
+            "pending_confirmation": "delete_reminder", # Flag that we are awaiting delete confirmation
+            "current_node_name": "confirm_delete_reminder_node"
+        }
+
+    except Exception as e:
+        logger.error(f"Error in confirm_delete_reminder_node for user {user_id}, reminder ID {reminder_id_to_confirm}: {e}", exc_info=True)
+        return {
+            "response_text": "خطایی در آماده‌سازی پیام تایید حذف رخ داد. لطفاً دوباره تلاش کنید.",
+            "current_node_name": "confirm_delete_reminder_node"
+        }
+    finally:
+        db.close()
+
 async def handle_intent_node(state: AgentState) -> Dict[str, Any]:
     """Handles the determined intent, e.g., fetching reminders, preparing help message."""
     current_intent = state.get("current_intent")
@@ -881,13 +1003,17 @@ async def handle_intent_node(state: AgentState) -> Dict[str, Any]:
                         buttons.append([{"text": "صفحه قبل ⬅️", "callback_data": f"view_reminders:page:{page-1}"}])
                     response_keyboard_markup = {"type": "InlineKeyboardMarkup", "inline_keyboard": buttons} if buttons else None
                 else:
-                    reminder_list_str = f"یادآورهای فعال شما (صفحه {to_persian_numerals(str(page))} از {to_persian_numerals(str((total_reminders_count + page_size - 1) // page_size))}):\\n\\n"
-                    for reminder in reminders:
+                    reminder_list_items_text = []
+                    action_buttons = [] # For delete buttons
+
+                    reminder_list_header = f"یادآورهای فعال شما (صفحه {to_persian_numerals(str(page))} از {to_persian_numerals(str((total_reminders_count + page_size - 1) // page_size))}):\n\n"
+                    
+                    for i, reminder in enumerate(reminders):
                         try:
                             gregorian_dt = reminder.gregorian_datetime
                             if not gregorian_dt:
-                                logger.warning(f"Could not convert Jalali to Gregorian for reminder ID {reminder.id}. Skipping display of this reminder.")
-                                reminder_list_str += f"⚠️ اطلاعات تاریخ و زمان برای یادآور با شناسه {reminder.id} نامعتبر است.\\n--------------------\\n"
+                                logger.warning(f"Could not convert Jalali to Gregorian for reminder ID {reminder.id}. Skipping display.")
+                                reminder_list_items_text.append(f"⚠️ اطلاعات تاریخ و زمان برای یادآور با شناسه {reminder.id} نامعتبر است.")
                                 continue
                             
                             tehran_tz = pytz.timezone('Asia/Tehran')
@@ -897,35 +1023,55 @@ async def handle_intent_node(state: AgentState) -> Dict[str, Any]:
                             time_str_display = aware_tehran_dt.strftime('%H:%M')
                             day_name = get_persian_day_name(aware_tehran_dt.weekday())
                             
-                            reminder_list_str += (
-                                f"📝 **یادآور**: {reminder.task}\\n"
-                                f"⏰ **زمان**: {day_name}، {jalali_date_str_display}، ساعت {to_persian_numerals(time_str_display)}\\n"
-                                f"🆔 `{reminder.id}` (/del_{reminder.id} برای حذف)\\n"
-                                "--------------------\\n"
+                            task_preview = reminder.task[:40] + "..." if len(reminder.task) > 40 else reminder.task
+
+                            reminder_item_text = (
+                                f"📝 **{reminder.task}**\n"
+                                f"⏰ {day_name}، {jalali_date_str_display}، ساعت {to_persian_numerals(time_str_display)}"
+                                # f"\n🆔 `{reminder.id}`" # ID is in callback, maybe not needed in text
                             )
+                            reminder_list_items_text.append(reminder_item_text)
+                            
+                            # Add a delete button for each reminder
+                            action_buttons.append([
+                                {"text": f"حذف یادآور: «{task_preview}» 🗑️", "callback_data": f"confirm_delete_reminder:{reminder.id}"}
+                            ])
                         except Exception as e:
                             logger.error(f"Error formatting reminder ID {reminder.id} for display: {e}", exc_info=True)
+                            reminder_list_items_text.append(f"⚠️ خطای نمایشی برای یادآور با شناسه {reminder.id}")
                     
-                    response_text = reminder_list_str.strip()
-                    
-                    buttons = []
-                    row = []
+                    response_text = reminder_list_header + "\n\n--------------------\n\n".join(reminder_list_items_text)
+                    if not reminder_list_items_text:
+                        response_text = reminder_list_header + "موردی برای نمایش در این صفحه نیست."
+
+                    # Pagination buttons
+                    pagination_row = []
                     if page > 1:
-                        row.append({"text": "صفحه قبل ⬅️", "callback_data": f"view_reminders:page:{page-1}"})
+                        pagination_row.append({"text": "صفحه قبل ⬅️", "callback_data": f"view_reminders:page:{page-1}"})
                     if total_reminders_count > page * page_size:
-                        row.append({"text": "➡️ صفحه بعد", "callback_data": f"view_reminders:page:{page+1}"})
-                    if row:
-                        buttons.append(row)
-                    response_keyboard_markup = {"type": "InlineKeyboardMarkup", "inline_keyboard": buttons} if buttons else None
+                        pagination_row.append({"text": "➡️ صفحه بعد", "callback_data": f"view_reminders:page:{page+1}"})
+                    
+                    if pagination_row:
+                        action_buttons.append(pagination_row)
+
+                    if action_buttons:
+                        response_keyboard_markup = {"type": "InlineKeyboardMarkup", "inline_keyboard": action_buttons}
+                    else:
+                        response_keyboard_markup = None
         except Exception as e:
             logger.error(f"Error fetching reminders for user {user_id}: {e}", exc_info=True)
             response_text = "خطا در دریافت لیست یادآورها. لطفاً دوباره تلاش کنید."
         finally:
             db.close()
 
-    elif current_intent == "intent_delete_reminder":
-        # ... (existing delete logic remains the same)
-        reminder_id_to_delete = extracted_parameters.get("reminder_id")
+    elif current_intent == "intent_delete_reminder" or current_intent == "intent_delete_reminder_confirmed":
+        reminder_id_to_delete = None
+        if current_intent == "intent_delete_reminder": # from /del_ command
+            reminder_id_to_delete = extracted_parameters.get("reminder_id") 
+        elif current_intent == "intent_delete_reminder_confirmed": # from confirmation callback
+            reminder_id_to_delete = extracted_parameters.get("reminder_id_to_delete")
+            logger.info(f"handle_intent_node: Processing confirmed deletion for reminder ID {reminder_id_to_delete} from callback for user {user_id}.")
+
         delete_status = "unknown"
         deleted_task_name = ""
 
@@ -974,7 +1120,8 @@ async def handle_intent_node(state: AgentState) -> Dict[str, Any]:
             response_text = "خطا در حذف یادآور. لطفاً دوباره تلاش کنید."
         
         logger.info(f"handle_intent_node: Delete reminder status for user {user_id}, reminder ID {reminder_id_to_delete}: {delete_status}")
-        
+        updated_state_dict["current_operation_status"] = None # Clear status after handling delete
+
     # This elif block for intent_create_reminder_confirmed can be simplified or removed
     # as the response_text is now handled by the logic at the beginning of the function
     # if the "تمومه! 🎉" message was found in the state.
@@ -989,6 +1136,13 @@ async def handle_intent_node(state: AgentState) -> Dict[str, Any]:
         # The response_text for this was already set at the beginning of the function
         # from response_text_from_state, which determine_intent_node had set.
         logger.info(f"handle_intent_node: Reminder creation cancelled by user {user_id}. Response: '{response_text}'")
+
+    elif current_intent == "intent_delete_reminder_cancelled":
+        # Response text is set by determine_intent_node for this case.
+        # We just need to ensure it's passed through.
+        response_text = response_text_from_state or "عملیات حذف لغو شد."
+        logger.info(f"handle_intent_node: Reminder deletion cancelled by user {user_id}. Response: '{response_text}'")
+        updated_state_dict["current_operation_status"] = None # Clear any related status
 
     elif current_intent == "unknown_intent":
         if response_text_from_state and response_text == default_response_text : # If determine_intent_node already set a specific error
