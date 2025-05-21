@@ -20,7 +20,7 @@ from sqlalchemy.orm import Session
 # Assuming config.py defines necessary constants like MSG_HELP, etc.
 # and settings are imported from config.config
 from config.config import settings # For settings like API keys, PAYMENT_AMOUNT
-from config.config import MSG_ERROR_GENERIC, MSG_WELCOME, MSG_HELP, MSG_PRIVACY_POLICY # Import all needed messages
+from config.config import MSG_ERROR_GENERIC, MSG_WELCOME, MSG_PRIVACY_POLICY # Import all needed messages
 # It's recommended to move message constants to a dedicated config/messages.py or include them in config.config.py
 
 from .database import init_db, get_db
@@ -195,35 +195,6 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     )
     await _handle_graph_invocation(update, context, initial_state, is_start_command=True) # Pass is_start_command=True
     log_memory_usage(f"after start_command for user {user_id}")
-
-async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if not update.message or not update.effective_user or not update.effective_chat:
-        logger.warning("help_command received an update without message, user or chat.")
-        return
-
-    user_id = update.effective_user.id
-    chat_id = update.effective_chat.id
-    command_text = update.message.text
-
-    initial_state = AgentState(
-        user_id=user_id,
-        chat_id=chat_id,
-        input_text=command_text,
-        message_type="command",
-        user_telegram_details = {
-            "username": update.effective_user.username,
-            "first_name": update.effective_user.first_name,
-            "last_name": update.effective_user.last_name,
-            "language_code": update.effective_user.language_code
-        },
-        transcribed_text=None, conversation_history=[], current_intent=None,
-        extracted_parameters={}, nlu_direct_output=None, reminder_creation_context={},
-        reminder_filters={}, active_reminders_page=0, payment_context={},
-        user_profile=None, current_operation_status=None, response_text=None,
-        response_keyboard_markup=None, error_message=None, messages=[]
-    )
-    await _handle_graph_invocation(update, context, initial_state)
-    log_memory_usage(f"after help_command for user {user_id}")
 
 async def payment_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.message or not update.effective_user or not update.effective_chat:
@@ -622,7 +593,7 @@ def main() -> None:
     application = Application.builder().token(settings.TELEGRAM_BOT_TOKEN).build()
 
     application.add_handler(CommandHandler("start", start_command))
-    application.add_handler(CommandHandler("help", help_command))
+    # application.add_handler(CommandHandler("help", help_command)) # Help is handled by graph or direct message
     application.add_handler(CommandHandler("pay", payment_command))
     application.add_handler(CommandHandler("privacy", privacy_command))
     # Temporarily commented out undefined handlers

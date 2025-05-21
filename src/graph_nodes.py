@@ -297,7 +297,7 @@ async def determine_intent_node(state: AgentState) -> Dict[str, Any]:
     return {
         "current_intent": "unknown_intent", 
         "extracted_parameters": {"input_was": input_text}, 
-        "response_text": f"متاسفانه منظور شما از «{input_text}» را متوجه نشدم. برای راهنمایی /help را ارسال کنید.",
+        "response_text": f"متاسفانه منظور شما از «{input_text}» را متوجه نشدم. لطفاً واضح‌تر بگویید.",
         "current_node_name": "determine_intent_node",
         "reminder_creation_context": current_reminder_creation_context
     }
@@ -931,7 +931,7 @@ async def handle_intent_node(state: AgentState) -> Dict[str, Any]:
     current_operation_status = state.get("current_operation_status") 
     logger.info(f"Graph: Entered handle_intent_node for user {user_id}, intent: {current_intent}, params: {extracted_parameters}, status: {current_operation_status}")
 
-    # Default response text
+    # Default response text - updated to remove /help
     default_response_text = "کاری که از من خواستید را متوجه نشدم. لطفاً واضح‌تر بگویید."
     
     # Try to get response_text from the state, which might have been set by a previous node (like create_reminder_node)
@@ -1150,7 +1150,7 @@ async def handle_intent_node(state: AgentState) -> Dict[str, Any]:
         else: # Ensure our new default_response_text is used if no specific error was set by determine_intent_node
             response_text = default_response_text
 
-        logger.info(f"handle_intent_node: Handling unknown_intent for user {user_id}. Input was: '{state.get('extracted_parameters', {}).get('input_was', 'N/A')}'. Response: '{response_text}'")
+        logger.info(f"handle_intent_node: Handling unknown_intent for user {user_id}. Input was: '{state.get('input_text', 'N/A')}'. Response: '{response_text}'")
 
     elif current_intent == "intent_show_payment_options":
         logger.info(f"handle_intent_node: Showing payment options for user {user_id}")
