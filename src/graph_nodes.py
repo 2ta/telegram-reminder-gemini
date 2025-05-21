@@ -1,31 +1,41 @@
+"""
+LangGraph nodes for the Turkish Telegram Reminder Bot.
+Each node is an async function that receives and returns a state.
+"""
+
+from typing import Dict, Any, List, Optional, Tuple, Set, Union
 import logging
-from typing import Dict, Any, Optional
-import json
-import google.generativeai as genai
+import uuid
+import re
 import datetime
+import os
 import pytz
+import time
+import random
+import json
+from calendar import monthrange
 import jdatetime
-import urllib.parse
-import uuid 
-from sqlalchemy import func, or_
-
-# Import our Persian formatting utilities
-from src.persian_utils import to_persian_numerals, get_persian_day_name, get_persian_month_name, format_jalali_date
-
-from src.graph_state import AgentState
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langgraph.graph import END
-from langchain_core.messages import AIMessage
-from config.config import settings, MSG_WELCOME, MSG_REMINDER_SET
-from src.datetime_utils import parse_persian_datetime_to_utc, resolve_persian_date_phrase_to_range
-from src.models import Reminder, User, SubscriptionTier
-from src.database import get_db
 from sqlalchemy.orm import Session
+from sqlalchemy import func
+
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+from langchain_core.messages import AIMessage
+
+# Local imports
+from src.graph_state import AgentState
+from src.models import User, Reminder, UserPreference, SubscriptionTier
+from src.database import get_db, create_reminder
+from src.config import config as settings
+from src.parsers.date_parser import parse_time_in_iranian_context
+from src.persian_utils import get_persian_day_name, get_persian_month_name, to_persian_numerals
+from src.constants import MSG_LIST_HEADER_WITH_FILTERS, MSG_LIST_EMPTY_WITH_FILTERS, MSG_WELCOME
+from src.datetime_utils import parse_persian_datetime_to_utc, resolve_persian_date_phrase_to_range
+import urllib.parse
+
+logger = logging.getLogger(__name__)
 
 # Global cache for pending reminder details before confirmation
 PENDING_REMINDER_CONFIRMATIONS: Dict[str, Dict[str, Any]] = {}
-
-logger = logging.getLogger(__name__)
 
 async def entry_node(state: AgentState) -> Dict[str, Any]:
     """Node that processes the initial input and determines message type."""
@@ -279,7 +289,7 @@ async def execute_start_command_node(state: AgentState) -> Dict[str, Any]:
 
     db: Session = next(get_db())
     try:
-        user_obj = db.query(User).filter(User.user_id == user_id).first()
+        user_obj = db.query(User).filter(User.telegram_id == user_id).first()
 
         if not user_obj:
             logger.info(f"User {user_id} not found. Creating new user.")
@@ -853,6 +863,56 @@ async def handle_intent_node(state: AgentState) -> Dict[str, Any]:
         # This intent implies the start of a creation process, not a confirmation/cancellation outcome handled above.
         response_text = "لطفاً بگویید چه چیزی را و برای کی می‌خواهید یادآوری کنم."
 
+    elif current_intent == "intent_start":
+        # Handle /start command as a fallback in case it's not handled by execute_start_command_node
+        logger.info(f"Handling /start command in handle_intent_node for user {user_id}")
+        
+        # Create welcome keyboard
+        welcome_keyboard = {
+            "type": "InlineKeyboardMarkup",
+            "inline_keyboard": [
+                [{"text": "یادآورهای من 📝", "callback_data": "view_reminders:page:1"}, {"text": "راهنما ❓", "callback_data": "trigger_help_intent"}],
+                [{"text": "تهیه اشتراک ویژه 👑", "callback_data": "show_subscription_options"}]
+            ]
+        }
+        
+        response_text = settings.MSG_WELCOME
+        response_keyboard_markup = welcome_keyboard
+        
+        # Try to create the user if they don't exist yet
+        if not user_profile or not user_profile.get("user_db_id"):
+            logger.info(f"Attempting to create new user {user_id} from handle_intent_node")
+            chat_id = state.get("chat_id")
+            user_telegram_details = state.get("user_telegram_details", {})
+            
+            if chat_id:
+                db: Session = next(get_db())
+                try:
+                    # Check if user exists
+                    user_obj = db.query(User).filter(User.telegram_id == user_id).first()
+                    
+                    if not user_obj:
+                        # Create new user
+                        user_obj = User(
+                            telegram_id=user_id,
+                            chat_id=chat_id,
+                            username=user_telegram_details.get("username"),
+                            first_name=user_telegram_details.get("first_name", "User"),
+                            last_name=user_telegram_details.get("last_name"),
+                            language_code=user_telegram_details.get("language_code", "fa")
+                        )
+                        db.add(user_obj)
+                        db.commit()
+                        logger.info(f"Created new user {user_id} from handle_intent_node")
+                    else:
+                        logger.info(f"User {user_id} already exists, not creating")
+                except Exception as e:
+                    logger.error(f"Error creating user in handle_intent_node: {e}")
+                    db.rollback()
+                finally:
+                    db.close()
+        
+
     elif current_intent == "intent_view_reminders":
         if not user_profile or not user_profile.get("user_db_id"):
             logger.warning(f"User profile or user_db_id missing for viewing reminders (user: {user_id}).")
@@ -957,7 +1017,7 @@ async def handle_intent_node(state: AgentState) -> Dict[str, Any]:
                 response_text = "خطایی در دریافت لیست یادآورهای شما رخ داد."
             finally:
                 db.close()
-            
+
     elif current_intent == "intent_delete_reminder":
         response_text = "لطفاً بگویید کد یادآوری که می‌خواهید حذف کنید را وارد کنید."
 
