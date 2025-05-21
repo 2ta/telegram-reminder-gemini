@@ -486,7 +486,7 @@ async def validate_and_clarify_reminder_node(state: AgentState) -> Dict[str, Any
             }
 
         return {
-            "reminder_creation_status": "error_limit_exceeded",
+            "current_operation_status": "error_limit_exceeded", # MODIFIED KEY
             "response_text": response_text,
             "response_keyboard_markup": limit_exceeded_keyboard,
             "current_node_name": "validate_and_clarify_reminder_node",
@@ -539,7 +539,7 @@ async def validate_and_clarify_reminder_node(state: AgentState) -> Dict[str, Any
     logger.info(f"validate_and_clarify_reminder_node returning with reminder_creation_context.status: '{new_reminder_creation_status}'")
     return {
         "reminder_creation_context": reminder_ctx, # The status is also inside this dict
-        "reminder_creation_status": new_reminder_creation_status, # Explicitly return status as a separate field
+        "current_operation_status": new_reminder_creation_status, # MODIFIED KEY (this holds statuses like 'clarification_needed_task', 'ready_for_confirmation')
         "current_node_name": "validate_and_clarify_reminder_node"
     }
 
@@ -672,16 +672,16 @@ async def create_reminder_node(state: AgentState) -> Dict[str, Any]:
             except ValueError:
                 logger.error(f"Could not parse datetime string from context: {parsed_dt_utc_from_ctx}")
                 return {
-                    "reminder_creation_status": "error_invalid_datetime_format_in_context",
+                    "current_operation_status": "error_invalid_datetime_format_in_context", # MODIFIED KEY
                     "response_text": "خطا: فرمت تاریخ و زمان ذخیره شده نامعتبر است.",
                     "current_node_name": "create_reminder_node",
                     "reminder_creation_context": reminder_ctx,
                     "pending_confirmation": None
                 }
         else:
-            logger.error(f"Invalid datetime in context for user {user_id}. Task: {task}, DT: {parsed_dt_utc_from_ctx} (type: {type(parsed_dt_utc_from_ctx)})")
+            logger.error(f"Invalid datetime in context for user {user_id}. Task: {task}, DT: {parsed_dt_utc_from_ctx} (type: {type(parsed_dt_utc_from_ctx)}) ")
             return {
-                "reminder_creation_status": "error_missing_details",
+                "current_operation_status": "error_missing_details", # MODIFIED KEY
                 "response_text": "خطا: اطلاعات یادآور ناقص یا نامعتبر است.",
                 "current_node_name": "create_reminder_node",
                 "reminder_creation_context": reminder_ctx,
@@ -694,7 +694,7 @@ async def create_reminder_node(state: AgentState) -> Dict[str, Any]:
     if not task or not parsed_dt_utc:
         logger.error(f"Missing task or datetime for user {user_id} in create_reminder_node. Task: {task}, DT: {parsed_dt_utc}")
         return {
-            "reminder_creation_status": "error_missing_details",
+            "current_operation_status": "error_missing_details", # MODIFIED KEY
             "response_text": "خطا: اطلاعات یادآور برای ایجاد ناقص است.",
             "current_node_name": "create_reminder_node",
             "reminder_creation_context": reminder_ctx, # Pass context
@@ -714,14 +714,14 @@ async def create_reminder_node(state: AgentState) -> Dict[str, Any]:
                 logger.info(f"Successfully re-loaded user_db_id: {user_db_obj_temp.id} for user {user_id}")
             else:
                 logger.error(f"Failed to find user {user_id} in DB during create_reminder_node.")
-                return {"reminder_creation_status": "error_user_not_found", "response_text": "خطا: کاربر برای ایجاد یادآور یافت نشد.", "current_node_name": "create_reminder_node", "pending_confirmation": None}
+                return {"current_operation_status": "error_user_not_found", "response_text": "خطا: کاربر برای ایجاد یادآور یافت نشد.", "current_node_name": "create_reminder_node", "pending_confirmation": None} # MODIFIED KEY
         finally:
             db_temp.close()
     
     user_db_id = user_profile.get("user_db_id")
     if not user_db_id: # Should not happen if above logic works
         logger.error(f"Critical: user_db_id still missing for user {user_id} before DB operation.")
-        return {"reminder_creation_status": "error_internal_user_id_missing", "response_text": "خطای داخلی: شناسه کاربر موجود نیست.", "current_node_name": "create_reminder_node", "pending_confirmation": None}
+        return {"current_operation_status": "error_internal_user_id_missing", "response_text": "خطای داخلی: شناسه کاربر موجود نیست.", "current_node_name": "create_reminder_node", "pending_confirmation": None} # MODIFIED KEY
 
 
     # Reminder Limit Check (re-check here as a safeguard, though validate_and_clarify should handle it)
@@ -783,7 +783,7 @@ async def create_reminder_node(state: AgentState) -> Dict[str, Any]:
         logger.info(f"Reminder successfully set. Task: {task}, Persian Time: {formatted_datetime_for_log}")
 
         return {
-            "reminder_creation_status": "success",
+            "current_operation_status": "success", # MODIFIED KEY
             "response_text": response_message,
             "user_profile": user_profile, # Pass updated profile
             "current_node_name": "create_reminder_node",
@@ -794,7 +794,7 @@ async def create_reminder_node(state: AgentState) -> Dict[str, Any]:
         logger.error(f"Error creating reminder in DB for user {user_id}: {e}", exc_info=True)
         db.rollback()
         return {
-            "reminder_creation_status": "error_db_create",
+            "current_operation_status": "error_db_create", # MODIFIED KEY
             "response_text": "متاسفانه در ایجاد یادآور شما در پایگاه داده خطایی رخ داد.",
             "current_node_name": "create_reminder_node",
             "reminder_creation_context": reminder_ctx, # Keep context for potential retry/debug
