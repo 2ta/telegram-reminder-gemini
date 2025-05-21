@@ -279,7 +279,7 @@ async def execute_start_command_node(state: AgentState) -> Dict[str, Any]:
 
     db: Session = next(get_db())
     try:
-        user_obj = db.query(User).filter(User.user_id == user_id).first()
+        user_obj = db.query(User).filter(User.telegram_id == user_id).first()
 
         if not user_obj:
             logger.info(f"User {user_id} not found. Creating new user.")
@@ -290,7 +290,6 @@ async def execute_start_command_node(state: AgentState) -> Dict[str, Any]:
             
             user_obj = User(
                 telegram_id=user_id,
-                chat_id=chat_id,
                 username=user_telegram_details.get("username"),
                 first_name=user_telegram_details.get("first_name"),
                 last_name=user_telegram_details.get("last_name"),
@@ -316,9 +315,6 @@ async def execute_start_command_node(state: AgentState) -> Dict[str, Any]:
             logger.info(f"User {user_id} found. Updating details if necessary.")
             # Update chat_id and other details if they might change
             needs_commit = False
-            if user_obj.chat_id != chat_id:
-                user_obj.chat_id = chat_id
-                needs_commit = True
             if user_telegram_details:
                 if user_obj.username != user_telegram_details.get("username"):
                     user_obj.username = user_telegram_details.get("username")
