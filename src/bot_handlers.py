@@ -1,7 +1,9 @@
 import logging
+import asyncio
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import ContextTypes, CommandHandler, MessageHandler, filters
-from langgraph.graph.message import HumanMessage # For message history
+from langchain_core.messages import HumanMessage # For message history
+from typing import Dict, Any
 
 from config.config import settings
 from src.database import get_db
@@ -44,8 +46,8 @@ def get_or_create_user(telegram_user_id: int, first_name: str, last_name: str = 
     return user
 
 # --- Graph Invocation ---
-async def invoke_graph_with_input(input_text: str, user_id: int, message_type: str) -> str:
-    """Invokes the LangGraph app with the given input and returns the response."""
+async def invoke_graph_with_input(input_text: str, user_id: int, message_type: str) -> Dict[str, Any]:
+    """Invokes the LangGraph app with the given input and returns the response text and keyboard markup."""
     logger.info(f"Invoking graph for user_id {user_id}, type '{message_type}', input: '{input_text}'")
     
     # Configuration for the graph invocation, using user_id as thread_id for conversation memory
@@ -56,35 +58,28 @@ async def invoke_graph_with_input(input_text: str, user_id: int, message_type: s
         "input_text": input_text,
         "user_id": user_id,
         "message_type": message_type,
-        "messages": [HumanMessage(content=input_text)] # Add current message to history
+        "messages": [HumanMessage(content=input_text)], # Add current message to history
+        "chat_id": user_id  # Setting chat_id = user_id for private chats
     }
     
     try:
-        # Asynchronously invoke the graph
-        # Note: lang_graph_app.ainvoke might be available in newer LangGraph versions for true async node execution
-        # For now, if graph nodes are async, ainvoke should handle it. If nodes are sync, this will run them in executor.
-        # If lang_graph_app itself is not async-native for invoke, we might need to run it in an executor.
-        # For now, assuming lang_graph_app.invoke can be awaited if the underlying execution is async.
-        # Let's assume a standard invoke and handle async execution within nodes if necessary, or use `run_in_executor` for the whole invoke call.
-        # Correction: graph.invoke is synchronous. Use `app.ainvoke` if available and nodes are async.
-        # If nodes are async, StateGraph handles running them in an event loop.
-        # SqliteSaver is sync, so ainvoke might have issues with it if not handled by LangGraph.
-        # Let's use ainvoke and ensure a new event loop if needed or rely on PTB's loop.
-
-        # Using app.invoke for now as it's standard. If performance issues arise, look into ainvoke or running invoke in thread.
-        # final_state = await asyncio.to_thread(lang_graph_app.invoke, graph_input, config=config) # Example for sync invoke in async
-        
-        # PTB runs handlers in its own asyncio loop. Langchain graph.invoke is sync.
-        # To avoid blocking PTB's loop, run sync LangGraph invoke in a separate thread.
-        loop = asyncio.get_event_loop()
-        final_state = await loop.run_in_executor(None, lang_graph_app.invoke, graph_input, config=config)
+        # Since all graph nodes are defined as async functions, we need to use ainvoke
+        final_state = await lang_graph_app.ainvoke(graph_input, config=config)
 
         response_text = final_state.get("response_text", "متاسفانه پاسخی دریافت نشد.")
-        logger.info(f"Graph for user_id {user_id} responded: '{response_text}'")
-        return response_text
+        response_keyboard_markup = final_state.get("response_keyboard_markup") # Can be None
+        
+        logger.info(f"Graph for user_id {user_id} responded with text: '{response_text}' and keyboard: {bool(response_keyboard_markup)}")
+        return {"text": response_text, "keyboard_markup": response_keyboard_markup}
+    except KeyError as e:
+        logger.error(f"KeyError in LangGraph for user_id {user_id}: {e}", exc_info=True)
+        return {"text": f"خطا در پردازش: اطلاعات لازم '{e}' برای پردازش یافت نشد.", "keyboard_markup": None}
+    except ValueError as e:
+        logger.error(f"ValueError in LangGraph for user_id {user_id}: {e}", exc_info=True)
+        return {"text": f"خطا در مقادیر ورودی: {str(e)}", "keyboard_markup": None}
     except Exception as e:
         logger.error(f"Error invoking LangGraph for user_id {user_id}: {e}", exc_info=True)
-        return "متاسفانه در پردازش درخواست شما از طریق گراف خطایی رخ داد."
+        return {"text": "متاسفانه در پردازش درخواست شما از طریق گراف خطایی رخ داد. لطفا با دستور /start مجددا شروع کنید.", "keyboard_markup": None}
 
 # --- Command Handlers ---
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -143,12 +138,21 @@ async def privacy_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 async def generic_message_processor(update: Update, context: ContextTypes.DEFAULT_TYPE, input_text: str, message_type: str) -> None:
     """Generic processor for text and transcribed voice messages using LangGraph."""
     user = update.effective_user
-    db_user = get_or_create_user(telegram_id=user.id, first_name=user.first_name, last_name=user.last_name, username=user.username, language_code=user.language_code)
+    db_user = get_or_create_user(telegram_user_id=user.id, first_name=user.first_name, last_name=user.last_name, username=user.username, language_code=user.language_code)
     
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
     
-    response_from_graph = await invoke_graph_with_input(input_text, db_user.id, message_type)
-    await update.message.reply_text(response_from_graph)
+    response_data = await invoke_graph_with_input(input_text, db_user.id, message_type)
+    response_text = response_data.get("text", "خطایی رخ داده است.")
+    keyboard_markup = response_data.get("keyboard_markup") # This can be None
+    
+    # The python-telegram-bot library expects an InlineKeyboardMarkup object or None
+    # The graph currently passes a dict representation. We need to convert it.
+    # However, for now, let's assume the library can handle the dict if it's structured correctly
+    # as per InlineKeyboardMarkup.to_dict() if it's indeed a dict.
+    # If it fails, we'll need to explicitly create InlineKeyboardMarkup(keyboard_markup["inline_keyboard"]).
+    
+    await update.message.reply_text(response_text, reply_markup=keyboard_markup)
 
 async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handles general text messages by passing them to the LangGraph agent."""

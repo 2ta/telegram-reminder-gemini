@@ -5,7 +5,7 @@ from unittest.mock import patch, MagicMock, AsyncMock
 import datetime as dt # Import for datetime objects
 import pytz
 
-from langgraph.graph.message import HumanMessage, AIMessage
+from langchain_core.messages import HumanMessage, AIMessage
 
 from src.graph_state import AgentState
 from src.graph import create_graph # Import the factory function

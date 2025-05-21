@@ -1,7 +1,12 @@
 import logging
 import sys
 from logging.handlers import RotatingFileHandler
-from config.config import LOG_LEVEL, LOG_FILE_PATH, LOG_FILE_MAX_BYTES, LOG_FILE_BACKUP_COUNT
+from config.config import settings
+
+LOG_LEVEL = settings.LOG_LEVEL
+LOG_FILE_PATH = settings.LOG_FILE_PATH
+LOG_FILE_MAX_BYTES = settings.LOG_FILE_MAX_BYTES
+LOG_FILE_BACKUP_COUNT = settings.LOG_FILE_BACKUP_COUNT
 
 def setup_logging():
     """Configures logging for the application."""

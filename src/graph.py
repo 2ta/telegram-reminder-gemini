@@ -15,7 +15,8 @@ from src.graph_nodes import (
     confirm_reminder_details_node,
     create_reminder_node,
     handle_intent_node,
-    format_response_node
+    format_response_node,
+    execute_start_command_node
 )
 
 logger = logging.getLogger(__name__)
@@ -35,6 +36,8 @@ def route_after_intent_determination(state: AgentState):
     elif intent == "intent_create_reminder_cancelled":
         # When user cancels, clean up context and send to handle_intent_node for cancellation msg
         return "handle_intent_node"
+    elif intent == "intent_start":
+        return "execute_start_command_node" # Route /start command to proper handler
 
     # All other intents go to handle_intent_node
     logger.info(f"Routing '{intent}' to handle_intent_node.")
@@ -76,6 +79,7 @@ def create_graph():
     workflow.add_node("create_reminder_node", create_reminder_node)   # Updated node
     workflow.add_node("handle_intent_node", handle_intent_node)     # Updated node
     workflow.add_node("format_response_node", format_response_node)
+    workflow.add_node("execute_start_command_node", execute_start_command_node) # Start command handler
 
     # Set entry point
     workflow.set_entry_point("entry_node")
@@ -91,7 +95,8 @@ def create_graph():
         {
             "process_datetime_node": "process_datetime_node", # For intent_create_reminder
             "create_reminder_node": "create_reminder_node",   # For intent_create_reminder_confirmed
-            "handle_intent_node": "handle_intent_node"      # For all other intents, cancellations, or direct responses
+            "handle_intent_node": "handle_intent_node",     # For all other intents, cancellations, or direct responses
+            "execute_start_command_node": "execute_start_command_node" # For intent_start
         }
     )
 
@@ -118,6 +123,9 @@ def create_graph():
     # Final response formatting and end
     workflow.add_edge("handle_intent_node", "format_response_node")
     workflow.add_edge("format_response_node", END)
+    
+    # Add edge from execute_start_command_node to format_response_node
+    workflow.add_edge("execute_start_command_node", "format_response_node")
 
     # For now, let's compile without a checkpointer to at least make the bot functional
     # We can add a proper checkpointer later when we have more time to debug the issue

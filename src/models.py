@@ -3,6 +3,7 @@ from sqlalchemy.orm import relationship, declarative_base
 from sqlalchemy.sql import func
 import enum
 import jdatetime
+from datetime import datetime, timezone
 
 Base = declarative_base()
 
@@ -10,6 +11,9 @@ class SubscriptionTier(enum.Enum):
     FREE = "FREE"
     STANDARD = "STANDARD"
     PREMIUM = "PREMIUM"
+
+    def __str__(self):
+        return self.value
 
 class BaseModel(Base):
     __abstract__ = True
@@ -28,8 +32,11 @@ class User(BaseModel):
     subscription_tier = Column(SAEnum(SubscriptionTier), default=SubscriptionTier.FREE)
     subscription_expiry = Column(DateTime(timezone=True), nullable=True)
     reminder_count = Column(Integer, default=0)
+    chat_id = Column(Integer, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
-    reminders = relationship("Reminder", back_populates="user")
+    reminders = relationship("Reminder", back_populates="user", cascade="all, delete-orphan")
 
     def __repr__(self):
         return f"<User(id={self.id}, telegram_id={self.telegram_id}, username='{self.username}')>"
@@ -39,13 +46,15 @@ class Reminder(BaseModel):
 
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     task = Column(String, nullable=False)
-    # Store Jalali date as a string for now, will need careful handling for queries
-    # Alternatively, store as Gregorian and convert, or store components
-    jalali_date_str = Column(String, nullable=False) # e.g., "1403-05-15"
-    time_str = Column(String, nullable=False) # e.g., "14:30"
+    jalali_date_str = Column(String, nullable=True)
+    time_str = Column(String, nullable=True)
+    due_datetime_utc = Column(DateTime, nullable=True)
+    recurrence_rule = Column(String, nullable=True)
     is_active = Column(Boolean, default=True)
     is_notified = Column(Boolean, default=False)
     notification_sent_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
     user = relationship("User", back_populates="reminders")
 

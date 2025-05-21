@@ -1,5 +1,6 @@
 import logging
 import os
+import sys
 import tempfile
 import datetime
 import pytz
@@ -28,6 +29,13 @@ from .models import Reminder, User
 from .payment import create_payment_link, verify_payment, is_user_premium, PaymentStatus, ZibalPaymentError
 
 # Import the LangGraph app
+# Force reload all our modules to ensure changes are picked up
+import importlib
+if 'src.graph_nodes' in sys.modules:
+    importlib.reload(sys.modules['src.graph_nodes'])
+if 'src.graph' in sys.modules:
+    importlib.reload(sys.modules['src.graph'])
+
 from .graph import lang_graph_app
 from .graph_state import AgentState # For type hinting initial state
 
@@ -108,32 +116,41 @@ async def _handle_graph_invocation(
         
         reply_markup = None
         if response_keyboard_markup_dict:
+            logger.info(f"Processing keyboard markup: {response_keyboard_markup_dict}")
             if response_keyboard_markup_dict.get("type") == "InlineKeyboardMarkup":
                 buttons = []
                 for row_data in response_keyboard_markup_dict.get("inline_keyboard", []):
                     button_row = []
                     for btn_data in row_data:
+                        logger.info(f"Processing button: {btn_data}")
                         if btn_data.get("web_app"):
                             button_row.append(InlineKeyboardButton(text=btn_data.get("text"), web_app=WebAppInfo(url=btn_data.get("web_app").get("url"))))
                         else:
                             button_row.append(InlineKeyboardButton(text=btn_data.get("text"), callback_data=btn_data.get("callback_data"), url=btn_data.get("url")))
                     buttons.append(button_row)
                 if buttons:
+                    logger.info(f"Created InlineKeyboardMarkup with buttons: {buttons}")
                     reply_markup = InlineKeyboardMarkup(buttons)
+                else:
+                    logger.warning("No buttons were created from the markup data")
             elif response_keyboard_markup_dict.get("type") == "ReplyKeyboardMarkup":
                 buttons = []
                 for row_data in response_keyboard_markup_dict.get("keyboard", []):
                     button_row = [btn.get("text") for btn in row_data] 
                     buttons.append(button_row)
                 if buttons:
+                    logger.info(f"Created ReplyKeyboardMarkup with buttons: {buttons}")
                     reply_markup = ReplyKeyboardMarkup(
                         buttons, 
                         resize_keyboard=response_keyboard_markup_dict.get("resize_keyboard", True),
                         one_time_keyboard=response_keyboard_markup_dict.get("one_time_keyboard", False)
                     )
+                else:
+                    logger.warning("No buttons were created from the markup data")
         
         if response_text:
             if is_callback and action_to_take == "edit" and target_message_id:
+                logger.info(f"Editing message with markup: {reply_markup is not None}")
                 await context.bot.edit_message_text(
                     chat_id=response_target.chat_id,
                     message_id=target_message_id,
@@ -143,8 +160,10 @@ async def _handle_graph_invocation(
             elif is_callback and action_to_take == "delete" and target_message_id:
                 await context.bot.delete_message(chat_id=response_target.chat_id, message_id=target_message_id)
                 if response_text != "" and response_text is not None: # Send if confirmation text for deletion
+                    logger.info(f"Sending message after deletion with markup: {reply_markup is not None}")
                     await context.bot.send_message(chat_id=response_target.chat_id, text=response_text, reply_markup=reply_markup)
             else: # Default to sending a new message
+                logger.info(f"Sending new message with markup: {reply_markup is not None}")
                 await response_target.reply_text(response_text, reply_markup=reply_markup)
         elif not response_text and is_callback and action_to_take == "delete" and target_message_id:
             # If no text but action is delete (e.g. message was deleted and no further text needed)
