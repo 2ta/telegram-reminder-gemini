@@ -742,9 +742,8 @@ async def create_reminder_node(state: AgentState) -> Dict[str, Any]:
         new_reminder = Reminder(
             user_id=user_db_id,  # Use the user's actual DB ID
             task=task,
-            due_datetime_utc=parsed_dt_utc,  # Use the correct field name from the model
-            jalali_date_str=jalali_date_str,  # Add jalali_date_str
-            time_str=time_str,  # Add time_str
+            jalali_date_str=jalali_date_str, 
+            time_str=time_str, 
             is_active=True
         )
         db.add(new_reminder)
