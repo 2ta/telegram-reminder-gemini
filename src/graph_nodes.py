@@ -335,7 +335,6 @@ async def execute_start_command_node(state: AgentState) -> Dict[str, Any]:
         welcome_keyboard = {
             "type": "InlineKeyboardMarkup",
             "inline_keyboard": [
-                [{"text": "یادآورهای من 📝", "callback_data": "view_reminders:page:1"}, {"text": "راهنما ❓", "callback_data": "trigger_help_intent"}],
                 [{"text": "تهیه اشتراک ویژه 👑", "callback_data": "show_subscription_options"}]
             ]
         }
