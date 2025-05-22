@@ -53,10 +53,8 @@ logger = logging.getLogger(__name__)
     AWAITING_TIME_ONLY,        
     AWAITING_AM_PM_CLARIFICATION,
     AWAITING_DELETE_NUMBER_INPUT, 
-    AWAITING_EDIT_FIELD_CHOICE,
-    AWAITING_EDIT_FIELD_VALUE,
     AWAITING_PRIMARY_EVENT_TIME
-) = range(8)
+) = range(6)
 
 # Memory monitoring function
 def log_memory_usage(context_info: str = ""):
@@ -393,62 +391,61 @@ async def save_or_update_reminder_in_db(
     reminder_id_to_update: Optional[int] = None
 ) -> Tuple[Optional[Reminder], Optional[str]]:
     """
-    Saves a new reminder or updates an existing one in the database.
+    Saves a new reminder in the database. Update logic has been removed.
     Now directly fetches the User object using user_id.
     This function is legacy and its logic should be moved to LangGraph nodes.
     For now, it might be called by legacy ConversationHandler states if they are still active.
     """
-    logger.warning("Legacy save_or_update_reminder_in_db called. This logic should be in LangGraph.")
+    logger.warning("Legacy save_or_update_reminder_in_db called. Update logic has been removed. This logic should be in LangGraph.")
     db: Session = next(get_db())
     try:
         # Fetch the User database object using the Telegram user_id
-        user_db_obj = db.query(User).filter(User.user_id == user_id).first()
+        user_db_obj = db.query(User).filter(User.telegram_id == user_id).first()
         if not user_db_obj:
-            logger.error(f"User with telegram_user_id {user_id} not found in DB. Cannot save/update reminder.")
+            logger.error(f"User with telegram_id {user_id} not found in DB. Cannot save reminder.")
             return None, "User not found."
         user_db_id = user_db_obj.id # Get the primary key of the User table
 
         task_description = context_data.get('task_description')
         due_datetime_utc = context_data.get('due_datetime_utc')
-        recurrence_rule = context_data.get('recurrence_rule') # e.g., "daily", "weekly"
+        recurrence_rule = context_data.get('recurrence_rule')
 
         if not task_description or not due_datetime_utc:
             return None, "Task description or due datetime missing."
 
         # Tier limit check - this logic should also be in the graph (load_user_profile_node)
         active_reminder_count = db.query(func.count(Reminder.id)).filter(
-            Reminder.user_db_id == user_db_id, 
+            Reminder.user_id == user_db_id,
             Reminder.is_active == True
         ).scalar() or 0
         
-        max_reminders = settings.MAX_REMINDERS_PREMIUM_TIER if user_db_obj.is_premium else settings.MAX_REMINDERS_FREE_TIER
+        # Ensure subscription_tier is used for premium check
+        is_premium = user_db_obj.subscription_tier == SubscriptionTier.PREMIUM
+        max_reminders = settings.MAX_REMINDERS_PREMIUM_TIER if is_premium else settings.MAX_REMINDERS_FREE_TIER
 
-        if not reminder_id_to_update and active_reminder_count >= max_reminders:
-            return None, MSG_REMINDER_LIMIT_REACHED_FREE if not user_db_obj.is_premium else MSG_REMINDER_LIMIT_REACHED_PREMIUM
+        if active_reminder_count >= max_reminders and not settings.IGNORE_REMINDER_LIMITS:
+            limit_msg_key = "MSG_REMINDER_LIMIT_REACHED_PREMIUM" if is_premium else "MSG_REMINDER_LIMIT_REACHED_FREE"
+            # Fetch the actual message string from settings or config, assuming it's defined there.
+            # For now, returning a generic key. This part needs to align with actual message definitions.
+            # This should ideally be handled by the graph before attempting to save.
+            limit_message = getattr(settings, limit_msg_key, "Reminder limit reached.")
+            if hasattr(settings, limit_msg_key):
+                 limit_message = limit_message.format(limit=max_reminders) # if messages have placeholders
+            return None, limit_message
 
-        if reminder_id_to_update:
-            reminder = db.query(Reminder).filter(Reminder.id == reminder_id_to_update, Reminder.user_db_id == user_db_id).first()
-            if not reminder:
-                return None, "Reminder not found or access denied."
-            reminder.task_description = task_description
-            reminder.due_datetime_utc = due_datetime_utc
-            reminder.recurrence_rule = recurrence_rule
-            reminder.updated_at_utc = datetime.datetime.now(pytz.utc)
-            reminder.is_sent = False # Reset sent status on update
-            logger.info(f"Updated reminder ID {reminder_id_to_update} for user_db_id {user_db_id}")
-        else:
-            reminder = Reminder(
-                user_db_id=user_db_id,
-                telegram_user_id=user_id, # Store original telegram user ID as well
-                chat_id=chat_id,
-                task_description=task_description,
-                due_datetime_utc=due_datetime_utc,
-                recurrence_rule=recurrence_rule,
-                is_active=True,
-                is_sent=False
-            )
-            db.add(reminder)
-            logger.info(f"Created new reminder for user_db_id {user_db_id}")
+        # Always create new reminder as update logic is removed
+        reminder = Reminder(
+            user_id=user_db_id,
+            chat_id=chat_id,
+            task=task_description,
+            jalali_date_str=None,
+            time_str=None,
+            recurrence_rule=recurrence_rule,
+            is_active=True,
+            is_sent=False
+        )
+        db.add(reminder)
+        logger.info(f"New reminder creation attempted (legacy function) for user_db_id {user_db_id}. Task: {task_description}")
         
         db.commit()
         db.refresh(reminder)
