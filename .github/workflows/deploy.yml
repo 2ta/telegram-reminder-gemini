@@ -22,8 +22,36 @@ jobs:
           ssh ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }} "rm -f ${{ secrets.DEPLOY_PATH }}/bot.py ${{ secrets.DEPLOY_PATH }}/database.py ${{ secrets.DEPLOY_PATH }}/nlu.py ${{ secrets.DEPLOY_PATH }}/stt.py ${{ secrets.DEPLOY_PATH }}/utils.py ${{ secrets.DEPLOY_PATH }}/payment.py ${{ secrets.DEPLOY_PATH }}/config.py && mkdir -p ${{ secrets.DEPLOY_PATH }}/src"
 
       - name: Deploy to Server
-        run: |
-          scp -r bot_runner.py requirements.txt telegram-reminder-bot.service config src ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }}:${{ secrets.DEPLOY_PATH }}
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT }}
+          script: |
+            cd ${{ secrets.DEPLOY_PATH }}
+            git pull origin main
+            echo "Coping .env file to server"
+            echo "${{ secrets.ENV_FILE_CONTENT }}" > ${{ secrets.DEPLOY_PATH }}/.env
+            echo "Coping gcp_credentials.json file to server"
+            echo '${{ secrets.GCP_CREDENTIALS_JSON_REMINDER_BOT }}' > ${{ secrets.DEPLOY_PATH }}/gcp_credentials.json
+            echo "Files copied successfully"
+            
+            # Update specific utility files, config and main bot runner, and create src dir if not exists
+            scp -r ${{ github.workspace }}/src/* ${{ secrets.DEPLOY_PATH }}/src/
+            scp ${{ github.workspace }}/config/config.py ${{ github.workspace }}/requirements.txt ${{ github.workspace }}/bot_runner.py ${{ github.workspace }}/start_bot.py ${{ github.workspace }}/utils_kill_processes.py ${{ secrets.DEPLOY_PATH }}/
+            # Removed stt.py from this line:
+            # scp ${{ github.workspace }}/nlu.py ${{ secrets.DEPLOY_PATH }}/stt.py ${{ secrets.DEPLOY_PATH }}/utils.py ${{ secrets.DEPLOY_PATH }}/payment.py ${{ secrets.DEPLOY_PATH }}/config.py && mkdir -p ${{ secrets.DEPLOY_PATH }}/src
+            # The line above seems to be an old scp command that was commented out or mixed up.
+            # The current active scp commands are the two lines above this comment block.
+            # I will ensure stt.py is not in any active scp command.
+            # Based on the structure, individual utility files like nlu.py, utils.py, payment.py should be in the `src` directory or
+            # their paths adjusted if they are meant to be in the root of DEPLOY_PATH.
+            # For now, just ensuring stt.py is not copied.
+
+            echo "Restarting the bot..."
+            pm2 restart telegram-reminder-bot || pm2 start ${{ secrets.DEPLOY_PATH }}/start_bot.py --name telegram-reminder-bot --interpreter python3
+            echo "Deployment finished."
       
       - name: Setup Environment and Install Dependencies
         run: |
