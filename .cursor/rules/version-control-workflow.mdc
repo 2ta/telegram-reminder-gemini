@@ -1,0 +1,32 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+---
+description: Guidelines for committing and pushing code changes.
+alwaysApply: false # Agent Requested or Manual, though commit message format could be 'Always' if desired.
+---
+# Version Control Workflow
+
+## 1. Committing Changes
+- All changes MUST be committed with a clear, descriptive commit message.
+- Commit messages SHOULD follow the **Conventional Commits** format (e.g., `fix: resolve issue with user authentication`, `feat: implement new reminder scheduling logic`).[3]
+- Commit frequently after logical units of work are completed and tested.
+
+## 2. Pushing Code to Repository
+- The target repository for this project is `github.com/2ta/telegram-reminder-gemini/`.
+- **Permission Required**: Before any code is pushed, you MUST explicitly ask for and receive permission from the user.
+- **Guidance for Pushing (Default - User Executes)**:
+    - Once permission is granted, provide the user with the exact Git commands required to push the current branch to the remote repository. For example:
+      ```bash
+      git push origin YOUR_BRANCH_NAME
+      ```
+    - Remind the user to replace `YOUR_BRANCH_NAME` with the actual name of their current working branch.
+- **Regarding YOLO Mode / Direct Execution (Use with Extreme Caution)**:
+    - Direct execution of `git push` commands by the AI is a high-risk operation.
+    - If YOLO mode is enabled and configured to allow Git commands [11, 12]:
+        - The AI must *still* confirm the branch to be pushed and the remote destination.
+        - The AI must list the commits being pushed.
+        - A final "Are you absolutely sure you want to push these changes to `github.com/2ta/telegram-reminder-gemini/`?" confirmation should be sought from the user *before* execution, even in YOLO mode, for this specific sensitive command.
+    - Refer to project-specific YOLO mode configurations if they exist for more detailed permissions.

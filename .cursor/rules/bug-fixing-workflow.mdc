@@ -1,0 +1,38 @@
+---
+description: use when you want to fix bugs 
+globs: 
+alwaysApply: false
+---
+---
+description: Guidelines for debugging, fixing, and testing reported bugs.
+# globs: (Consider adding globs if bug fixing often involves specific file types, e.g., ["*.py"])
+alwaysApply: false # This rule is better as Agent Requested or Manual
+---
+# Bug Fixing Workflow
+## 1. Understand and Plan
+- Upon receiving a bug report, first ensure full understanding of the issue. If unclear, ask for:
+    - Steps to reproduce.
+    - Expected behavior.
+    - Actual behavior observed.
+- Before writing any code, provide a **PLAN** that includes:
+    - Your **OBSERVATIONS** based on the bug report and any initial code review.
+    - Your **REASONING** for the suspected cause.
+    - The proposed **FIX**.
+    - How the fix will be **TESTED**.
+    - [5] Refer to relevant code sections using `@path/to/file.py#L10-L20`.
+
+## 2. Implement the Fix
+- Make minimal necessary changes to address the bug.[4] Avoid unrelated refactoring unless explicitly part of the task.
+- If the fix involves complex logic, consider adding targeted logging statements to help with verification. You can suggest these logs to the user: "To verify this, I've added logging. Please run the application and provide the log output from [specific action/timeframe]." [11]
+
+## 3. Test the Fix
+- After applying the fix, provide clear instructions to the user on how to run the application on their local system to test it. For example: "To test this fix, please run `python main.py --debug_mode` and perform [specific actions related to the bug]."
+- Specify what the user should observe to confirm the bug is resolved.
+- If applicable, and if a test suite exists, guide the user to run relevant tests (e.g., "Run `pytest tests/test_module_affected.py`").
+- If Test-Driven Development (TDD) is preferred for this project, the workflow should be:
+    1. Write a failing test that reproduces the bug.
+    2. Write the minimal code to make the test pass.
+    3. Refactor if necessary, ensuring tests still pass. [11]
+
+## 4. Post-Fix
+- Once the user confirms the fix, proceed to version control steps as per `version_control_workflow.mdc`.

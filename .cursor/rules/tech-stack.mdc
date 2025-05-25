@@ -1,0 +1,28 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+---
+alwaysApply: true
+description: Defines the core technology stack and architectural guidelines for the project.
+---
+# Core Technology Stack and Architectural Guidelines
+
+## Primary Language
+- All backend development and agent logic MUST be implemented in **Python 3.9+**.
+- Adhere to PEP 8 style guidelines. Consider referencing a `pyproject.toml` or linter configuration if available (e.g., `@pyproject.toml`).
+## Agentic Workflow and LLM
+- For implementing agentic workflows and complex task execution:
+    - **Langgraph** MUST be utilized for defining and managing agent state, graph-based logic, and execution flow.
+    - The primary Large Language Model (LLM) for reasoning, understanding user needs, and generating responses within Langgraph agents MUST be **`gemini-2.0-flash`** (via Google's API).
+    - When designing new agentic features, explicitly outline how Langgraph will structure the agent and where `gemini-2.0-flash` will be invoked for decision-making or content generation.
+    - *Example Interaction Pattern*: "User input -> Gemini for intent parsing -> Langgraph state update -> Tool execution (if any) -> Gemini for response generation -> Output." (Or reference a file: `Refer to @docs/agent_architecture.md for detailed patterns.`)
+
+## Speech-to-Text
+- For all voice input processing and conversion to text, the **Google Speech-to-Text API** MUST be used.
+- Ensure implementations include robust error handling for API calls and manage API credentials securely (e.g., via environment variables, not hardcoded).
+
+## General
+- When suggesting libraries or tools, prioritize those compatible and complementary to the core stack defined above.
+- Avoid introducing new major technologies or frameworks without explicit discussion and approval.

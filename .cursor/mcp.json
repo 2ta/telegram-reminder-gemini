@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "telegram_test_tool": {
+      "command": "python3",
+      "args": ["mcp_tools/telegram_tool/main.py"],
+      "env": {}
+    }
+  }
+} 
