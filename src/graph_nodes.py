@@ -727,11 +727,20 @@ async def confirm_reminder_details_node(state: AgentState) -> Dict[str, Any]:
     logger.info(f"DEBUG: Stored pending confirmation for ID {confirmation_id} with task='{task}', dt='{parsed_dt_utc_val}', chat_id='{chat_id}'. Cache size: {len(PENDING_REMINDER_CONFIRMATIONS)}")
 
 
-    # Use the original user input for the task text if available
-    original_user_text = state.get("input_text", task)
+    # Use the cleaned, extracted task for confirmation
+    def clean_task_text(task: str) -> str:
+        import re
+        if not isinstance(task, str):
+            return ""
+        task = task.strip()
+        task = re.sub(r'[\.,!؟]+$', '', task)
+        task = re.sub(r'\s+', ' ', task)
+        return task
+
+    task = clean_task_text(reminder_context.get("collected_task", ""))
     response_text = (
         "یادآور زیر رو تنظیم کنم؟ 👇\n\n"
-        f"📝 متن: {original_user_text}\n"
+        f"📝 متن: {task}\n"
         f"⏰ زمان: {formatted_date_time}\n\n"
         "اگه درسته، روی «تنظیم کن» بزن\n"
         "اگه نیاز به تغییر داره، روی «رد» بزن و یادآور جدید رو دوباره بفرست 🙂"
