@@ -48,7 +48,7 @@ def route_after_intent_determination(state: AgentState):
     elif intent == "intent_delete_reminder_cancelled":
         logger.info(f"Routing '{intent}' to handle_intent_node for delete cancellation message.")
         return "handle_intent_node"
-
+        
     # All other intents go to handle_intent_node
     logger.info(f"Routing '{intent}' to handle_intent_node (default).")
     return "handle_intent_node"
@@ -169,7 +169,7 @@ if __name__ == '__main__':
     
     async def test_async():
         result = await lang_graph_app.ainvoke(test_input)
-        logger.info(f"Test result (START command): {result.get('response_text')}")
+    logger.info(f"Test result (START command): {result.get('response_text')}")
     
     # Run the async test
     asyncio.run(test_async())

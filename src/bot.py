@@ -131,7 +131,7 @@ async def _handle_graph_invocation(
         
         if is_start_command:
             reply_markup = persistent_reply_keyboard # Always show persistent keyboard on /start
-
+        
         if response_text:
             if is_callback and action_to_take == "edit" and target_message_id:
                 await context.bot.edit_message_text(
@@ -434,17 +434,17 @@ async def save_or_update_reminder_in_db(
             return None, limit_message
 
         # Always create new reminder as update logic is removed
-        reminder = Reminder(
+            reminder = Reminder(
             user_id=user_db_id,
-            chat_id=chat_id,
+                chat_id=chat_id,
             task=task_description,
             jalali_date_str=None,
             time_str=None,
-            recurrence_rule=recurrence_rule,
-            is_active=True,
-            is_sent=False
-        )
-        db.add(reminder)
+                recurrence_rule=recurrence_rule,
+                is_active=True,
+                is_sent=False
+            )
+            db.add(reminder)
         logger.info(f"New reminder creation attempted (legacy function) for user_db_id {user_db_id}. Task: {task_description}")
         
         db.commit()
