@@ -1,6 +1,5 @@
 import logging
 import os
-import sys
 import tempfile
 import datetime
 import pytz
@@ -21,7 +20,7 @@ from sqlalchemy.orm import Session
 # Assuming config.py defines necessary constants like MSG_HELP, etc.
 # and settings are imported from config.config
 from config.config import settings # For settings like API keys, PAYMENT_AMOUNT
-from config.config import MSG_ERROR_GENERIC, MSG_WELCOME, MSG_HELP, MSG_PRIVACY_POLICY # Import all needed messages
+from config.config import MSG_ERROR_GENERIC, MSG_WELCOME, MSG_PRIVACY_POLICY # Import all needed messages
 # It's recommended to move message constants to a dedicated config/messages.py or include them in config.config.py
 
 from .database import init_db, get_db
@@ -29,13 +28,6 @@ from .models import Reminder, User
 from .payment import create_payment_link, verify_payment, is_user_premium, PaymentStatus, ZibalPaymentError
 
 # Import the LangGraph app
-# Force reload all our modules to ensure changes are picked up
-import importlib
-if 'src.graph_nodes' in sys.modules:
-    importlib.reload(sys.modules['src.graph_nodes'])
-if 'src.graph' in sys.modules:
-    importlib.reload(sys.modules['src.graph'])
-
 from .graph import lang_graph_app
 from .graph_state import AgentState # For type hinting initial state
 
@@ -61,10 +53,8 @@ logger = logging.getLogger(__name__)
     AWAITING_TIME_ONLY,        
     AWAITING_AM_PM_CLARIFICATION,
     AWAITING_DELETE_NUMBER_INPUT, 
-    AWAITING_EDIT_FIELD_CHOICE,
-    AWAITING_EDIT_FIELD_VALUE,
     AWAITING_PRIMARY_EVENT_TIME
-) = range(8)
+) = range(6)
 
 # Memory monitoring function
 def log_memory_usage(context_info: str = ""):
@@ -86,7 +76,8 @@ async def _handle_graph_invocation(
     update_obj: Union[Update, None],
     context: ContextTypes.DEFAULT_TYPE,
     initial_state: AgentState,
-    is_callback: bool = False
+    is_callback: bool = False,
+    is_start_command: bool = False # Added flag for start command
 ) -> None:
     """Helper function to invoke LangGraph and handle its response."""
     if not update_obj or not update_obj.effective_user:
@@ -115,55 +106,48 @@ async def _handle_graph_invocation(
             return
         
         reply_markup = None
-        if response_keyboard_markup_dict:
-            logger.info(f"Processing keyboard markup: {response_keyboard_markup_dict}")
+        # Define the persistent reply keyboard
+        persistent_reply_keyboard = ReplyKeyboardMarkup(
+            [["یادآورهای من", "یادآور نامحدود 👑"]],
+            resize_keyboard=True
+        )
+
+        if response_keyboard_markup_dict: # If graph wants to send a specific InlineKeyboard
             if response_keyboard_markup_dict.get("type") == "InlineKeyboardMarkup":
                 buttons = []
                 for row_data in response_keyboard_markup_dict.get("inline_keyboard", []):
                     button_row = []
                     for btn_data in row_data:
-                        logger.info(f"Processing button: {btn_data}")
                         if btn_data.get("web_app"):
                             button_row.append(InlineKeyboardButton(text=btn_data.get("text"), web_app=WebAppInfo(url=btn_data.get("web_app").get("url"))))
                         else:
                             button_row.append(InlineKeyboardButton(text=btn_data.get("text"), callback_data=btn_data.get("callback_data"), url=btn_data.get("url")))
                     buttons.append(button_row)
                 if buttons:
-                    logger.info(f"Created InlineKeyboardMarkup with buttons: {buttons}")
                     reply_markup = InlineKeyboardMarkup(buttons)
-                else:
-                    logger.warning("No buttons were created from the markup data")
-            elif response_keyboard_markup_dict.get("type") == "ReplyKeyboardMarkup":
-                buttons = []
-                for row_data in response_keyboard_markup_dict.get("keyboard", []):
-                    button_row = [btn.get("text") for btn in row_data] 
-                    buttons.append(button_row)
-                if buttons:
-                    logger.info(f"Created ReplyKeyboardMarkup with buttons: {buttons}")
-                    reply_markup = ReplyKeyboardMarkup(
-                        buttons, 
-                        resize_keyboard=response_keyboard_markup_dict.get("resize_keyboard", True),
-                        one_time_keyboard=response_keyboard_markup_dict.get("one_time_keyboard", False)
-                    )
-                else:
-                    logger.warning("No buttons were created from the markup data")
+            # Note: We are not supporting the graph sending a custom ReplyKeyboardMarkup anymore, 
+            # as we now have a persistent one. If an inline keyboard is not specified,
+            # the persistent one will be used for /start, or no specific markup for other messages if not inline.
+        
+        if is_start_command:
+            reply_markup = persistent_reply_keyboard # Always show persistent keyboard on /start
         
         if response_text:
             if is_callback and action_to_take == "edit" and target_message_id:
-                logger.info(f"Editing message with markup: {reply_markup is not None}")
                 await context.bot.edit_message_text(
                     chat_id=response_target.chat_id,
                     message_id=target_message_id,
                     text=response_text,
-                    reply_markup=reply_markup
+                    reply_markup=reply_markup # This will be an InlineKeyboardMarkup or None
                 )
             elif is_callback and action_to_take == "delete" and target_message_id:
                 await context.bot.delete_message(chat_id=response_target.chat_id, message_id=target_message_id)
                 if response_text != "" and response_text is not None: # Send if confirmation text for deletion
-                    logger.info(f"Sending message after deletion with markup: {reply_markup is not None}")
                     await context.bot.send_message(chat_id=response_target.chat_id, text=response_text, reply_markup=reply_markup)
             else: # Default to sending a new message
-                logger.info(f"Sending new message with markup: {reply_markup is not None}")
+                # If it's the start command, reply_markup is persistent_reply_keyboard.
+                # If it's another command/message and graph provided an inline keyboard, reply_markup is that.
+                # Otherwise, reply_markup is None, and Telegram client keeps showing the last active ReplyKeyboard (our persistent one).
                 await response_target.reply_text(response_text, reply_markup=reply_markup)
         elif not response_text and is_callback and action_to_take == "delete" and target_message_id:
             # If no text but action is delete (e.g. message was deleted and no further text needed)
@@ -207,37 +191,8 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         user_profile=None, current_operation_status=None, response_text=None,
         response_keyboard_markup=None, error_message=None, messages=[]
     )
-    await _handle_graph_invocation(update, context, initial_state)
+    await _handle_graph_invocation(update, context, initial_state, is_start_command=True) # Pass is_start_command=True
     log_memory_usage(f"after start_command for user {user_id}")
-
-async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if not update.message or not update.effective_user or not update.effective_chat:
-        logger.warning("help_command received an update without message, user or chat.")
-        return
-
-    user_id = update.effective_user.id
-    chat_id = update.effective_chat.id
-    command_text = update.message.text
-
-    initial_state = AgentState(
-        user_id=user_id,
-        chat_id=chat_id,
-        input_text=command_text,
-        message_type="command",
-        user_telegram_details = {
-            "username": update.effective_user.username,
-            "first_name": update.effective_user.first_name,
-            "last_name": update.effective_user.last_name,
-            "language_code": update.effective_user.language_code
-        },
-        transcribed_text=None, conversation_history=[], current_intent=None,
-        extracted_parameters={}, nlu_direct_output=None, reminder_creation_context={},
-        reminder_filters={}, active_reminders_page=0, payment_context={},
-        user_profile=None, current_operation_status=None, response_text=None,
-        response_keyboard_markup=None, error_message=None, messages=[]
-    )
-    await _handle_graph_invocation(update, context, initial_state)
-    log_memory_usage(f"after help_command for user {user_id}")
 
 async def payment_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.message or not update.effective_user or not update.effective_chat:
@@ -436,62 +391,61 @@ async def save_or_update_reminder_in_db(
     reminder_id_to_update: Optional[int] = None
 ) -> Tuple[Optional[Reminder], Optional[str]]:
     """
-    Saves a new reminder or updates an existing one in the database.
+    Saves a new reminder in the database. Update logic has been removed.
     Now directly fetches the User object using user_id.
     This function is legacy and its logic should be moved to LangGraph nodes.
     For now, it might be called by legacy ConversationHandler states if they are still active.
     """
-    logger.warning("Legacy save_or_update_reminder_in_db called. This logic should be in LangGraph.")
+    logger.warning("Legacy save_or_update_reminder_in_db called. Update logic has been removed. This logic should be in LangGraph.")
     db: Session = next(get_db())
     try:
         # Fetch the User database object using the Telegram user_id
-        user_db_obj = db.query(User).filter(User.user_id == user_id).first()
+        user_db_obj = db.query(User).filter(User.telegram_id == user_id).first()
         if not user_db_obj:
-            logger.error(f"User with telegram_user_id {user_id} not found in DB. Cannot save/update reminder.")
+            logger.error(f"User with telegram_id {user_id} not found in DB. Cannot save reminder.")
             return None, "User not found."
         user_db_id = user_db_obj.id # Get the primary key of the User table
 
         task_description = context_data.get('task_description')
         due_datetime_utc = context_data.get('due_datetime_utc')
-        recurrence_rule = context_data.get('recurrence_rule') # e.g., "daily", "weekly"
+        recurrence_rule = context_data.get('recurrence_rule')
 
         if not task_description or not due_datetime_utc:
             return None, "Task description or due datetime missing."
 
         # Tier limit check - this logic should also be in the graph (load_user_profile_node)
         active_reminder_count = db.query(func.count(Reminder.id)).filter(
-            Reminder.user_db_id == user_db_id, 
+            Reminder.user_id == user_db_id,
             Reminder.is_active == True
         ).scalar() or 0
         
-        max_reminders = settings.MAX_REMINDERS_PREMIUM_TIER if user_db_obj.is_premium else settings.MAX_REMINDERS_FREE_TIER
+        # Ensure subscription_tier is used for premium check
+        is_premium = user_db_obj.subscription_tier == SubscriptionTier.PREMIUM
+        max_reminders = settings.MAX_REMINDERS_PREMIUM_TIER if is_premium else settings.MAX_REMINDERS_FREE_TIER
 
-        if not reminder_id_to_update and active_reminder_count >= max_reminders:
-            return None, MSG_REMINDER_LIMIT_REACHED_FREE if not user_db_obj.is_premium else MSG_REMINDER_LIMIT_REACHED_PREMIUM
+        if active_reminder_count >= max_reminders and not settings.IGNORE_REMINDER_LIMITS:
+            limit_msg_key = "MSG_REMINDER_LIMIT_REACHED_PREMIUM" if is_premium else "MSG_REMINDER_LIMIT_REACHED_FREE"
+            # Fetch the actual message string from settings or config, assuming it's defined there.
+            # For now, returning a generic key. This part needs to align with actual message definitions.
+            # This should ideally be handled by the graph before attempting to save.
+            limit_message = getattr(settings, limit_msg_key, "Reminder limit reached.")
+            if hasattr(settings, limit_msg_key):
+                 limit_message = limit_message.format(limit=max_reminders) # if messages have placeholders
+            return None, limit_message
 
-        if reminder_id_to_update:
-            reminder = db.query(Reminder).filter(Reminder.id == reminder_id_to_update, Reminder.user_db_id == user_db_id).first()
-            if not reminder:
-                return None, "Reminder not found or access denied."
-            reminder.task_description = task_description
-            reminder.due_datetime_utc = due_datetime_utc
-            reminder.recurrence_rule = recurrence_rule
-            reminder.updated_at_utc = datetime.datetime.now(pytz.utc)
-            reminder.is_sent = False # Reset sent status on update
-            logger.info(f"Updated reminder ID {reminder_id_to_update} for user_db_id {user_db_id}")
-        else:
+        # Always create new reminder as update logic is removed
             reminder = Reminder(
-                user_db_id=user_db_id,
-                telegram_user_id=user_id, # Store original telegram user ID as well
+            user_id=user_db_id,
                 chat_id=chat_id,
-                task_description=task_description,
-                due_datetime_utc=due_datetime_utc,
+            task=task_description,
+            jalali_date_str=None,
+            time_str=None,
                 recurrence_rule=recurrence_rule,
                 is_active=True,
                 is_sent=False
             )
             db.add(reminder)
-            logger.info(f"Created new reminder for user_db_id {user_db_id}")
+        logger.info(f"New reminder creation attempted (legacy function) for user_db_id {user_db_id}. Task: {task_description}")
         
         db.commit()
         db.refresh(reminder)
@@ -636,7 +590,7 @@ def main() -> None:
     application = Application.builder().token(settings.TELEGRAM_BOT_TOKEN).build()
 
     application.add_handler(CommandHandler("start", start_command))
-    application.add_handler(CommandHandler("help", help_command))
+    # application.add_handler(CommandHandler("help", help_command)) # Help is handled by graph or direct message
     application.add_handler(CommandHandler("pay", payment_command))
     application.add_handler(CommandHandler("privacy", privacy_command))
     # Temporarily commented out undefined handlers

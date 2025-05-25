@@ -13,6 +13,7 @@ from src.graph_nodes import (
     process_datetime_node,
     validate_and_clarify_reminder_node,
     confirm_reminder_details_node,
+    confirm_delete_reminder_node,
     create_reminder_node,
     handle_intent_node,
     format_response_node,
@@ -28,19 +29,28 @@ def route_after_intent_determination(state: AgentState):
     intent = state.get("current_intent", "unknown_intent")
     logger.info(f"Router (after_intent_determination) for user {state.get('user_id')}: Intent='{intent}'")
 
-    # Handle intent_create_reminder specially to check reminder_creation_context
-    if intent == "intent_create_reminder":
+    if intent == "intent_start":
+        logger.info(f"Routing '{intent}' to execute_start_command_node.")
+        return "execute_start_command_node"
+    elif intent == "intent_create_reminder":
         return "process_datetime_node" # First step in reminder creation flow
     elif intent == "intent_create_reminder_confirmed":
         return "create_reminder_node" # When user confirms creating the reminder
     elif intent == "intent_create_reminder_cancelled":
         # When user cancels, clean up context and send to handle_intent_node for cancellation msg
         return "handle_intent_node"
-    elif intent == "intent_start":
-        return "execute_start_command_node" # Route /start command to proper handler
-
+    elif intent == "intent_confirm_delete_reminder":
+        logger.info(f"Routing '{intent}' to confirm_delete_reminder_node.")
+        return "confirm_delete_reminder_node"
+    elif intent == "intent_delete_reminder_confirmed":
+        logger.info(f"Routing '{intent}' to handle_intent_node for final deletion processing.")
+        return "handle_intent_node"
+    elif intent == "intent_delete_reminder_cancelled":
+        logger.info(f"Routing '{intent}' to handle_intent_node for delete cancellation message.")
+        return "handle_intent_node"
+        
     # All other intents go to handle_intent_node
-    logger.info(f"Routing '{intent}' to handle_intent_node.")
+    logger.info(f"Routing '{intent}' to handle_intent_node (default).")
     return "handle_intent_node"
 
 def route_after_validation_and_clarification(state: AgentState):
@@ -72,14 +82,15 @@ def create_graph():
     # Add nodes
     workflow.add_node("entry_node", entry_node)
     workflow.add_node("load_user_profile_node", load_user_profile_node)
-    workflow.add_node("determine_intent_node", determine_intent_node) # Updated node
-    workflow.add_node("process_datetime_node", process_datetime_node) # Updated node
-    workflow.add_node("validate_and_clarify_reminder_node", validate_and_clarify_reminder_node) # New node
-    workflow.add_node("confirm_reminder_details_node", confirm_reminder_details_node)       # New node
-    workflow.add_node("create_reminder_node", create_reminder_node)   # Updated node
-    workflow.add_node("handle_intent_node", handle_intent_node)     # Updated node
+    workflow.add_node("determine_intent_node", determine_intent_node)
+    workflow.add_node("execute_start_command_node", execute_start_command_node)
+    workflow.add_node("process_datetime_node", process_datetime_node)
+    workflow.add_node("validate_and_clarify_reminder_node", validate_and_clarify_reminder_node)
+    workflow.add_node("confirm_reminder_details_node", confirm_reminder_details_node)
+    workflow.add_node("confirm_delete_reminder_node", confirm_delete_reminder_node)
+    workflow.add_node("create_reminder_node", create_reminder_node)
+    workflow.add_node("handle_intent_node", handle_intent_node)
     workflow.add_node("format_response_node", format_response_node)
-    workflow.add_node("execute_start_command_node", execute_start_command_node) # Start command handler
 
     # Set entry point
     workflow.set_entry_point("entry_node")
@@ -93,10 +104,11 @@ def create_graph():
         "determine_intent_node",
         route_after_intent_determination,
         {
-            "process_datetime_node": "process_datetime_node", # For intent_create_reminder
-            "create_reminder_node": "create_reminder_node",   # For intent_create_reminder_confirmed
-            "handle_intent_node": "handle_intent_node",     # For all other intents, cancellations, or direct responses
-            "execute_start_command_node": "execute_start_command_node" # For intent_start
+            "execute_start_command_node": "execute_start_command_node",
+            "process_datetime_node": "process_datetime_node",
+            "create_reminder_node": "create_reminder_node",
+            "confirm_delete_reminder_node": "confirm_delete_reminder_node",
+            "handle_intent_node": "handle_intent_node"
         }
     )
 
@@ -108,14 +120,19 @@ def create_graph():
         "validate_and_clarify_reminder_node",
         route_after_validation_and_clarification,
         {
-            "confirm_reminder_details_node": "confirm_reminder_details_node", # If ready for confirmation
-            "handle_intent_node": "handle_intent_node"                   # If clarification needed or limit error (ends graph for user input)
+            "confirm_reminder_details_node": "confirm_reminder_details_node",
+            "handle_intent_node": "handle_intent_node"
         }
     )
 
     # After confirm_reminder_details_node, the graph should send the confirmation prompt and then END, awaiting user's callback.
     # The callback (yes/no) will re-enter the graph, determine_intent_node will catch it and route to create_reminder_node or handle_intent_node.
     workflow.add_edge("confirm_reminder_details_node", "format_response_node")
+    
+    # After confirm_delete_reminder_node, also send the confirmation prompt and END, awaiting user's callback.
+    workflow.add_edge("confirm_delete_reminder_node", "format_response_node")
+
+    workflow.add_edge("execute_start_command_node", "format_response_node")
 
     # After actual reminder creation (or failure like DB error during creation)
     workflow.add_edge("create_reminder_node", "handle_intent_node") # To send success/failure message
@@ -123,9 +140,6 @@ def create_graph():
     # Final response formatting and end
     workflow.add_edge("handle_intent_node", "format_response_node")
     workflow.add_edge("format_response_node", END)
-    
-    # Add edge from execute_start_command_node to format_response_node
-    workflow.add_edge("execute_start_command_node", "format_response_node")
 
     # For now, let's compile without a checkpointer to at least make the bot functional
     # We can add a proper checkpointer later when we have more time to debug the issue
@@ -155,7 +169,7 @@ if __name__ == '__main__':
     
     async def test_async():
         result = await lang_graph_app.ainvoke(test_input)
-        logger.info(f"Test result (START command): {result.get('response_text')}")
+    logger.info(f"Test result (START command): {result.get('response_text')}")
     
     # Run the async test
     asyncio.run(test_async())
