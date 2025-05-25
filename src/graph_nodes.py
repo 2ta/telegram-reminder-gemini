@@ -849,6 +849,20 @@ async def create_reminder_node(state: AgentState) -> Dict[str, Any]:
         # Format for database storage
         jalali_date_str = jalali_date.strftime("%Y-%m-%d")
         time_str = dt_tehran.strftime("%H:%M")
+        # Clean up the extracted task before saving
+        def clean_task_text(task: str) -> str:
+            import re
+            if not isinstance(task, str):
+                return ""
+            # Remove leading/trailing whitespace
+            task = task.strip()
+            # Remove trailing punctuation (.,!؟)
+            task = re.sub(r'[\.,!؟]+$', '', task)
+            # Collapse multiple spaces
+            task = re.sub(r'\s+', ' ', task)
+            return task
+
+        task = clean_task_text(reminder_ctx.get("collected_task", ""))
         new_reminder = Reminder(
             user_id=user_db_id,  # Use the user's actual DB ID
             task=task,
