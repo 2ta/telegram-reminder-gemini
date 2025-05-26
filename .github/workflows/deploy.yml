@@ -3,64 +3,111 @@ name: Deploy Telegram Bot
 on:
   push:
     branches: [ main ]
+  workflow_dispatch:
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    
     steps:
-      - uses: actions/checkout@v3
+    - name: Checkout code
+      uses: actions/checkout@v4
       
-      - name: Set up SSH
-        run: |
-          mkdir -p ~/.ssh/
-          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa
-          ssh-keyscan -H ${{ secrets.SERVER_IP }} >> ~/.ssh/known_hosts
-      
-      - name: Remove Obsolete Files from Server
-        run: |
-          ssh ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }} "rm -f ${{ secrets.DEPLOY_PATH }}/bot.py ${{ secrets.DEPLOY_PATH }}/database.py ${{ secrets.DEPLOY_PATH }}/nlu.py ${{ secrets.DEPLOY_PATH }}/stt.py ${{ secrets.DEPLOY_PATH }}/utils.py ${{ secrets.DEPLOY_PATH }}/payment.py ${{ secrets.DEPLOY_PATH }}/config.py && mkdir -p ${{ secrets.DEPLOY_PATH }}/src"
-
-      - name: Deploy to Server
-        uses: appleboy/ssh-action@master
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USERNAME }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          port: ${{ secrets.SSH_PORT }}
-          script: |
-            cd ${{ secrets.DEPLOY_PATH }}
-            git pull origin main
-            echo "Coping .env file to server"
-            echo "${{ secrets.ENV_FILE_CONTENT }}" > ${{ secrets.DEPLOY_PATH }}/.env
-            echo "Coping gcp_credentials.json file to server"
-            echo '${{ secrets.GCP_CREDENTIALS_JSON_REMINDER_BOT }}' > ${{ secrets.DEPLOY_PATH }}/gcp_credentials.json
-            echo "Files copied successfully"
-            
-            # Update specific utility files, config and main bot runner, and create src dir if not exists
-            scp -r ${{ github.workspace }}/src/* ${{ secrets.DEPLOY_PATH }}/src/
-            scp ${{ github.workspace }}/config/config.py ${{ github.workspace }}/requirements.txt ${{ github.workspace }}/bot_runner.py ${{ github.workspace }}/start_bot.py ${{ github.workspace }}/utils_kill_processes.py ${{ secrets.DEPLOY_PATH }}/
-            # Removed stt.py from this line:
-            # scp ${{ github.workspace }}/nlu.py ${{ secrets.DEPLOY_PATH }}/stt.py ${{ secrets.DEPLOY_PATH }}/utils.py ${{ secrets.DEPLOY_PATH }}/payment.py ${{ secrets.DEPLOY_PATH }}/config.py && mkdir -p ${{ secrets.DEPLOY_PATH }}/src
-            # The line above seems to be an old scp command that was commented out or mixed up.
-            # The current active scp commands are the two lines above this comment block.
-            # I will ensure stt.py is not in any active scp command.
-            # Based on the structure, individual utility files like nlu.py, utils.py, payment.py should be in the `src` directory or
-            # their paths adjusted if they are meant to be in the root of DEPLOY_PATH.
-            # For now, just ensuring stt.py is not copied.
-
-            echo "Restarting the bot..."
-            pm2 restart telegram-reminder-bot || pm2 start ${{ secrets.DEPLOY_PATH }}/start_bot.py --name telegram-reminder-bot --interpreter python3
-            echo "Deployment finished."
-      
-      - name: Setup Environment and Install Dependencies
-        run: |
-          ssh ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }} "cd ${{ secrets.DEPLOY_PATH }} && python3 -m venv venv && source venv/bin/activate && pip install -r requirements.txt"
+    - name: Setup SSH
+      uses: webfactory/ssh-agent@v0.7.0
+      with:
+        ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+        
+    - name: Add server to known hosts
+      run: |
+        ssh-keyscan -p 61208 45.77.155.59 >> ~/.ssh/known_hosts
+        
+    - name: Deploy to server
+      run: |
+        ssh -p 61208 root@45.77.155.59 << 'EOF'
+          set -e
           
-      - name: Copy Systemd Service File
-        run: |
-          ssh ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }} "sudo cp ${{ secrets.DEPLOY_PATH }}/telegram-reminder-bot.service /etc/systemd/system/telegram-reminder.service && sudo systemctl daemon-reload"
-      
-      - name: Restart Bot Service
-        run: |
-          ssh ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }} "sudo systemctl restart telegram-reminder.service" 
+          echo "🚀 Starting deployment..."
+          
+          # Navigate to project directory
+          cd /root/telegram_reminder_bot_project || {
+            echo "❌ Project directory not found. Please clone the repository first."
+            exit 1
+          }
+          
+          echo "📥 Pulling latest changes..."
+          git pull origin main
+          
+          echo "🐍 Setting up Python environment..."
+          # Create virtual environment if it doesn't exist
+          if [ ! -d ".venv" ]; then
+            python3 -m venv .venv
+          fi
+          
+          # Activate virtual environment
+          source .venv/bin/activate
+          
+          # Upgrade pip
+          pip install --upgrade pip
+          
+          echo "📦 Installing dependencies..."
+          # Uninstall conflicting packages first
+          pip uninstall -y google-generativeai langchain-google-genai google-ai-generativelanguage || true
+          
+          # Install requirements
+          pip install -r requirements.txt
+          
+          echo "🗄️ Setting up database..."
+          # Initialize database if needed
+          python -c "
+          import sys
+          sys.path.append('.')
+          try:
+              from src.database import init_db
+              init_db()
+              print('Database initialized successfully!')
+          except Exception as e:
+              print(f'Database setup: {e}')
+          "
+          
+          echo "🔄 Restarting bot service..."
+          # Stop existing tmux session
+          tmux kill-session -t telegram_bot 2>/dev/null || true
+          
+          # Wait a moment
+          sleep 2
+          
+          # Start new tmux session with bot
+          tmux new-session -d -s telegram_bot
+          tmux send-keys -t telegram_bot "cd /root/telegram_reminder_bot_project" Enter
+          tmux send-keys -t telegram_bot "source .venv/bin/activate" Enter
+          tmux send-keys -t telegram_bot "python start_bot.py" Enter
+          
+          echo "✅ Deployment completed successfully!"
+          echo "📊 Bot status:"
+          tmux list-sessions | grep telegram_bot || echo "❌ Bot session not found"
+          
+        EOF
+        
+    - name: Verify deployment
+      run: |
+        ssh -p 61208 root@45.77.155.59 << 'EOF'
+          echo "🔍 Verifying deployment..."
+          
+          # Check if tmux session exists
+          if tmux has-session -t telegram_bot 2>/dev/null; then
+            echo "✅ Bot tmux session is running"
+            
+            # Check if bot process is actually running
+            if tmux capture-pane -t telegram_bot -p | grep -q "Bot started\|Application\|Telegram"; then
+              echo "✅ Bot appears to be running successfully"
+            else
+              echo "⚠️ Bot session exists but may not be running properly"
+              echo "Last few lines from bot session:"
+              tmux capture-pane -t telegram_bot -p | tail -5
+            fi
+          else
+            echo "❌ Bot tmux session not found"
+            exit 1
+          fi
+        EOF 

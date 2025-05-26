@@ -4,6 +4,7 @@
 # Google Cloud Platform credentials
 gcp_credentials.json
 *.json
+!.cursor/mcp.json
 
 # Database files
 *.db
@@ -52,4 +53,4 @@ Thumbs.db
 *~ 
 
 # Cursor
-.cursor/ 
+# .cursor/ 

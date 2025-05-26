@@ -1,9 +1,9 @@
-python-telegram-bot
-langgraph
+python-telegram-bot>=20.0,<21.0
+langgraph>=0.4.0,<1.0.0
 aiosqlite
 langgraph-checkpoint-sqlite
 google-cloud-speech
-google-generativeai
+google-generativeai==0.8.3
 sqlalchemy
 alembic
 jdatetime
@@ -13,4 +13,5 @@ psutil
 pydantic
 pydantic-settings
 pytz
-langchain-google-genai
+langchain-google-genai==2.0.10
+google-ai-generativelanguage==0.6.10
