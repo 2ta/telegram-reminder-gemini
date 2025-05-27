@@ -135,8 +135,8 @@ async def determine_intent_node(state: AgentState) -> Dict[str, Any]:
                 if not retrieved_data:
                     logger.warning(f"Confirmation ID '{confirmation_id}' not found in cache for {effective_input}. Current cache keys: {list(PENDING_REMINDER_CONFIRMATIONS.keys())}")
                     return {
-                        "current_intent": "unknown_intent", 
-                        "response_text": "این یادآور قبلاً ثبت شده یا منقضی شده.", 
+                        "current_intent": "unknown_intent",
+                        "response_text": "این یادآور قبلاً ثبت شده یا منقضی شده.",
                         "current_node_name": "determine_intent_node"
                     }
                 task = retrieved_data.get("task")
@@ -145,8 +145,8 @@ async def determine_intent_node(state: AgentState) -> Dict[str, Any]:
                 if not (task and parsed_dt_utc and chat_id_from_cache):
                     logger.error(f"Incomplete data from cache for ID {confirmation_id}. Retrieved: {retrieved_data}")
                     return {
-                        "current_intent": "unknown_intent", 
-                        "response_text": "خطا: اطلاعات تاییدیه ناقص است (کش).", 
+                        "current_intent": "unknown_intent",
+                        "response_text": "خطا: اطلاعات تاییدیه ناقص است (کش).",
                         "current_node_name": "determine_intent_node"
                     }
                 populated_context = {
@@ -165,11 +165,10 @@ async def determine_intent_node(state: AgentState) -> Dict[str, Any]:
             except Exception as e:
                 logger.error(f"Error processing 'yes:id' callback '{effective_input}': {e}", exc_info=True)
                 return {
-                    "current_intent": "unknown_intent", 
-                    "response_text": "خطا در پردازش تاییدیه.", 
+                    "current_intent": "unknown_intent",
+                    "response_text": "خطا در پردازش تاییدیه.",
                     "current_node_name": "determine_intent_node"
                 }
-
         elif effective_input.startswith("confirm_create_reminder:no:id="):
             logger.info(f"DEBUG: Matched callback for 'confirm_create_reminder:no:id=': {effective_input}")
             try:
@@ -181,7 +180,7 @@ async def determine_intent_node(state: AgentState) -> Dict[str, Any]:
                         "current_intent": "intent_create_reminder_cancelled",
                         "response_text": "باشه، تنظیمش نکردم ❌\nفقط کافیه دوباره بگی چی رو کی یادت بندازم 🙂",
                         "current_node_name": "determine_intent_node",
-                        "reminder_creation_context": {}, 
+                        "reminder_creation_context": {},
                         "pending_confirmation": None
                     }
                 else:
@@ -208,7 +207,7 @@ async def determine_intent_node(state: AgentState) -> Dict[str, Any]:
                 "current_intent": "intent_create_reminder_cancelled",
                 "response_text": "باشه، تنظیمش نکردم ❌\nفقط کافیه دوباره بگی چی رو کی یادت بندازم 🙂",
                 "current_node_name": "determine_intent_node",
-                "reminder_creation_context": {}, 
+                "reminder_creation_context": {},
                 "pending_confirmation": None
             }
         elif effective_input.startswith("confirm_delete_reminder:"):
@@ -258,6 +257,9 @@ async def determine_intent_node(state: AgentState) -> Dict[str, Any]:
         elif effective_input == "initiate_payment_zibal":
             logger.info(f"Detected 'initiate_payment_zibal' callback.")
             return {"current_intent": "intent_payment_initiate_zibal", "current_node_name": "determine_intent_node"}
+        elif effective_input == "initiate_payment_zibal_confirmed":
+            logger.info(f"Detected 'initiate_payment_zibal_confirmed' callback.")
+            return {"current_intent": "intent_create_zibal_link", "current_node_name": "determine_intent_node"}
 
     # --- Priority 2: Explicit Commands and Keyboard Buttons ---
     if input_text.startswith('/'):
@@ -354,6 +356,9 @@ async def determine_intent_node(state: AgentState) -> Dict[str, Any]:
                         # Fall through to unknown_intent
                 except json.JSONDecodeError as json_e:
                     logger.error(f"Failed to parse JSON response from LLM: {json_e}. Raw response for user '{state.get('user_id')}': {llm_response_content}")
+                    # Fall through to unknown_intent
+                except Exception as e:
+                    logger.error(f"Error parsing LLM response for user '{state.get('user_id')}': {e}", exc_info=True)
                     # Fall through to unknown_intent
             except Exception as e:
                 logger.error(f"Error during LLM call in determine_intent_node for user '{state.get('user_id')}': {e}", exc_info=True)
@@ -676,8 +681,8 @@ async def confirm_reminder_details_node(state: AgentState) -> Dict[str, Any]:
             parsed_dt_utc = datetime.datetime.fromisoformat(parsed_dt_utc_val.replace("Z", "+00:00"))
         except Exception as e:
             logger.error(f"Invalid datetime string in reminder_creation_context: {parsed_dt_utc_val}. Error: {e}")
-            return {
-                "response_text": "خطا: فرمت تاریخ و زمان ارسال شده برای تایید نامعتبر است.",
+        return {
+            "response_text": "خطا: فرمت تاریخ و زمان ارسال شده برای تایید نامعتبر است.",
                 "current_node_name": "confirm_reminder_details_node",
                 "pending_confirmation": None
             }
@@ -800,17 +805,17 @@ async def create_reminder_node(state: AgentState) -> Dict[str, Any]:
                     "reminder_creation_context": reminder_ctx,
                     "pending_confirmation": None
                 }
-        logger.error(f"Invalid datetime in context for user {user_id}. Task: {task}, DT: {parsed_dt_utc_from_ctx} (type: {type(parsed_dt_utc_from_ctx)}) ")
-        return {
-            "current_operation_status": "error_missing_details", # MODIFIED KEY
-            "response_text": "خطا: اطلاعات یادآور ناقص یا نامعتبر است.",
-            "current_node_name": "create_reminder_node",
-            "reminder_creation_context": reminder_ctx,
-            "pending_confirmation": None
-        }
+        else:
+            logger.error(f"Invalid datetime in context for user {user_id}. Task: {task}, DT: {parsed_dt_utc_from_ctx} (type: {type(parsed_dt_utc_from_ctx)}) ")
+            return {
+                "current_operation_status": "error_missing_details", # MODIFIED KEY
+                "response_text": "خطا: اطلاعات یادآور ناقص یا نامعتبر است.",
+                "current_node_name": "create_reminder_node",
+                "reminder_creation_context": reminder_ctx,
+                "pending_confirmation": None
+            }
     else:
         parsed_dt_utc = parsed_dt_utc_from_ctx
-
 
     if not task or not parsed_dt_utc:
         logger.error(f"Missing task or datetime for user {user_id} in create_reminder_node. Task: {task}, DT: {parsed_dt_utc}")
@@ -835,6 +840,7 @@ async def create_reminder_node(state: AgentState) -> Dict[str, Any]:
                 logger.info(f"Successfully re-loaded user_db_id: {user_db_obj_temp.id} for user {user_id}")
             else:
                 logger.error(f"Failed to find user {user_id} in DB during create_reminder_node.")
+                db_temp.close()
                 return {"current_operation_status": "error_user_not_found", "response_text": "خطا: کاربر برای ایجاد یادآور یافت نشد.", "current_node_name": "create_reminder_node", "pending_confirmation": None} # MODIFIED KEY
         finally:
             db_temp.close()
@@ -844,7 +850,6 @@ async def create_reminder_node(state: AgentState) -> Dict[str, Any]:
         logger.error(f"Critical: user_db_id still missing for user {user_id} before DB operation.")
         return {"current_operation_status": "error_internal_user_id_missing", "response_text": "خطای داخلی: شناسه کاربر موجود نیست.", "current_node_name": "create_reminder_node", "pending_confirmation": None} # MODIFIED KEY
 
-
     # Reminder Limit Check (re-check here as a safeguard, though validate_and_clarify should handle it)
     # This requires a full user_profile, so if it was minimally reloaded, this check might be less effective
     # or might need to fetch counts again. For simplicity, we assume validate_and_clarify_node did its job.
@@ -852,7 +857,7 @@ async def create_reminder_node(state: AgentState) -> Dict[str, Any]:
     db: Session = next(get_db())
     try:
         # Convert UTC datetime to Tehran timezone and create Jalali date strings
-        tehran_tz = pytz.timezone("Asia/Tehran") 
+        tehran_tz = pytz.timezone("Asia/Tehran")
         dt_tehran = parsed_dt_utc.astimezone(tehran_tz)
         jalali_date = jdatetime.datetime.fromgregorian(datetime=dt_tehran)
         # Format for database storage
@@ -1021,45 +1026,39 @@ async def handle_intent_node(state: AgentState) -> Dict[str, Any]:
     """Handles the determined intent, e.g., fetching reminders, preparing help message."""
     current_intent = state.get("current_intent")
     user_id = state.get("user_id")
-    user_profile = state.get("user_profile")
+    user_profile = state.get("user_profile") # Ensure this is loaded, might be None
     extracted_parameters = state.get("extracted_parameters", {})
-    current_operation_status = state.get("current_operation_status") 
+    current_operation_status = state.get("current_operation_status")
     logger.info(f"Graph: Entered handle_intent_node for user {user_id}, intent: {current_intent}, params: {extracted_parameters}, status: {current_operation_status}")
 
-    # Default response text - updated to remove /help
     default_response_text = "کاری که از من خواستید را متوجه نشدم. لطفاً واضح‌تر بگویید."
-    
-    # Try to get response_text from the state, which might have been set by a previous node (like create_reminder_node)
     response_text_from_state = state.get("response_text")
-
+    response_text = response_text_from_state or default_response_text
+    
+    # Optimized initial response_text handling
     if current_intent == "intent_create_reminder_confirmed" and response_text_from_state and "تمومه! 🎉" in response_text_from_state:
-        # If create_reminder_node ran, was successful (implied by "تمومه!"), and set this response_text, use it.
-        # This is a workaround because current_operation_status is not propagating correctly.
-        response_text = response_text_from_state
-        logger.info(f"Using pre-set success response_text from state for intent_create_reminder_confirmed: {response_text}")
-        # Since we're handling this specific success case here, ensure context is cleared as if status was 'success'
-        current_operation_status = "success" # Simulate that status was received for subsequent cleanup
-    elif current_intent == "intent_create_reminder_cancelled":
-        # This intent's response_text is set directly in determine_intent_node
-        response_text = response_text_from_state or default_response_text # Fallback just in case
-    else:
+        current_operation_status = "success" # Simulate for cleanup
+    elif current_intent == "intent_create_reminder_cancelled" and response_text_from_state:
+        pass # response_text is already set from determine_intent_node
+    elif current_intent == "intent_delete_reminder_cancelled" and response_text_from_state:
+        pass # response_text is already set
+    elif not response_text_from_state: # If no specific message from prior nodes for other intents
         response_text = default_response_text
-    
-    response_keyboard_markup = state.get("response_keyboard_markup") 
-    
+
+    response_keyboard_markup = state.get("response_keyboard_markup")
     updated_state_dict = {"current_node_name": "handle_intent_node"}
 
-    def to_persian_numerals(text: str) -> str:
-        persian_numerals_map = str.maketrans("0123456789", "۰۱۲۳۴۵۶۷۸۹")
-        return str(text).translate(persian_numerals_map)
+    # Helper directly in this scope or ensure it's imported/available if moved
+    # def to_persian_numerals(text: str) -> str:
+    #     persian_numerals_map = str.maketrans("0123456789", "۰۱۲۳۴۵۶۷۸۹")
+    #     return str(text).translate(persian_numerals_map)
 
     if current_intent == "intent_start":
-        response_text = MSG_WELCOME 
+        response_text = MSG_WELCOME
         response_keyboard_markup = None
-        logger.info(f"handle_intent_node processing intent_start for user {user_id}. MSG_WELCOME will be used.")
-        
+        logger.info(f"handle_intent_node processing intent_start for user {user_id}.")
+
     elif current_intent == "intent_view_reminders":
-        # ... (existing view reminders logic remains the same)
         logger.info(f"handle_intent_node: Preparing to view reminders for user {user_id}.")
         db: Session = next(get_db())
         try:
@@ -1071,22 +1070,19 @@ async def handle_intent_node(state: AgentState) -> Dict[str, Any]:
                 page = extracted_parameters.get("page", 1)
                 page_size = settings.REMINDERS_PER_PAGE
                 offset = (page - 1) * page_size
-                logger.info(f"User {user_id}: Preparing to query reminders. user_db_id={user_db_id}, page={page}, page_size={page_size}, offset={offset}")
+                
                 reminders_query = db.query(Reminder).filter(
                     Reminder.user_id == user_db_id,
                     Reminder.is_active == True
                 ).order_by(Reminder.jalali_date_str.asc(), Reminder.time_str.asc())
-                logger.info(f"User {user_id}: reminders_query object created.")
+                
                 total_reminders_count = reminders_query.count()
-                logger.info(f"User {user_id}: Total reminders count = {total_reminders_count}")
                 reminders = reminders_query.offset(offset).limit(page_size).all()
-                logger.info(f"User {user_id}: Fetched reminders list (length {len(reminders)})")
+
                 if not reminders and total_reminders_count == 0:
-                    logger.info(f"User {user_id}: No reminders found. Using MSG_LIST_EMPTY_NO_REMINDERS.")
                     response_text = MSG_LIST_EMPTY_NO_REMINDERS
                     response_keyboard_markup = None
                 elif not reminders and total_reminders_count > 0:
-                    logger.info(f"User {user_id}: Reminders exist, but current page {page} is empty.")
                     response_text = f"صفحه {to_persian_numerals(str(page))} خالی است. به صفحه قبل برگردید."
                     buttons = []
                     if page > 1:
@@ -1094,13 +1090,13 @@ async def handle_intent_node(state: AgentState) -> Dict[str, Any]:
                     response_keyboard_markup = {"type": "InlineKeyboardMarkup", "inline_keyboard": buttons} if buttons else None
                 else:
                     reminder_list_items_text = []
-                    action_buttons = [] # For delete buttons
-                    reminder_list_header = f"یادآورهای فعال شما (صفحه {to_persian_numerals(str(page))} از {to_persian_numerals(str((total_reminders_count + page_size - 1) // page_size))}):\n\n"
-                    for i, reminder in enumerate(reminders):
+                    action_buttons = []
+                    reminder_list_header = f"یادآورهای فعال شما (صفحه {to_persian_numerals(str(page))} از {to_persian_numerals(str((total_reminders_count + page_size - 1) // page_size))}):\\n\\n"
+                    for reminder in reminders:
                         try:
                             gregorian_dt = reminder.gregorian_datetime
                             if not gregorian_dt:
-                                logger.warning(f"Could not convert Jalali to Gregorian for reminder ID {reminder.id}. Skipping display.")
+                                logger.warning(f"Invalid datetime for reminder ID {reminder.id}. Skipping.")
                                 reminder_list_items_text.append(f"⚠️ اطلاعات تاریخ و زمان برای یادآور با شناسه {reminder.id} نامعتبر است.")
                                 continue
                             tehran_tz = pytz.timezone('Asia/Tehran')
@@ -1110,27 +1106,27 @@ async def handle_intent_node(state: AgentState) -> Dict[str, Any]:
                             day_name = get_persian_day_name(aware_tehran_dt.weekday())
                             task_preview = reminder.task[:40] + "..." if len(reminder.task) > 40 else reminder.task
                             reminder_item_text = (
-                                f"📝 **{reminder.task}**\n"
+                                f"📝 **{reminder.task}**\\n"
                                 f"⏰ {day_name}، {jalali_date_str_display}، ساعت {to_persian_numerals(time_str_display)}"
-                                # f"\n🆔 `{reminder.id}`" # ID is in callback, maybe not needed in text
                             )
                             reminder_list_items_text.append(reminder_item_text)
-                            # Add a delete button for each reminder
                             action_buttons.append([
                                 {"text": f"حذف یادآور: «{task_preview}» 🗑️", "callback_data": f"confirm_delete_reminder:{reminder.id}"}
                             ])
                         except Exception as e:
                             logger.error(f"Error formatting reminder ID {reminder.id} for display: {e}", exc_info=True)
                             reminder_list_items_text.append(f"⚠️ خطای نمایشی برای یادآور با شناسه {reminder.id}")
-                    response_text = reminder_list_header + "\n\n--------------------\n\n".join(reminder_list_items_text)
+                    
+                    response_text = reminder_list_header + "\\n\\n--------------------\\n\\n".join(reminder_list_items_text)
                     if not reminder_list_items_text:
                         response_text = reminder_list_header + "موردی برای نمایش در این صفحه نیست."
-                    # Pagination buttons
+
                     pagination_row = []
                     if page > 1:
                         pagination_row.append({"text": "صفحه قبل ⬅️", "callback_data": f"view_reminders:page:{page-1}"})
                     if total_reminders_count > page * page_size:
                         pagination_row.append({"text": "➡️ صفحه بعد", "callback_data": f"view_reminders:page:{page+1}"})
+                    
                     if pagination_row:
                         action_buttons.append(pagination_row)
                     if action_buttons:
@@ -1145,12 +1141,11 @@ async def handle_intent_node(state: AgentState) -> Dict[str, Any]:
 
     elif current_intent == "intent_delete_reminder" or current_intent == "intent_delete_reminder_confirmed":
         reminder_id_to_delete = None
-        if current_intent == "intent_delete_reminder": # from /del_ command
-            reminder_id_to_delete = extracted_parameters.get("reminder_id") 
-        elif current_intent == "intent_delete_reminder_confirmed": # from confirmation callback
+        if current_intent == "intent_delete_reminder":
+            reminder_id_to_delete = extracted_parameters.get("reminder_id")
+        elif current_intent == "intent_delete_reminder_confirmed":
             reminder_id_to_delete = extracted_parameters.get("reminder_id_to_delete")
-            logger.info(f"handle_intent_node: Processing confirmed deletion for reminder ID {reminder_id_to_delete} from callback for user {user_id}.")
-
+        
         delete_status = "unknown"
         deleted_task_name = ""
 
@@ -1159,25 +1154,22 @@ async def handle_intent_node(state: AgentState) -> Dict[str, Any]:
             try:
                 reminder_to_delete = db.query(Reminder).filter(
                     Reminder.id == reminder_id_to_delete,
-                    Reminder.user_id == user_profile["user_db_id"] 
+                    Reminder.user_id == user_profile["user_db_id"]
                 ).first()
 
                 if reminder_to_delete:
                     if reminder_to_delete.is_active:
                         deleted_task_name = reminder_to_delete.task
                         reminder_to_delete.is_active = False
-                        reminder_to_delete.updated_at = datetime.datetime.now(pytz.utc)
+                        reminder_to_delete.updated_at = datetime.datetime.now(pytz.utc) # Use timezone aware
                         db.commit()
                         delete_status = "deleted"
-                        logger.info(f"Reminder ID {reminder_id_to_delete} marked as inactive for user {user_id}.")
-                        if user_profile["current_reminder_count"] > 0:
+                        if user_profile.get("current_reminder_count", 0) > 0: # Check if key exists
                              user_profile["current_reminder_count"] -=1
                     else:
                         delete_status = "already_inactive"
-                        logger.info(f"Reminder ID {reminder_id_to_delete} was already inactive for user {user_id}.")
                 else:
                     delete_status = "not_found"
-                    logger.warning(f"Reminder ID {reminder_id_to_delete} not found for user {user_id} to delete.")
             except Exception as e:
                 db.rollback()
                 logger.error(f"Error deleting reminder {reminder_id_to_delete} for user {user_id}: {e}", exc_info=True)
@@ -1185,75 +1177,80 @@ async def handle_intent_node(state: AgentState) -> Dict[str, Any]:
             finally:
                 db.close()
         else:
-            logger.warning(f"Cannot delete reminder: Missing reminder_id, user_profile, or user_db_id for user {user_id}.")
             delete_status = "error_missing_info"
 
         if delete_status == "deleted":
             response_text = f"یادآور «{deleted_task_name}» با موفقیت حذف شد. ✅"
-            response_keyboard_markup = None 
         elif delete_status == "already_inactive":
             response_text = "این یادآور قبلاً غیرفعال شده بود."
         elif delete_status == "not_found":
             response_text = "یادآور مورد نظر یافت نشد. ممکن است قبلاً حذف شده باشد."
-        else: 
+        else:
             response_text = "خطا در حذف یادآور. لطفاً دوباره تلاش کنید."
         
-        logger.info(f"handle_intent_node: Delete reminder status for user {user_id}, reminder ID {reminder_id_to_delete}: {delete_status}")
-        updated_state_dict["current_operation_status"] = None # Clear status after handling delete
+        updated_state_dict["current_operation_status"] = None
+        if user_profile: # Pass back updated profile if it exists
+            updated_state_dict["user_profile"] = user_profile
 
-    # This elif block for intent_create_reminder_confirmed can be simplified or removed
-    # as the response_text is now handled by the logic at the beginning of the function
-    # if the "تمومه! 🎉" message was found in the state.
+
+    elif current_intent == "intent_show_payment_options":
+        logger.info(f"handle_intent_node: Showing new payment prompt for user {user_id}")
+        chat_id = state.get("chat_id")
+        price_tomans = settings.PREMIUM_SUBSCRIPTION_PRICE_TOMANS
+        duration_months = settings.PREMIUM_SUBSCRIPTION_DURATION_MONTHS
+        price_str = f"{to_persian_numerals(f'{price_tomans:,}')} تومان برای {to_persian_numerals(str(duration_months))} ماه"
+        from src.payment import create_payment_link
+        import asyncio
+        amount_rials = price_tomans * 10
+        loop = asyncio.get_event_loop()
+        success, message, payment_url = await loop.run_in_executor(
+            None, create_payment_link, user_id, chat_id, amount_rials
+        )
+        if success and payment_url:
+            payment_prompt_text = (
+                "💎 یادآور نامحدود فعال کن!\n\n"
+                "با تهیه اشتراک نسخه کامل، دیگه محدودیتی تو تعداد یادآورها نداری و می‌تونی راحت هر چند تا که بخوای ثبت کنی.\n\n"
+                f"💰 قیمت: {price_str} \n\n"
+                "برای رفتن به درگاه پرداخت روی دکمه زیر بزن 👇"
+            )
+            payment_keyboard = {
+                "type": "InlineKeyboardMarkup",
+                "inline_keyboard": [
+                    [{"text": "پرداخت و فعال‌سازی", "url": payment_url}]
+                ]
+            }
+            response_text = payment_prompt_text
+            response_keyboard_markup = payment_keyboard
+        else:
+            response_text = f"خطا در ایجاد لینک پرداخت: {message}"
+            response_keyboard_markup = None
+    # Handling for reminder creation success/cancellation (relies on response_text set by determine_intent or initial block)
     elif current_intent == "intent_create_reminder_confirmed":
-        # If we are here, it means the "تمومه! 🎉" message was NOT in response_text_from_state OR this logic path is still hit.
-        # This log helps understand if this branch is taken even with the workaround.
-        logger.info(f"handle_intent_node: In 'intent_create_reminder_confirmed' block. Current response_text: '{response_text}'. Status: {current_operation_status}")
-        # The main success message is now handled by the initial check.
-        # If status somehow became "success" but the message wasn't "تمومه! 🎉", this branch might be hit.
+        # Response text is likely "تمومه! 🎉..." from earlier logic.
+        # current_operation_status was set to "success" if that was the case.
+        # This block is mostly for logging or if other "success" scenarios arise.
+        logger.info(f"handle_intent_node: Reminder creation confirmed pathway. Final response: '{response_text}'. Status: {current_operation_status}")
 
     elif current_intent == "intent_create_reminder_cancelled":
-        # The response_text for this was already set at the beginning of the function
-        # from response_text_from_state, which determine_intent_node had set.
+        # Response text should be set from determine_intent_node (e.g., "باشه، تنظیمش نکردم...")
         logger.info(f"handle_intent_node: Reminder creation cancelled by user {user_id}. Response: '{response_text}'")
 
     elif current_intent == "intent_delete_reminder_cancelled":
-        # Response text is set by determine_intent_node for this case.
-        # We just need to ensure it's passed through.
-        response_text = response_text_from_state or "عملیات حذف لغو شد."
+        # Response text should be set from determine_intent_node
         logger.info(f"handle_intent_node: Reminder deletion cancelled by user {user_id}. Response: '{response_text}'")
-        updated_state_dict["current_operation_status"] = None # Clear any related status
+        updated_state_dict["current_operation_status"] = None 
 
     elif current_intent == "unknown_intent":
-        if response_text_from_state and response_text == default_response_text : # If determine_intent_node already set a specific error
-             response_text = response_text_from_state
-        else: # Ensure our new default_response_text is used if no specific error was set by determine_intent_node
-            response_text = default_response_text
+        # response_text is already set (either specific error from determine_intent or default)
+        logger.info(f"handle_intent_node: Handling unknown_intent for user {user_id}. Input: '{state.get('input_text', 'N/A')}'. Response: '{response_text}'")
 
-        logger.info(f"handle_intent_node: Handling unknown_intent for user {user_id}. Input was: '{state.get('input_text', 'N/A')}'. Response: '{response_text}'")
-
-    elif current_intent == "intent_show_payment_options":
-        logger.info(f"handle_intent_node: Showing payment options for user {user_id}")
-        response_text = MSG_PAYMENT_PROMPT.format(amount="...") # TODO: Get actual amount
-        payment_keyboard = {
-            "type": "InlineKeyboardMarkup",
-            "inline_keyboard": [
-                [{"text": MSG_PAYMENT_BUTTON, "callback_data": "initiate_payment_zibal"}]
-            ]
-        }
-        response_keyboard_markup = payment_keyboard
-    
-    # After reminder creation (success or failure)
-    # This block will now primarily handle alternative messages if current_operation_status
-    # IS correctly propagated and is something other than "success" with the "تمومه! 🎉" message,
-    # or if it is "success" and we want the MSG_REMINDER_SET format.
-    # Given the current workaround, if "تمومه! 🎉" was used, current_operation_status was locally set to "success"
-    # for cleanup purposes.
-
-    if current_operation_status == "success":
-        # If the "تمومه! 🎉" message was already set as response_text, we don't want to overwrite it here
-        # with MSG_REMINDER_SET unless that's the desired final message.
-        # The user wants "تمومه! 🎉...", so we should ensure it's not overwritten.
-        if "تمومه! 🎉" not in response_text: # Only format with MSG_REMINDER_SET if not already the "تمومه" message
+    # Status-based message overrides and cleanup
+    if current_operation_status == "success": # This might be set by various flows
+        if "تمومه! 🎉" in response_text: # If it's the generic success from reminder creation
+             logger.info(f"handle_intent_node: Reminder creation successful. Response: '{response_text}'")
+        # elif current_intent related to payment success would go here if needed
+        else: # Other types of success
+            # Example: if it was a successful reminder SET but not "تمومه!"
             reminder_details = state.get("reminder_details", {})
             task = reminder_details.get("task", "وظیفه شما")
             utc_dt_str = reminder_details.get("datetime_utc_iso")
@@ -1268,14 +1265,12 @@ async def handle_intent_node(state: AgentState) -> Dict[str, Any]:
                     date=f"{day_name}، {jalali_date_str_display}", 
                     time=to_persian_numerals(time_str_display)
                 )
-            else:
+            else: # Fallback if datetime is missing but somehow status is success
                 response_text = f"یادآور شما برای «{task}» با موفقیت تنظیم شد، اما خطایی در نمایش تاریخ و زمان رخ داد."
-            logger.info(f"handle_intent_node: Formatted MSG_REMINDER_SET for success. Task: {task}")
         
-        # Cleanup logic, always run for success
-        logger.info(f"handle_intent_node: Success status processed. Task: {state.get('reminder_details', {}).get('task')}")
+        # General cleanup for any "success"
         updated_state_dict["current_operation_status"] = None 
-        updated_state_dict["reminder_details"] = None 
+        updated_state_dict["reminder_details"] = None # Clear reminder specific context
 
     elif current_operation_status == "limit_reached_free":
         response_text = settings.MSG_REMINDER_LIMIT_REACHED_FREE.format(limit=settings.MAX_REMINDERS_FREE_TIER)
@@ -1286,42 +1281,35 @@ async def handle_intent_node(state: AgentState) -> Dict[str, Any]:
             ]
         }
         response_keyboard_markup = limit_exceeded_keyboard
-        logger.info(f"handle_intent_node: Free tier limit reached for user {user_id}.")
         updated_state_dict["current_operation_status"] = None
 
     elif current_operation_status == "limit_reached_premium":
         response_text = settings.MSG_REMINDER_LIMIT_REACHED_PREMIUM.format(limit=settings.MAX_REMINDERS_PREMIUM_TIER)
-        logger.info(f"handle_intent_node: Premium tier limit reached for user {user_id}.")
         updated_state_dict["current_operation_status"] = None
 
-    elif current_operation_status == "error_db": 
+    elif current_operation_status == "error_db":
         response_text = "متاسفانه هنگام ذخیره یادآور شما خطایی در پایگاه داده رخ داد. لطفاً دوباره تلاش کنید."
-        logger.error(f"handle_intent_node: DB error during reminder creation for user {user_id}.")
         updated_state_dict["current_operation_status"] = None
     
-    elif current_operation_status == "error_missing_data": 
+    elif current_operation_status == "error_missing_data":
         response_text = "اطلاعات کافی برای ایجاد یادآور (مانند متن یا زمان) دریافت نشد. لطفاً دوباره سعی کنید."
-        logger.warning(f"handle_intent_node: Missing data for reminder creation for user {user_id}.")
         updated_state_dict["current_operation_status"] = None
     
-    elif current_operation_status and "error" in current_operation_status: # Catch other errors from create_reminder_node
-        # This handles cases like "error_invalid_datetime_format_in_context", "error_user_not_found", etc.
-        # if they set a response_text in create_reminder_node and it made it to the state.
-        # If not, it will be the default "کاری که..." or the specific error text from create_reminder if used.
-        if response_text_from_state and response_text == default_response_text: # If create_node set specific error text
-            response_text = response_text_from_state
+    elif current_operation_status and "error" in current_operation_status:
+        # Catch-all for other specific errors if response_text wasn't set by them
+        if not response_text_from_state: # If the erroring node didn't set a specific message
+            response_text = f"خطایی رخ داد: {current_operation_status}. لطفاً دوباره تلاش کنید."
         logger.error(f"handle_intent_node: Handling generic error status '{current_operation_status}' for user {user_id}. Response: '{response_text}'")
         updated_state_dict["current_operation_status"] = None
 
 
-    # --- Final preparations before returning from handle_intent_node ---
     updated_state_dict["response_text"] = response_text
-    if response_keyboard_markup is not None: 
+    if response_keyboard_markup is not None:
         updated_state_dict["response_keyboard_markup"] = response_keyboard_markup
-    else: 
-        updated_state_dict["response_keyboard_markup"] = None
+    # else: # No need for else, if None, it won't be in dict or will be None
+    #     updated_state_dict["response_keyboard_markup"] = None 
 
-    logger.debug(f"handle_intent_node for user {user_id} returning with response_text: '{response_text[:100]}...', keyboard: {bool(updated_state_dict.get('response_keyboard_markup'))}")
+    logger.debug(f"handle_intent_node for user {user_id} returning with response_text: '{str(response_text)[:100]}...', keyboard: {bool(updated_state_dict.get('response_keyboard_markup'))}")
     return updated_state_dict
 
 async def format_response_node(state: AgentState) -> Dict[str, Any]:
@@ -1451,10 +1439,51 @@ async def process_reminder_filters_node(state: AgentState) -> Dict[str, Any]:
 def route_after_intent_determination(state: AgentState):
     """Router function to decide next step after intent determination."""
     intent = state.get("current_intent")
+    if intent == "intent_create_zibal_link":
+        logger.info("Routing to create_zibal_payment_link_node for payment link creation.")
+        return "create_zibal_payment_link_node"
     if intent == "unknown_intent":
         logger.info("Routing to handle_intent_node for unknown_intent (will generate default response).")
-        # Even unknown intent goes to handle_intent_node which then formulates a default unknown message.
-        # This ensures AIMessage is consistently added.
-        return "handle_intent_node" 
+        return "handle_intent_node"
     logger.info(f"Routing to handle_intent_node for intent: {intent}")
-    return "handle_intent_node" 
+    return "handle_intent_node"
+
+# --- Payment Node: Create Zibal Payment Link ---
+async def create_zibal_payment_link_node(state: AgentState) -> Dict[str, Any]:
+    """Node to create a Zibal payment link and send it to the user."""
+    logger.info(f"Graph: Entered create_zibal_payment_link_node for user {state.get('user_id')}")
+    user_id = state.get("user_id")
+    chat_id = state.get("chat_id")
+    price_tomans = settings.PREMIUM_SUBSCRIPTION_PRICE_TOMANS
+    duration_months = settings.PREMIUM_SUBSCRIPTION_DURATION_MONTHS
+    from src.payment import create_payment_link
+
+    # Zibal expects amount in Rials (Tomans * 10)
+    amount_rials = price_tomans * 10
+    success, message, payment_url = create_payment_link(user_id, chat_id, amount_rials)
+
+    if success and payment_url:
+        price_str = f"{to_persian_numerals(f'{price_tomans:,}')} تومان برای {to_persian_numerals(str(duration_months))} ماه"
+        response_text = (
+            "💎 یادآور نامحدود فعال کن!\n\n"
+            "با تهیه اشتراک نسخه کامل، دیگه محدودیتی تو تعداد یادآورها نداری و می‌تونی راحت هر چند تا که بخوای ثبت کنی.\n\n"
+            f"💰 قیمت: {price_str} \n\n"
+            "برای رفتن به درگاه پرداخت روی دکمه زیر بزن 👇"
+        )
+        payment_keyboard = {
+            "type": "InlineKeyboardMarkup",
+            "inline_keyboard": [
+                [{"text": "پرداخت و فعال‌سازی", "url": payment_url}]
+            ]
+        }
+        return {
+            "response_text": response_text,
+            "response_keyboard_markup": payment_keyboard,
+            "current_node_name": "create_zibal_payment_link_node"
+        }
+    else:
+        logger.error(f"Failed to create payment link for user {user_id}: {message}")
+        return {
+            "response_text": f"خطا در ایجاد لینک پرداخت: {message}",
+            "current_node_name": "create_zibal_payment_link_node"
+        }

@@ -6,7 +6,7 @@ import sys
 from typing import Dict, Any, Optional, Tuple, Union
 
 from src.database import get_db
-from src.models import User, Payment
+from src.models import User, Payment, SubscriptionTier
 from config.config import settings
 
 logger = logging.getLogger(__name__)
@@ -30,12 +30,12 @@ class PaymentStatus:
     CANCELED = 201
     PENDING = 1  # Custom status for internal tracking
 
-def create_payment_link(user_id: int, chat_id: int, amount: int = DEFAULT_PAYMENT_AMOUNT) -> Tuple[bool, str, Optional[str]]:
+def create_payment_link(telegram_id: int, chat_id: int, amount: int = DEFAULT_PAYMENT_AMOUNT) -> Tuple[bool, str, Optional[str]]:
     """
     Create a payment link using Zibal API
     
     Args:
-        user_id: Telegram user ID
+        telegram_id: Telegram user ID (actual Telegram ID)
         chat_id: Telegram chat ID
         amount: Payment amount in Rials
         
@@ -45,21 +45,31 @@ def create_payment_link(user_id: int, chat_id: int, amount: int = DEFAULT_PAYMEN
         - message: Description message
         - payment_url: URL to redirect user to (if success is True)
     """
-    callback_url = f"{settings.PAYMENT_CALLBACK_URL_BASE}/payment_callback" if settings.PAYMENT_CALLBACK_URL_BASE else "https://example.com/payment_callback"
-    
-    data = {
-        "merchant": settings.ZIBAL_MERCHANT_KEY,
-        "amount": amount,
-        "callbackUrl": callback_url,
-        "description": f"Premium subscription for Telegram bot user {user_id}",
-        "orderId": f"telegram-user-{user_id}-{int(datetime.datetime.now().timestamp())}",
-        "metadata": {
-            "user_id": user_id,
-            "chat_id": chat_id
-        }
-    }
-    
+    db = next(get_db())
     try:
+        user = db.query(User).filter(User.telegram_id == telegram_id).first()
+        if not user:
+            logger.error(f"User with telegram_id {telegram_id} not found. Cannot create payment link.")
+            # It's important that a user record exists. This could be created on /start.
+            # For now, we fail if user doesn't exist.
+            return False, "User not found. Please /start the bot first.", None
+        
+        actual_user_db_id = user.id # This is the User.id (PK)
+
+        callback_url = f"{settings.PAYMENT_CALLBACK_URL_BASE}/payment_callback" if settings.PAYMENT_CALLBACK_URL_BASE else "https://example.com/payment_callback"
+        
+        data = {
+            "merchant": settings.ZIBAL_MERCHANT_KEY,
+            "amount": amount,
+            "callbackUrl": callback_url,
+            "description": f"Premium subscription for Telegram bot user {telegram_id}", # For Zibal's description
+            "orderId": f"telegram-user-{telegram_id}-{int(datetime.datetime.now().timestamp())}", # Uses telegram_id for orderId
+            "metadata": {
+                "telegram_user_id": telegram_id, # Store telegram_id in metadata
+                "chat_id": chat_id
+            }
+        }
+        
         response = requests.post(ZIBAL_REQUEST_URL, json=data)
         result = response.json()
         
@@ -68,38 +78,34 @@ def create_payment_link(user_id: int, chat_id: int, amount: int = DEFAULT_PAYMEN
             payment_url = ZIBAL_PAYMENT_GATEWAY.format(track_id=track_id)
             
             # Save payment info to database
-            db = next(get_db())
-            try:
-                # Create payment record
-                payment = Payment(
-                    user_id=user_id,
-                    chat_id=chat_id,
-                    track_id=str(track_id),
-                    amount=amount,
-                    status=PaymentStatus.PENDING,
-                    created_at=datetime.datetime.now()
-                )
-                db.add(payment)
-                db.commit()
-                
-                logger.info(f"Created payment link for user {user_id} with track_id {track_id}")
-                return True, "Payment link created successfully", payment_url
-                
-            except Exception as e:
-                db.rollback()
-                logger.error(f"Database error when creating payment: {e}")
-                return False, "Internal server error when recording payment", None
-            finally:
-                db.close()
+            # db = next(get_db()) # db already fetched
+            # try: # Outer try-except handles db session
+            payment = Payment(
+                user_id=actual_user_db_id, # Store User.id (PK)
+                chat_id=chat_id,
+                track_id=str(track_id),
+                amount=amount,
+                status=PaymentStatus.PENDING,
+                created_at=datetime.datetime.now(datetime.timezone.utc) # Use timezone aware datetime
+            )
+            db.add(payment)
+            db.commit()
+            
+            logger.info(f"Created payment link for user (DB ID {actual_user_db_id}, TG ID {telegram_id}) with track_id {track_id}")
+            return True, "Payment link created successfully", payment_url
+            
         else:
             error_code = result.get("result")
             error_message = result.get("message", "Unknown error")
-            logger.error(f"Zibal payment creation failed: {error_code} - {error_message}")
+            logger.error(f"Zibal payment creation failed for telegram_id {telegram_id}: {error_code} - {error_message}")
             return False, f"Payment gateway error: {error_message}", None
             
     except Exception as e:
-        logger.error(f"Exception during payment link creation: {e}")
-        return False, "Failed to connect to payment gateway", None
+        db.rollback() # Rollback in case of any error during user query or Zibal request
+        logger.error(f"Exception during payment link creation for telegram_id {telegram_id}: {e}", exc_info=True)
+        return False, "Failed to connect to payment gateway or internal error", None
+    finally:
+        db.close()
 
 def verify_payment(track_id: str) -> Dict[str, Any]:
     """
@@ -171,7 +177,7 @@ def update_payment_status(track_id: str, status: int, result_data: Dict[str, Any
             return False
         
         payment.status = status
-        payment.verified_at = datetime.datetime.now() if status == PaymentStatus.SUCCESS else None
+        payment.verified_at = datetime.datetime.now(datetime.timezone.utc) if status == PaymentStatus.SUCCESS else None
         payment.ref_id = result_data.get("refNumber")
         payment.card_number = result_data.get("cardNumber")
         payment.response_data = json.dumps(result_data)
@@ -179,30 +185,50 @@ def update_payment_status(track_id: str, status: int, result_data: Dict[str, Any
         
         # If payment was successful, set user as premium
         if status == PaymentStatus.SUCCESS:
-            user = db.query(User).filter(User.user_id == payment.user_id).first()
-            if not user:
-                # Create user if not exists
-                user = User(
-                    user_id=payment.user_id,
-                    chat_id=payment.chat_id,
-                    is_premium=True,
-                    premium_until=datetime.datetime.now() + datetime.timedelta(days=30)  # 30 days subscription
-                )
-                db.add(user)
-            else:
-                # Update existing user
-                user.is_premium = True
-                if user.premium_until and user.premium_until > datetime.datetime.now():
-                    # Extend existing subscription
-                    user.premium_until = user.premium_until + datetime.timedelta(days=30)
-                else:
-                    # New subscription period
-                    user.premium_until = datetime.datetime.now() + datetime.timedelta(days=30)
+            # payment.user_id is the User.id (PK)
+            user = db.query(User).filter(User.id == payment.user_id).first() 
             
-            db.commit()
-            logger.info(f"User {payment.user_id} is now premium until {user.premium_until}")
+            if not user:
+                # This is an error case: payment verified for a user.id that no longer exists in users table.
+                # We might try to get telegram_id from result_data['metadata'] or result_data['orderId'] if Zibal returns it,
+                # then find/create user by telegram_id. But this is complex and depends on Zibal's response.
+                # For now, log critical error and do not proceed with updating a non-existent user.
+                logger.critical(f"CRITICAL: Payment track_id {track_id} verified for non-existent User.id {payment.user_id}. Cannot update subscription.")
+                # Optionally, we could try to parse telegram_id from result_data if available
+                # order_id = result_data.get("orderId") # e.g. "telegram-user-12345-timestamp"
+                # metadata = result_data.get("metadata") # e.g. {"telegram_user_id": 12345}
+                # if metadata and metadata.get("telegram_user_id"):
+                #    recovered_telegram_id = metadata.get("telegram_user_id")
+                #    logger.info(f"Attempting to find user by recovered telegram_id: {recovered_telegram_id}")
+                #    user = db.query(User).filter(User.telegram_id == recovered_telegram_id).first()
+                #    if not user:
+                #        logger.error(f"User with recovered_telegram_id {recovered_telegram_id} also not found.")
+                #    else: # User found by recovered telegram_id, proceed with this user
+                #        logger.info(f"User found by recovered telegram_id {recovered_telegram_id}, User.id {user.id}. Check consistency with payment.user_id {payment.user_id}")
+                #        if user.id != payment.user_id: # This would be a major inconsistency
+                #             logger.critical(f"MAJOR INCONSISTENCY: payment.user_id {payment.user_id} links to deleted user, but recovered telegram_id {recovered_telegram_id} links to existing User.id {user.id}")
+                #             # Decide on a policy here. For now, still treat as error.
+                #             user = None # Do not proceed
+                # if not user: # if still no user after recovery attempt
+                db.commit() # Commit changes to Payment record (status, ref_id etc.)
+                return False # Return False as user subscription was not updated
+
+            # User found, proceed with updating subscription
+            thirty_days_from_now = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=30)
+            new_expiry_date = thirty_days_from_now
+            
+            user.subscription_tier = SubscriptionTier.PREMIUM
+            if user.subscription_expiry and user.subscription_expiry > datetime.datetime.now(datetime.timezone.utc):
+                new_expiry_date = user.subscription_expiry + datetime.timedelta(days=30)
+            user.subscription_expiry = new_expiry_date
+            
+            db.commit() # Commit changes to User and Payment records
+            logger.info(f"User (DB ID {user.id}, TG ID {user.telegram_id}) subscription tier set to {user.subscription_tier.value} until {user.subscription_expiry}")
+            return True # Successfully updated user
         
-        return True
+        # If payment was not successful, but we needed to update payment record (e.g. status to FAILED)
+        db.commit() # Ensure payment record changes are saved
+        return True # True because payment record update was successful, even if payment itself failed verification
     except Exception as e:
         db.rollback()
         logger.error(f"Database error when updating payment status: {e}")
@@ -222,11 +248,14 @@ def is_user_premium(user_id: int) -> bool:
     """
     db = next(get_db())
     try:
-        user = db.query(User).filter(User.user_id == user_id).first()
+        user = db.query(User).filter(User.telegram_id == user_id).first()
         if not user:
             return False
         
-        return user.is_premium and user.premium_until > datetime.datetime.now()
+        # Check if subscription_tier is PREMIUM and expiry date is in the future
+        return user.subscription_tier == SubscriptionTier.PREMIUM and \
+               user.subscription_expiry and \
+               user.subscription_expiry > datetime.datetime.now(datetime.timezone.utc)
     except Exception as e:
         logger.error(f"Error checking premium status for user {user_id}: {e}")
         return False

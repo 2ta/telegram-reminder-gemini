@@ -2,6 +2,7 @@ import os
 from typing import Optional, Union, Literal
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import Field, PostgresDsn, AnyHttpUrl
+import logging
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file='.env', env_file_encoding='utf-8', extra='ignore')
@@ -44,7 +45,14 @@ class Settings(BaseSettings):
     # Environment setting (dev, test, prod)
     APP_ENV: Literal["development", "testing", "production"] = "development"
 
+    # Premium subscription configuration
+    PREMIUM_SUBSCRIPTION_PRICE_TOMANS: int = Field(default=59000, description="Price of premium subscription in Tomans")
+    PREMIUM_SUBSCRIPTION_DURATION_MONTHS: int = Field(default=6, description="Duration of premium subscription in months")
+
 settings = Settings()
+
+import logging
+logging.getLogger().info(f"[DEBUG] Loaded ZIBAL_MERCHANT_KEY: {settings.ZIBAL_MERCHANT_KEY}")
 
 # --- Persian Messages (Module-level constants) ---
 MSG_WELCOME: str = (
