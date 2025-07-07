@@ -1,5 +1,4 @@
 import logging
-import asyncio
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import ContextTypes, CommandHandler, MessageHandler, filters
 from langchain_core.messages import HumanMessage # For message history

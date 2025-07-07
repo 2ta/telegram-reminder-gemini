@@ -20,8 +20,10 @@ class Settings(BaseSettings):
     GEMINI_MODEL_NAME: str = "gemini-2.0-flash"
     GEMINI_API_KEY: Optional[str] = None
 
-    # Payment Gateway (Zibal) Configuration
-    ZIBAL_MERCHANT_KEY: Optional[str] = None
+    # Payment Gateway (Stripe) Configuration
+    STRIPE_SECRET_KEY: Optional[str] = None
+    STRIPE_PUBLISHABLE_KEY: Optional[str] = None
+    STRIPE_WEBHOOK_SECRET: Optional[str] = None
     PAYMENT_CALLBACK_URL_BASE: Optional[AnyHttpUrl] = None
 
     # Logging Configuration
@@ -31,7 +33,7 @@ class Settings(BaseSettings):
     LOG_FILE_BACKUP_COUNT: int = 3
 
     # Other application settings
-    DEFAULT_LANGUAGE: str = "fa"
+    DEFAULT_LANGUAGE: str = "en"
 
     # Tier configurations for reminders
     MAX_REMINDERS_FREE_TIER: int = Field(default=5, description="Maximum active reminders for free tier users")
@@ -46,43 +48,44 @@ class Settings(BaseSettings):
 
 settings = Settings()
 
-# --- Persian Messages (Module-level constants) ---
+# --- English Messages (Module-level constants) ---
 MSG_WELCOME: str = (
-    "سلام 👋  \n"
-    "به ربات یادآور خوش اومدی!\n\n"
-    "کافیه پیام یا ویس بفرستی و بگی چی رو کی یادت بندازم. مثلاً:  \n"
-    "🗓 \"یادم بنداز فردا ساعت ۱۰ به علی پیام بدم\"  \n"
-    "💊 \"یادم بنداز هر روز ساعت ۸ صبح قرص‌هامو بخورم\"\n\n"
-    "✨ امکانات ربات:\n"
-    "- ایجاد یادآور با گفتن متن یا ویس  \n"
-    "- تشخیص هوشمند تاریخ و ساعت از پیام شما  \n"
-    "- امکان مشاهده و حذف یادآورهای فعال  \n"
-    "- (به‌زودی) تنظیم یادآورهای تکرارشونده  \n"
-    "- (به‌زودی) پرداخت و فعال‌سازی اشتراک «یادآور نامحدود» برای امکانات بیشتر\n\n"
-    "در نسخه رایگان می‌تونی تا ۵ یادآور فعال داشته باشی."
+    "Hello 👋\n"
+    "Welcome to the Reminder Bot!\n\n"
+    "Just send me a message or voice and tell me what to remind you about and when. For example:\n"
+    "🗓 \"Remind me to message Ali tomorrow at 10 AM\"\n"
+    "💊 \"Remind me to take my pills every day at 8 AM\"\n\n"
+    "✨ Bot Features:\n"
+    "- Create reminders by speaking or typing\n"
+    "- Smart detection of date and time from your message\n"
+    "- View and delete active reminders\n"
+    "- (Coming soon) Set recurring reminders\n"
+    "- (Coming soon) Payment and activation of 'Unlimited Reminders' subscription for more features\n\n"
+    "In the free version, you can have up to 5 active reminders."
 )
-MSG_PRIVACY_POLICY: str = (
-    "سیاست حفظ حریم خصوصی ربات یادآور:\n\n"
-    "ما به حریم خصوصی شما احترام می‌گذاریم.\n"
-    "1. اطلاعات جمع‌آوری شده: \n"
-    "   - شناسه کاربری تلگرام و شناسه چت: برای ارائه خدمات و ارسال یادآورها.\n"
-    "   - نام کاربری و نام (اختیاری): برای شخصی‌سازی تجربه شما.\n"
-    "   - محتوای یادآورها: برای ذخیره و ارسال یادآورهای شما.\n"
-    "   - فایل‌های صوتی (در صورت ارسال): برای تبدیل به متن و ایجاد یادآور.\n"
-    "2. استفاده از اطلاعات:\n"
-    "   - اطلاعات شما صرفاً برای عملکرد صحیح ربات و ارائه خدمات یادآوری استفاده می‌شود.\n"
-    "   - ما اطلاعات شما را با هیچ شخص ثالثی به اشتراک نمی‌گذاریم، مگر در مواردی که قانون ایجاب کند.\n"
-    "3. ذخیره‌سازی اطلاعات:\n"
-    "   - اطلاعات یادآورها و فایل‌های صوتی موقتاً تا زمان پردازش و ارسال یادآور ذخیره می‌شوند.\n"
-    "   - فایل‌های صوتی پس از پردازش و تبدیل به متن، در اسرع وقت حذف می‌گردند.\n"
-    "4. امنیت:\n"
-    "   - ما تلاش می‌کنیم تا از اطلاعات شما با استفاده از روش‌های امنیتی مناسب محافظت کنیم.\n"
-    "5. تغییرات در سیاست حفظ حریم خصوصی:\n"
-    "   - هرگونه تغییر در این سیاست از طریق همین ربات به اطلاع شما خواهد رسید.\n\n"
-    "با استفاده از این ربات، شما با این سیاست موافقت می‌کنید."
-)
-MSG_PAYMENT_PROMPT: str = "برای دسترسی به امکانات ویژه و تعداد یادآورهای بیشتر، می‌توانید اشتراک خود را ارتقا دهید. هزینه اشتراک: {amount} تومان."
 
+MSG_PRIVACY_POLICY: str = (
+    "Reminder Bot Privacy Policy:\n\n"
+    "We respect your privacy.\n"
+    "1. Information collected:\n"
+    "   - Telegram user ID and chat ID: for service delivery and sending reminders.\n"
+    "   - Username and name (optional): for personalizing your experience.\n"
+    "   - Reminder content: for storing and sending your reminders.\n"
+    "   - Voice files (if sent): for converting to text and creating reminders.\n"
+    "2. Use of information:\n"
+    "   - Your information is used solely for proper bot operation and reminder services.\n"
+    "   - We do not share your information with any third parties, except when required by law.\n"
+    "3. Information storage:\n"
+    "   - Reminder information and voice files are temporarily stored until processing and sending reminders.\n"
+    "   - Voice files are deleted as soon as possible after processing and converting to text.\n"
+    "4. Security:\n"
+    "   - We strive to protect your information using appropriate security methods.\n"
+    "5. Changes to privacy policy:\n"
+    "   - Any changes to this policy will be notified to you through this bot.\n\n"
+    "By using this bot, you agree to this policy."
+)
+
+MSG_PAYMENT_PROMPT: str = "To access special features and more reminders, you can upgrade your subscription. Subscription cost: {amount} USD."
 
 if __name__ == "__main__":
     print("Current Configuration Loaded via Pydantic:")
@@ -93,37 +96,37 @@ if __name__ == "__main__":
     print(f"MSG_PAYMENT_PROMPT: {MSG_PAYMENT_PROMPT}")
 
 # Message Constants
-MSG_FILTER_DATE_PARSE_ERROR = "متاسفانه نتوانستم عبارت تاریخی \"{phrase}\" را برای فیلتر کردن متوجه شوم. لطفاً دوباره امتحان کنید."
-MSG_FILTER_UNSUCCESSFUL = "نتوانستم فیلتر مشخص شده با عبارت \"{text}\" را اعمال کنم. لطفاً دوباره امتحان کنید یا عبارت دیگری به کار ببرید."
-MSG_FILTERS_APPLIED = "فیلترهای زیر اعمال شدند: "
-MSG_FILTER_NO_CRITERIA_FOUND = "عبارت \"{text}\" شامل معیار قابل تشخیصی برای فیلتر کردن نبود."
-MSG_FILTER_NLU_ERROR = "خطایی در پردازش عبارت فیلتر \"{text}\" رخ داد. لطفاً دوباره امتحان کنید."
-MSG_LIST_EMPTY_WITH_FILTERS = "هیچ یادآوری با فیلترهای اعمال شده یافت نشد."
-MSG_LIST_HEADER_WITH_FILTERS = "یادآورهای شما (فیلتر شده):"
+MSG_FILTER_DATE_PARSE_ERROR = "Sorry, I couldn't understand the date phrase \"{phrase}\" for filtering. Please try again."
+MSG_FILTER_UNSUCCESSFUL = "I couldn't apply the specified filter with the phrase \"{text}\". Please try again or use a different phrase."
+MSG_FILTERS_APPLIED = "The following filters were applied: "
+MSG_FILTER_NO_CRITERIA_FOUND = "The phrase \"{text}\" didn't contain any recognizable criteria for filtering."
+MSG_FILTER_NLU_ERROR = "An error occurred while processing the filter phrase \"{text}\". Please try again."
+MSG_LIST_EMPTY_WITH_FILTERS = "No reminders found with the applied filters."
+MSG_LIST_HEADER_WITH_FILTERS = "Your reminders (filtered):"
 MSG_LIST_EMPTY_NO_REMINDERS: str = (
-    "شما فعلاً هیچ یادآوری‌ای ثبت نکردید. 😕\n"
-    "کافیه هر چیزی که می‌خواید بهتون یادآوری کنم رو با ویس یا متن بفرستید، من براتون تنظیمش می‌کنم. ✨"
+    "You haven't set any reminders yet. 😕\n"
+    "Just send me anything you want me to remind you about via voice or text, and I'll set it up for you. ✨"
 )
 
 # General Messages
-MSG_ERROR_GENERIC = "متاسفانه خطایی رخ داد. لطفاً دوباره تلاش کنید یا با پشتیبانی تماس بگیرید."
-MSG_SUCCESS_GENERIC = "عملیات با موفقیت انجام شد."
-MSG_NOT_IMPLEMENTED_YET = "این قابلیت هنوز پیاده‌سازی نشده است. به زودی اضافه خواهد شد!"
-MSG_PAYMENT_BUTTON = "💳 یادآور نامحدود"
-MSG_PAYMENT_SUCCESS = "پرداخت شما با موفقیت انجام شد. اشتراک ویژه شما تا تاریخ {expiry_date} فعال شد."
-MSG_PAYMENT_SUCCESS_GENERIC = "پرداخت شما با موفقیت انجام شد و اشتراک ویژه شما فعال شد."
-MSG_PAYMENT_FAILED = "متاسفانه پرداخت شما ناموفق بود. لطفاً دوباره تلاش کنید یا با پشتیبانی تماس بگیرید."
-MSG_PAYMENT_CANCELLED = "پرداخت توسط شما لغو شد."
-MSG_PAYMENT_ALREADY_VERIFIED = "این پرداخت قبلاً تایید شده است."
-MSG_PAYMENT_PENDING_VERIFICATION = "وضعیت پرداخت شما هنوز نامشخص است. لطفاً کمی صبر کنید و مجدداً بررسی نمایید."
-MSG_PAYMENT_VERIFICATION_ERROR = "خطا در تایید پرداخت: {error}. اگر مبلغی از حساب شما کسر شده، طی ۷۲ ساعت آینده به حساب شما باز خواهد گشت."
-MSG_PAYMENT_ERROR = "خطا در ایجاد لینک پرداخت. لطفاً دوباره تلاش کنید."
-MSG_PAYMENT_CONFIG_ERROR = "خطا در تنظیمات پرداخت. لطفاً با مدیر ربات تماس بگیرید."
+MSG_ERROR_GENERIC = "Sorry, an error occurred. Please try again or contact support."
+MSG_SUCCESS_GENERIC = "Operation completed successfully."
+MSG_NOT_IMPLEMENTED_YET = "This feature hasn't been implemented yet. It will be added soon!"
+MSG_PAYMENT_BUTTON = "💳 Upgrade to Premium ($9.99)"
+MSG_PAYMENT_SUCCESS = "Your payment was successful. Your premium subscription is active until {expiry_date}."
+MSG_PAYMENT_SUCCESS_GENERIC = "Your payment was successful and your premium subscription is now active."
+MSG_PAYMENT_FAILED = "Sorry, your payment was unsuccessful. Please try again or contact support."
+MSG_PAYMENT_CANCELLED = "Payment was cancelled by you."
+MSG_PAYMENT_ALREADY_VERIFIED = "This payment has already been verified."
+MSG_PAYMENT_PENDING_VERIFICATION = "Your payment status is still unclear. Please wait a moment and check again."
+MSG_PAYMENT_VERIFICATION_ERROR = "Payment verification error: {error}. If an amount was deducted from your account, it will be refunded within 72 hours."
+MSG_PAYMENT_ERROR = "Error creating payment link. Please try again."
+MSG_PAYMENT_CONFIG_ERROR = "Payment configuration error. Please contact the bot administrator."
 
 # Reminder specific messages
-MSG_REMINDER_SET = "یادآور شما برای \"{task}\" در تاریخ {date} ساعت {time} تنظیم شد."
-MSG_REMINDER_NOT_FOUND = "یادآور مورد نظر یافت نشد."
-MSG_REMINDER_DELETED = "یادآور \"{task}\" حذف شد."
-MSG_REMINDER_LIMIT_REACHED_FREE = "شما به حداکثر تعداد یادآورهای مجاز ({limit}) برای کاربران رایگان رسیده‌اید. برای ثبت یادآورهای بیشتر، لطفاً اشتراک خود را ویژه کنید."
-MSG_REMINDER_LIMIT_REACHED_WITH_BUTTON = "شما به حداکثر تعداد یادآورهای مجاز ({limit}) برای کاربران {tier_name} رسیده‌اید. برای افزودن یادآوری‌های بیشتر، لطفاً اشتراک خود را ارتقا دهید."
-MSG_REMINDER_LIMIT_REACHED_PREMIUM = "شما به حداکثر تعداد یادآورهای مجاز ({limit}) برای کاربران ویژه رسیده‌اید." 
+MSG_REMINDER_SET = "Your reminder for \"{task}\" has been set for {date} at {time}."
+MSG_REMINDER_NOT_FOUND = "Reminder not found."
+MSG_REMINDER_DELETED = "Reminder \"{task}\" has been deleted."
+MSG_REMINDER_LIMIT_REACHED_FREE = "You have reached the maximum number of allowed reminders ({limit}) for free users. To set more reminders, please upgrade your subscription."
+MSG_REMINDER_LIMIT_REACHED_WITH_BUTTON = "You have reached the maximum number of allowed reminders ({limit}) for {tier_name} users. To add more reminders, please upgrade your subscription."
+MSG_REMINDER_LIMIT_REACHED_PREMIUM = "You have reached the maximum number of allowed reminders ({limit}) for premium users." 

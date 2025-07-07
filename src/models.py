@@ -2,7 +2,6 @@ from sqlalchemy import create_engine, Column, Integer, String, DateTime, Boolean
 from sqlalchemy.orm import relationship, declarative_base
 from sqlalchemy.sql import func
 import enum
-import jdatetime
 from datetime import datetime, timezone
 
 Base = declarative_base()
@@ -28,7 +27,7 @@ class User(BaseModel):
     first_name = Column(String)
     last_name = Column(String, nullable=True)
     username = Column(String, nullable=True)
-    language_code = Column(String, default='fa')
+    language_code = Column(String, default='en')
     subscription_tier = Column(SAEnum(SubscriptionTier), default=SubscriptionTier.FREE)
     subscription_expiry = Column(DateTime(timezone=True), nullable=True)
     reminder_count = Column(Integer, default=0)
@@ -46,7 +45,7 @@ class Reminder(BaseModel):
 
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     task = Column(String, nullable=False)
-    jalali_date_str = Column(String, nullable=True)
+    date_str = Column(String, nullable=True)  # Changed from jalali_date_str
     time_str = Column(String, nullable=True)
     due_datetime_utc = Column(DateTime, nullable=True)
     recurrence_rule = Column(String, nullable=True)
@@ -62,24 +61,28 @@ class Reminder(BaseModel):
         return f"<Reminder(id={self.id}, task='{self.task[:20]}...', user_id={self.user_id})>"
 
     @property
-    def jalali_datetime(self):
+    def datetime_local(self):
+        """Get the local datetime from date_str and time_str"""
         try:
-            year, month, day = map(int, self.jalali_date_str.split('-'))
-            hour, minute = map(int, self.time_str.split(':'))
-            return jdatetime.datetime(year, month, day, hour, minute)
+            if not self.date_str or not self.time_str:
+                return None
+            date_obj = datetime.strptime(self.date_str, "%Y-%m-%d").date()
+            time_obj = datetime.strptime(self.time_str, "%H:%M").time()
+            return datetime.combine(date_obj, time_obj)
         except ValueError:
             # Handle potential parsing errors
             return None
 
-    @jalali_datetime.setter
-    def jalali_datetime(self, dt: jdatetime.datetime):
-        self.jalali_date_str = dt.strftime("%Y-%m-%d")
+    @datetime_local.setter
+    def datetime_local(self, dt: datetime):
+        """Set date_str and time_str from a datetime object"""
+        self.date_str = dt.strftime("%Y-%m-%d")
         self.time_str = dt.strftime("%H:%M")
 
     @property
     def gregorian_datetime(self):
-        jd_dt = self.jalali_datetime
-        return jd_dt.togregorian() if jd_dt else None 
+        """Get the UTC datetime from due_datetime_utc"""
+        return self.due_datetime_utc
 
 class Payment(BaseModel):
     __tablename__ = "payments"
@@ -88,7 +91,7 @@ class Payment(BaseModel):
     chat_id = Column(BigInteger, nullable=False)
     
     track_id = Column(String, unique=True, nullable=False)
-    amount = Column(Integer, nullable=False)  # Amount in Rials
+    amount = Column(Integer, nullable=False)  # Amount in USD
     status = Column(Integer, nullable=False)  # See PaymentStatus class in payment.py
     
     ref_id = Column(String, nullable=True)  # Reference ID from payment gateway

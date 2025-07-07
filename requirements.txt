@@ -6,7 +6,6 @@ google-cloud-speech
 google-generativeai==0.8.3
 sqlalchemy
 alembic
-jdatetime
 pytest
 python-dotenv
 psutil
@@ -15,3 +14,5 @@ pydantic-settings
 pytz
 langchain-google-genai==2.0.10
 google-ai-generativelanguage==0.6.10
+stripe>=7.0.0
+flask>=2.0.0

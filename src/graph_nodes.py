@@ -4,51 +4,36 @@ import json
 import google.generativeai as genai
 import datetime
 import pytz
-import jdatetime
 import urllib.parse
 import uuid 
-import re # <--- ADDING IMPORT RE HERE
+import re
 from sqlalchemy import func, or_
 from telegram import InlineKeyboardMarkup, InlineKeyboardButton
 import secrets
-
-# Import our Persian formatting utilities
-from src.persian_utils import to_persian_numerals, get_persian_day_name, get_persian_month_name, format_jalali_date
 
 from src.graph_state import AgentState
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import AIMessage, HumanMessage
 from config.config import settings, MSG_WELCOME, MSG_REMINDER_SET, MSG_LIST_EMPTY_NO_REMINDERS, MSG_PAYMENT_PROMPT, MSG_PAYMENT_BUTTON
-from src.datetime_utils import parse_persian_datetime_to_utc, resolve_persian_date_phrase_to_range
+from src.datetime_utils import parse_english_datetime_to_utc, resolve_english_date_phrase_to_range, format_datetime_for_display
 from src.models import Reminder, User, SubscriptionTier
 from src.database import get_db
 from sqlalchemy.orm import Session
+from src.payment import DEFAULT_PAYMENT_AMOUNT
 
 # Global cache for pending reminder details before confirmation
 PENDING_REMINDER_CONFIRMATIONS: Dict[str, Dict[str, Any]] = {}
 
 logger = logging.getLogger(__name__)
 
-# Helper function to get current Persian date and time for the LLM prompt
-def get_current_persian_datetime_for_prompt() -> str:
+# Helper function to get current English date and time for the LLM prompt
+def get_current_english_datetime_for_prompt() -> str:
     try:
         now_utc = datetime.datetime.now(pytz.utc)
-        tehran_tz = pytz.timezone("Asia/Tehran")
-        now_tehran = now_utc.astimezone(tehran_tz)
-        jalali_dt = jdatetime.datetime.fromgregorian(datetime=now_tehran)
-
-        # Assuming get_persian_day_name and get_persian_month_name are correctly imported or defined
-        # And to_persian_numerals is also available
-        day_name = get_persian_day_name(jalali_dt) # Make sure this function handles jdatetime object
-        day_num = to_persian_numerals(str(jalali_dt.day))
-        month_name = get_persian_month_name(jalali_dt) # Make sure this function handles jdatetime object
-        year_num = to_persian_numerals(str(jalali_dt.year))
-        time_str = to_persian_numerals(now_tehran.strftime("%H:%M"))
-        
-        return f"{day_name} {day_num} {month_name} {year_num}، ساعت {time_str}"
+        return now_utc.strftime("%A, %B %d, %Y at %I:%M %p UTC")
     except Exception as e:
-        logger.error(f"Error generating current Persian datetime for prompt: {e}", exc_info=True)
-        return "تاریخ و زمان فعلی نامشخص"
+        logger.error(f"Error generating current English datetime for prompt: {e}", exc_info=True)
+        return "Current date and time unavailable"
 
 async def entry_node(state: AgentState) -> Dict[str, Any]:
     """Node that processes the initial input and determines message type."""
@@ -255,9 +240,9 @@ async def determine_intent_node(state: AgentState) -> Dict[str, Any]:
         elif effective_input == "show_subscription_options":
             logger.info(f"Detected 'show_subscription_options' callback.")
             return {"current_intent": "intent_show_payment_options", "current_node_name": "determine_intent_node"}
-        elif effective_input == "initiate_payment_zibal":
-            logger.info(f"Detected 'initiate_payment_zibal' callback.")
-            return {"current_intent": "intent_payment_initiate_zibal", "current_node_name": "determine_intent_node"}
+        elif effective_input == "initiate_payment_stripe":
+            logger.info(f"Detected 'initiate_payment_stripe' callback.")
+            return {"current_intent": "intent_payment_initiate_stripe", "current_node_name": "determine_intent_node"}
 
     # --- Priority 2: Explicit Commands and Keyboard Buttons ---
     if input_text.startswith('/'):
@@ -300,24 +285,24 @@ async def determine_intent_node(state: AgentState) -> Dict[str, Any]:
         else:
             try:
                 llm = ChatGoogleGenerativeAI(model=settings.GEMINI_MODEL_NAME, temperature=0.3)
-                current_persian_datetime = get_current_persian_datetime_for_prompt()
-                prompt_template = f"""شما یک دستیار هوشمند برای تشخیص قصد کاربر از یک متن فارسی هستید.
-وظیفه شما این است که مشخص کنید آیا کاربر قصد ایجاد یک یادآور جدید را دارد یا خیر.
-اگر قصد ایجاد یادآور دارد، باید اطلاعات زیر را استخراج کنید:
-1.  `task`: متن اصلی کار که باید یادآوری شود (مثلاً «زنگ زدن به برادرم»، «جلسه هفتگی تیم فروش»). این بخش نباید شامل تاریخ و زمان باشد.
-2.  `date_str`: عبارت مربوط به تاریخ (مثلاً «فردا»، «پس فردا»، «شنبه آینده»، «آخر هفته»، «سه روز دیگه»، «۲۵ اسفند»). این فیلد می‌تواند شامل عبارات نسبی یا دقیق باشد.
-3.  `time_str`: عبارت مربوط به زمان (مثلاً «ساعت ۱۴»، «۳ بعد از ظهر»، «صبح زود»، «نزدیک ظهر»). این فیلد می‌تواند شامل عبارات نسبی یا دقیق باشد.
+                current_english_datetime = get_current_english_datetime_for_prompt()
+                prompt_template = f"""You are an intelligent assistant for detecting user intent from English text.
+Your task is to determine whether the user intends to create a new reminder or not.
+If they intend to create a reminder, you should extract the following information:
+1.  `task`: The main task that needs to be reminded (e.g., "call my brother", "weekly sales team meeting"). This should not include date and time.
+2.  `date_str`: Date-related phrases (e.g., "tomorrow", "day after tomorrow", "next monday", "weekend", "in 3 days", "march 15"). This field can include relative or specific expressions.
+3.  `time_str`: Time-related phrases (e.g., "2 pm", "3 in the afternoon", "early morning", "around noon"). This field can include relative or specific expressions.
 
-تاریخ و زمان فعلی در تهران: {current_persian_datetime}
+Current date and time: {current_english_datetime}
 
-متن کاربر: «{input_text}»
+User text: "{input_text}"
 
-لطفاً پاسخ خود را فقط و فقط در قالب یک آبجکت JSON با ساختار زیر ارائه دهید:
+Please provide your response only and only in the format of a JSON object with the following structure:
 {{
-  \"is_reminder_creation_intent\": boolean,
-  \"task\": \"string or null\",
-  \"date_str\": \"string or null\",
-  \"time_str\": \"string or null\"
+  "is_reminder_creation_intent": boolean,
+  "task": "string or null",
+  "date_str": "string or null",
+  "time_str": "string or null"
 }}"""
                 logger.info(f"Sending prompt to LLM for intent determination. User input: '{input_text}'")
                 llm_response = await llm.ainvoke([HumanMessage(content=prompt_template)])
@@ -364,8 +349,8 @@ async def determine_intent_node(state: AgentState) -> Dict[str, Any]:
     current_reminder_creation_context = state.get("reminder_creation_context") if state.get("reminder_creation_context") is not None else {}
     # Using the more specific message for unknown intent when reminder creation is the primary NLU focus now
     unknown_intent_response_text = (
-        f"متاسفانه منظور شما از «{input_text}» را برای ایجاد یادآور متوجه نشدم. "
-        "لطفاً کار، تاریخ و زمان مورد نظرتان را واضح‌تر بیان کنید. مثلا: «یادم بنداز فردا ساعت ۱۰ صبح به دکتر زنگ بزنم»"
+        f"Sorry, I couldn't understand your intent from '{input_text}' for creating a reminder. "
+        "Please express your task, date and time more clearly. For example: 'Remind me to call the doctor tomorrow at 10 AM'"
     )
     return {
         "current_intent": "unknown_intent",
@@ -489,24 +474,18 @@ async def process_datetime_node(state: AgentState) -> Dict[str, Any]:
     time_str = reminder_ctx.get("collected_time_str") # or extracted_params.get("time") <- no longer needed here
     
     # am_pm_choice is not used by the current parser, so no need to pull it from extracted_params here.
-    # It was removed from the parse_persian_datetime_to_utc call.
+    # It was removed from the parse_english_datetime_to_utc call.
 
     # Only attempt parsing if intent is reminder-related and parameters are present
     if current_intent == "intent_create_reminder": # Or if it's an edit flow later
         if date_str or time_str:
             logger.info(f"Attempting to parse date='{date_str}', time='{time_str}' for intent '{current_intent}'") # Removed am_pm from log
             try:
-                # Pass am_pm_choice to the parser if available - REMOVED, parser handles periods internally
-                parsed_dt_utc = parse_persian_datetime_to_utc(date_str, time_str) # Removed am_pm_choice
+                parsed_dt_utc = parse_english_datetime_to_utc(date_str, time_str)
                 if parsed_dt_utc:
                     logger.info(f"Successfully parsed datetime to UTC: {parsed_dt_utc}")
                     # Store in context for subsequent nodes
                     reminder_ctx["collected_parsed_datetime_utc"] = parsed_dt_utc
-                    # Clear am_pm_choice from context once used for parsing (or if it was never meant for this parser)
-                    if "collected_am_pm_choice" in reminder_ctx:
-                        del reminder_ctx["collected_am_pm_choice"]
-                    if "ambiguous_time_details" in reminder_ctx: # Clear ambiguity once resolved
-                         del reminder_ctx["ambiguous_time_details"]
                 else:
                     logger.warning(f"Failed to parse date/time from strings: date='{date_str}', time='{time_str}'")
                     # If parsing fails, ensure collected_parsed_datetime_utc is None or removed
@@ -549,13 +528,13 @@ async def validate_and_clarify_reminder_node(state: AgentState) -> Dict[str, Any
     current_reminder_count = 0
     reminder_limit = settings.MAX_REMINDERS_FREE_TIER
     is_premium = False
-    tier_name = "رایگان" # Default tier name for messaging
+    tier_name = "Free" # Default tier name for messaging
 
     if user_profile: # If profile exists, use its values
         current_reminder_count = user_profile.get("current_reminder_count", 0)
         reminder_limit = user_profile.get("reminder_limit", settings.MAX_REMINDERS_FREE_TIER)
         is_premium = user_profile.get("is_premium", False)
-        tier_name = "ویژه" if is_premium else "رایگان"
+        tier_name = "Premium" if is_premium else "Free"
     else:
         logger.info(f"User profile not available for user {user_id} in validation node. Assuming free tier limits.")
 
@@ -576,7 +555,7 @@ async def validate_and_clarify_reminder_node(state: AgentState) -> Dict[str, Any
         # If a specific MSG_REMINDER_LIMIT_REACHED_FREE existed and was different, we might choose it here.
 
         response_text = limit_message_template.format(
-            limit=to_persian_numerals(str(reminder_limit)), 
+            limit=str(reminder_limit), 
             tier_name=tier_name
         )
         
@@ -585,7 +564,7 @@ async def validate_and_clarify_reminder_node(state: AgentState) -> Dict[str, Any
             limit_exceeded_keyboard = {
                 "type": "InlineKeyboardMarkup",
                 "inline_keyboard": [
-                    [{"text": "یادآور نامحدود 👑", "callback_data": "show_subscription_options"}]
+                    [{"text": "Unlimited Reminders 👑", "callback_data": "show_subscription_options"}]
                 ]
             }
 
@@ -602,30 +581,30 @@ async def validate_and_clarify_reminder_node(state: AgentState) -> Dict[str, Any
     if not collected_task:
         logger.info(f"Validation failed for user {user_id}: Task is missing.")
         pending_clarification_type = "task"
-        clarification_question_text = "لطفاً بفرمایید برای چه کاری می‌خواهید یادآور تنظیم کنید؟"
+        clarification_question_text = "Please tell me what you want me to remind you about?"
         new_reminder_creation_status = "clarification_needed_task"
     # 3. Validate Datetime
     elif not collected_parsed_dt_utc:
         logger.info(f"Validation failed for user {user_id}, task '{collected_task}': Datetime is missing or unparseable.")
         pending_clarification_type = "datetime"
-        clarification_question_text = f"برای یادآور «{collected_task}» چه تاریخ و ساعتی مدنظرتان است؟"
+        clarification_question_text = f"For the reminder \"{collected_task}\", what date and time do you have in mind?"
         new_reminder_creation_status = "clarification_needed_datetime"
         # Potentially check if ambiguous_time_details is set from a previous AM/PM NLU attempt that didn't parse
-        # This would primarily be if parse_persian_datetime_to_utc itself could signal ambiguity.
-        # For now, relying on separate AM/PM clarification if `collected_am_pm_choice` was needed and not provided to `parse_persian_datetime_to_utc`.
+        # This would primarily be if parse_english_datetime_to_utc itself could signal ambiguity.
+        # For now, relying on separate AM/PM clarification if `collected_am_pm_choice` was needed and not provided to `parse_english_datetime_to_utc`.
         # If `collected_am_pm_choice` is present in `reminder_ctx` but parsing still failed, it means the date/time itself was bad.
 
-    # (Future AM/PM specific clarification check - assuming parse_persian_datetime_to_utc handles am_pm_choice or returns None if it's ambiguous and choice is missing)
-    # For instance, if parse_persian_datetime_to_utc returned a specific error or flag for AM/PM:
+    # (Future AM/PM specific clarification check - assuming parse_english_datetime_to_utc handles am_pm_choice or returns None if it's ambiguous and choice is missing)
+    # For instance, if parse_english_datetime_to_utc returned a specific error or flag for AM/PM:
     # elif reminder_ctx.get("datetime_parse_requires_ampm_clarification"):
     #     logger.info(f"Validation for user {user_id}, task '{collected_task}': AM/PM clarification needed.")
     #     pending_clarification_type = "am_pm"
-    #     ambiguous_hour = reminder_ctx.get("ambiguous_time_details", {}).get("hour", "ساعت مورد نظر")
-    #     clarification_question_text = f"ساعت {ambiguous_hour} صبح است یا بعد از ظهر؟"
+    #     ambiguous_hour = reminder_ctx.get("ambiguous_time_details", {}).get("hour", "target time")
+    #     clarification_question_text = f"Is {ambiguous_hour} AM or PM?"
     #     clarification_keyboard_markup = {
     #         "type": "InlineKeyboardMarkup",
     #         "inline_keyboard": [
-    #             [{"text": "☀️ صبح (AM)", "callback_data": "clarify_am_pm:am"}, {"text": "🌙 بعد از ظهر (PM)", "callback_data": "clarify_am_pm:pm"}]
+    #             [{"text": "☀️ AM", "callback_data": "clarify_am_pm:am"}, {"text": "🌙 PM", "callback_data": "clarify_am_pm:pm"}]
     #         ]}
     #     new_reminder_creation_status = "clarification_needed_am_pm"
     #     # Ensure determine_intent_node handles "clarify_am_pm:am/pm" callbacks and sets "collected_am_pm_choice"
@@ -662,7 +641,7 @@ async def confirm_reminder_details_node(state: AgentState) -> Dict[str, Any]:
     if not reminder_context or not reminder_context.get("collected_task") or not reminder_context.get("collected_parsed_datetime_utc"):
         logger.error(f"Missing task or datetime in reminder_creation_context for confirmation: {reminder_context}")
         return {
-            "response_text": "خطا: اطلاعات یادآور برای تایید کامل نیست. لطفاً دوباره تلاش کنید.",
+            "response_text": "Error: Reminder information for confirmation is incomplete. Please try again.",
             "current_node_name": "confirm_reminder_details_node",
             "pending_confirmation": None # Ensure this is cleared
         }
@@ -677,7 +656,7 @@ async def confirm_reminder_details_node(state: AgentState) -> Dict[str, Any]:
         except Exception as e:
             logger.error(f"Invalid datetime string in reminder_creation_context: {parsed_dt_utc_val}. Error: {e}")
             return {
-                "response_text": "خطا: فرمت تاریخ و زمان ارسال شده برای تایید نامعتبر است.",
+                "response_text": "Error: The date and time format sent for confirmation is invalid.",
                 "current_node_name": "confirm_reminder_details_node",
                 "pending_confirmation": None
             }
@@ -686,20 +665,13 @@ async def confirm_reminder_details_node(state: AgentState) -> Dict[str, Any]:
     else:
         logger.error(f"Missing or invalid type for datetime in reminder_creation_context: {parsed_dt_utc_val} (type: {type(parsed_dt_utc_val)})")
         return {
-            "response_text": "خطا: تاریخ و زمان یادآور برای تایید یافت نشد.",
+            "response_text": "Error: Reminder date and time for confirmation not found.",
             "current_node_name": "confirm_reminder_details_node",
             "pending_confirmation": None
         }
 
-    tehran_tz = pytz.timezone("Asia/Tehran")
-    parsed_dt_tehran = parsed_dt_utc.astimezone(tehran_tz)
-    jalali_dt = jdatetime.datetime.fromgregorian(datetime=parsed_dt_tehran)
-
-    # Instead of: formatted_date_time = format_jalali_date(jalali_dt, include_time=True, include_day_name=True)
-    formatted_date = format_jalali_date(jalali_dt)
-    # Manually append time in Persian numerals
-    persian_time_str = to_persian_numerals(parsed_dt_tehran.strftime("%H:%M"))
-    formatted_date_time = f"{formatted_date}، ساعت {persian_time_str}"
+    # Format datetime for display in English
+    formatted_date_time = format_datetime_for_display(parsed_dt_utc)
 
     confirmation_id = secrets.token_hex(4)  # 8 hex chars, 32 bits of entropy
     
@@ -739,11 +711,11 @@ async def confirm_reminder_details_node(state: AgentState) -> Dict[str, Any]:
 
     task = clean_task_text(reminder_context.get("collected_task", ""))
     response_text = (
-        "یادآور زیر رو تنظیم کنم؟ 👇\n\n"
-        f"📝 متن: {task}\n"
-        f"⏰ زمان: {formatted_date_time}\n\n"
-        "اگه درسته، روی «تنظیم کن» بزن\n"
-        "اگه نیاز به تغییر داره، روی «رد» بزن و یادآور جدید رو دوباره بفرست 🙂"
+        "Should I set this reminder? 👇\n\n"
+        f"📝 Task: {task}\n"
+        f"⏰ Time: {formatted_date_time}\n\n"
+        "If it's correct, click 'Set'\n"
+        "If it needs changes, click 'Cancel' and send the new reminder again 🙂"
     )
     
     # Confirmation message keyboard (styled as in the image, using dict format for compatibility)
@@ -751,8 +723,8 @@ async def confirm_reminder_details_node(state: AgentState) -> Dict[str, Any]:
         "type": "InlineKeyboardMarkup",
         "inline_keyboard": [
             [
-                {"text": "✅ تنظیم کن", "callback_data": f"confirm_create_reminder:yes:id={confirmation_id}"},
-                {"text": "❌ رد", "callback_data": f"confirm_create_reminder:no:id={confirmation_id}"}
+                {"text": "✅ Set", "callback_data": f"confirm_create_reminder:yes:id={confirmation_id}"},
+                {"text": "❌ Cancel", "callback_data": f"confirm_create_reminder:no:id={confirmation_id}"}
             ]
         ]
     }
@@ -851,13 +823,9 @@ async def create_reminder_node(state: AgentState) -> Dict[str, Any]:
 
     db: Session = next(get_db())
     try:
-        # Convert UTC datetime to Tehran timezone and create Jalali date strings
-        tehran_tz = pytz.timezone("Asia/Tehran") 
-        dt_tehran = parsed_dt_utc.astimezone(tehran_tz)
-        jalali_date = jdatetime.datetime.fromgregorian(datetime=dt_tehran)
-        # Format for database storage
-        jalali_date_str = jalali_date.strftime("%Y-%m-%d")
-        time_str = dt_tehran.strftime("%H:%M")
+        # Format for database storage (using UTC)
+        date_str = parsed_dt_utc.strftime("%Y-%m-%d")
+        time_str = parsed_dt_utc.strftime("%H:%M")
         # Clean up the extracted task before saving
         def clean_task_text(task: str) -> str:
             import re
@@ -875,7 +843,7 @@ async def create_reminder_node(state: AgentState) -> Dict[str, Any]:
         new_reminder = Reminder(
             user_id=user_db_id,  # Use the user's actual DB ID
             task=task,
-            jalali_date_str=jalali_date_str, 
+            date_str=date_str,  # Store as regular date string
             time_str=time_str, 
             is_active=True
         )
@@ -886,28 +854,15 @@ async def create_reminder_node(state: AgentState) -> Dict[str, Any]:
         # Update user_profile's reminder count if profile is fully available
         if user_profile and "current_reminder_count" in user_profile:
             user_profile["current_reminder_count"] += 1
-        # Format for MSG_REMINDER_SET using Persian numerals
-        tehran_tz = pytz.timezone("Asia/Tehran")
-        dt_tehran = parsed_dt_utc.astimezone(tehran_tz)
-        jalali_date_obj = jdatetime.datetime.fromgregorian(datetime=dt_tehran)
-        def to_persian_numerals(text: str) -> str:
-            persian_numerals_map = str.maketrans("0123456789", "۰۱۲۳۴۵۶۷۸۹")
-            return str(text).translate(persian_numerals_map) # Ensure input is string
-        # The old MSG_REMINDER_SET is no longer used here directly.
-        # New success message:
+        
+        # Format success message in English
+        formatted_datetime = format_datetime_for_display(parsed_dt_utc)
         response_message = (
-            "تمومه! 🎉  \n"
-            "یادآورت با موفقیت تنظیم شد و سر وقت بهت خبر می‌دم 🔔"
+            "Done! 🎉\n"
+            "Your reminder has been set successfully and I'll notify you on time 🔔"
         )
-        # For logging, we might still want the detailed Persian date/time
-        # Use our Persian utilities
-        persian_day_name = get_persian_day_name(jalali_date_obj)
-        persian_month_name = get_persian_month_name(jalali_date_obj)
-        persian_day_num = to_persian_numerals(str(jalali_date_obj.day))
-        persian_year_num = to_persian_numerals(str(jalali_date_obj.year))
-        persian_time_str = to_persian_numerals(dt_tehran.strftime("%H:%M"))
-        formatted_datetime_for_log = f"{persian_day_name} {persian_day_num} {persian_month_name} {persian_year_num}، ساعت {persian_time_str}"
-        logger.info(f"Reminder successfully set. Task: {task}, Persian Time: {formatted_datetime_for_log}")
+        
+        logger.info(f"Reminder successfully set. Task: {task}, Time: {formatted_datetime}")
         return {
             "current_operation_status": "success", # MODIFIED KEY
             "response_text": response_message,
@@ -921,7 +876,7 @@ async def create_reminder_node(state: AgentState) -> Dict[str, Any]:
         db.rollback()
         return {
             "current_operation_status": "error_db_create", # MODIFIED KEY
-            "response_text": "متاسفانه در ایجاد یادآور شما در پایگاه داده خطایی رخ داد.",
+            "response_text": "Sorry, an error occurred while creating your reminder in the database.",
             "current_node_name": "create_reminder_node",
             "reminder_creation_context": reminder_ctx, # Keep context for potential retry/debug
             "pending_confirmation": None
@@ -940,7 +895,7 @@ async def confirm_delete_reminder_node(state: AgentState) -> Dict[str, Any]:
     if reminder_id_to_confirm is None:
         logger.error(f"confirm_delete_reminder_node: reminder_id_to_confirm_delete is missing from extracted_parameters for user {user_id}")
         return {
-            "response_text": "خطا: شناسه یادآور برای تایید حذف مشخص نیست.",
+            "response_text": "Error: Reminder ID for delete confirmation is not specified.",
             "current_node_name": "confirm_delete_reminder_node"
         }
 
@@ -949,7 +904,7 @@ async def confirm_delete_reminder_node(state: AgentState) -> Dict[str, Any]:
         user_db_id = state.get("user_profile", {}).get("user_db_id")
         if not user_db_id:
             logger.error(f"confirm_delete_reminder_node: user_db_id not found in profile for user {user_id}")
-            return {"response_text": "خطا: اطلاعات کاربری برای تایید حذف یافت نشد.", "current_node_name": "confirm_delete_reminder_node"}
+            return {"response_text": "Error: User information for delete confirmation not found.", "current_node_name": "confirm_delete_reminder_node"}
 
         reminder = db.query(Reminder).filter(
             Reminder.id == reminder_id_to_confirm,
@@ -960,7 +915,7 @@ async def confirm_delete_reminder_node(state: AgentState) -> Dict[str, Any]:
         if not reminder:
             logger.warning(f"confirm_delete_reminder_node: Reminder ID {reminder_id_to_confirm} not found, not active, or doesn't belong to user {user_id}.")
             return {
-                "response_text": "یادآور مورد نظر برای حذف یافت نشد یا قبلاً حذف شده است.",
+                "response_text": "The specified reminder for deletion was not found or has already been deleted.",
                 "current_node_name": "confirm_delete_reminder_node"
             }
 
@@ -969,34 +924,25 @@ async def confirm_delete_reminder_node(state: AgentState) -> Dict[str, Any]:
         try:
             gregorian_dt = reminder.gregorian_datetime
             if not gregorian_dt:
-                formatted_datetime_persian = "[تاریخ نامشخص]"
+                formatted_datetime = "[Date unavailable]"
             else:
-                tehran_tz = pytz.timezone("Asia/Tehran")
-                dt_tehran = gregorian_dt.astimezone(tehran_tz)
-                jalali_date_obj = jdatetime.datetime.fromgregorian(datetime=dt_tehran)
-                
-                persian_day_name = get_persian_day_name(jalali_date_obj)
-                persian_month_name = get_persian_month_name(jalali_date_obj)
-                persian_day_num = to_persian_numerals(str(jalali_date_obj.day))
-                persian_year_num = to_persian_numerals(str(jalali_date_obj.year))
-                persian_time_str = to_persian_numerals(dt_tehran.strftime("%H:%M"))
-                formatted_datetime_persian = f"{persian_day_name} {persian_day_num} {persian_month_name} {persian_year_num}، ساعت {persian_time_str}"
+                formatted_datetime = format_datetime_for_display(gregorian_dt)
         except Exception as e:
             logger.error(f"Error formatting date for reminder {reminder.id} in confirm_delete: {e}")
-            formatted_datetime_persian = "[خطا در نمایش تاریخ]"
+            formatted_datetime = "[Error displaying date]"
 
         confirmation_message = (
-            f"⚠️ آیا از حذف یادآور زیر مطمئن هستید؟\n\n"
-            f"📝 **یادآور**: {task_preview}\n"
-            f"⏰ **زمان**: {formatted_datetime_persian}"
+            f"⚠️ Are you sure you want to delete this reminder?\n\n"
+            f"📝 **Reminder**: {task_preview}\n"
+            f"⏰ **Time**: {formatted_datetime}"
         )
         
         confirmation_keyboard = {
-                    "type": "InlineKeyboardMarkup",
-                    "inline_keyboard": [
+            "type": "InlineKeyboardMarkup",
+            "inline_keyboard": [
                 [
-                    {"text": "بله، حذف کن ✅", "callback_data": f"execute_delete_reminder:{reminder.id}"},
-                    {"text": "نه، منصرف شدم ❌", "callback_data": "cancel_delete_reminder"}
+                    {"text": "Yes, delete ✅", "callback_data": f"execute_delete_reminder:{reminder.id}"},
+                    {"text": "No, cancel ❌", "callback_data": "cancel_delete_reminder"}
                 ]
             ]
         }
@@ -1011,7 +957,7 @@ async def confirm_delete_reminder_node(state: AgentState) -> Dict[str, Any]:
     except Exception as e:
         logger.error(f"Error in confirm_delete_reminder_node for user {user_id}, reminder ID {reminder_id_to_confirm}: {e}", exc_info=True)
         return {
-            "response_text": "خطایی در آماده‌سازی پیام تایید حذف رخ داد. لطفاً دوباره تلاش کنید.",
+            "response_text": "An error occurred while preparing the delete confirmation message. Please try again.",
             "current_node_name": "confirm_delete_reminder_node"
         }
     finally:
@@ -1027,13 +973,13 @@ async def handle_intent_node(state: AgentState) -> Dict[str, Any]:
     logger.info(f"Graph: Entered handle_intent_node for user {user_id}, intent: {current_intent}, params: {extracted_parameters}, status: {current_operation_status}")
 
     # Default response text - updated to remove /help
-    default_response_text = "کاری که از من خواستید را متوجه نشدم. لطفاً واضح‌تر بگویید."
+    default_response_text = "I didn't understand what you asked me to do. Please be more specific."
     
     # Try to get response_text from the state, which might have been set by a previous node (like create_reminder_node)
     response_text_from_state = state.get("response_text")
 
-    if current_intent == "intent_create_reminder_confirmed" and response_text_from_state and "تمومه! 🎉" in response_text_from_state:
-        # If create_reminder_node ran, was successful (implied by "تمومه!"), and set this response_text, use it.
+    if current_intent == "intent_create_reminder_confirmed" and response_text_from_state and "Done! 🎉" in response_text_from_state:
+        # If create_reminder_node ran, was successful (implied by "Done!"), and set this response_text, use it.
         # This is a workaround because current_operation_status is not propagating correctly.
         response_text = response_text_from_state
         logger.info(f"Using pre-set success response_text from state for intent_create_reminder_confirmed: {response_text}")
@@ -1049,9 +995,7 @@ async def handle_intent_node(state: AgentState) -> Dict[str, Any]:
     
     updated_state_dict = {"current_node_name": "handle_intent_node"}
 
-    def to_persian_numerals(text: str) -> str:
-        persian_numerals_map = str.maketrans("0123456789", "۰۱۲۳۴۵۶۷۸۹")
-        return str(text).translate(persian_numerals_map)
+
 
     if current_intent == "intent_start":
         response_text = MSG_WELCOME 
@@ -1065,7 +1009,7 @@ async def handle_intent_node(state: AgentState) -> Dict[str, Any]:
         try:
             if not user_profile or not user_profile.get("user_db_id"):
                 logger.warning(f"User profile or user_db_id not found for user {user_id} when viewing reminders.")
-                response_text = "اطلاعات کاربری شما یافت نشد. لطفاً دوباره سعی کنید."
+                response_text = "Your user information was not found. Please try again."
             else:
                 user_db_id = user_profile["user_db_id"]
                 page = extracted_parameters.get("page", 1)
@@ -1075,7 +1019,7 @@ async def handle_intent_node(state: AgentState) -> Dict[str, Any]:
                 reminders_query = db.query(Reminder).filter(
                     Reminder.user_id == user_db_id,
                     Reminder.is_active == True
-                ).order_by(Reminder.jalali_date_str.asc(), Reminder.time_str.asc())
+                ).order_by(Reminder.date_str.asc(), Reminder.time_str.asc())
                 logger.info(f"User {user_id}: reminders_query object created.")
                 total_reminders_count = reminders_query.count()
                 logger.info(f"User {user_id}: Total reminders count = {total_reminders_count}")
@@ -1087,50 +1031,46 @@ async def handle_intent_node(state: AgentState) -> Dict[str, Any]:
                     response_keyboard_markup = None
                 elif not reminders and total_reminders_count > 0:
                     logger.info(f"User {user_id}: Reminders exist, but current page {page} is empty.")
-                    response_text = f"صفحه {to_persian_numerals(str(page))} خالی است. به صفحه قبل برگردید."
+                    response_text = f"Page {page} is empty. Go back to the previous page."
                     buttons = []
                     if page > 1:
-                        buttons.append([{"text": "صفحه قبل ⬅️", "callback_data": f"view_reminders:page:{page-1}"}])
+                        buttons.append([{"text": "Previous Page ⬅️", "callback_data": f"view_reminders:page:{page-1}"}])
                     response_keyboard_markup = {"type": "InlineKeyboardMarkup", "inline_keyboard": buttons} if buttons else None
                 else:
                     reminder_list_items_text = []
                     action_buttons = [] # For delete buttons
-                    reminder_list_header = f"یادآورهای فعال شما (صفحه {to_persian_numerals(str(page))} از {to_persian_numerals(str((total_reminders_count + page_size - 1) // page_size))}):\n\n"
+                    reminder_list_header = f"Your active reminders (page {page} of {((total_reminders_count + page_size - 1) // page_size)}):\n\n"
                     for i, reminder in enumerate(reminders):
                         try:
                             gregorian_dt = reminder.gregorian_datetime
                             if not gregorian_dt:
-                                logger.warning(f"Could not convert Jalali to Gregorian for reminder ID {reminder.id}. Skipping display.")
-                                reminder_list_items_text.append(f"⚠️ اطلاعات تاریخ و زمان برای یادآور با شناسه {reminder.id} نامعتبر است.")
+                                logger.warning(f"Could not get datetime for reminder ID {reminder.id}. Skipping display.")
+                                reminder_list_items_text.append(f"⚠️ Date and time information for reminder ID {reminder.id} is invalid.")
                                 continue
-                            tehran_tz = pytz.timezone('Asia/Tehran')
-                            aware_tehran_dt = tehran_tz.localize(gregorian_dt)
-                            jalali_date_str_display = format_jalali_date(jdatetime.datetime.fromgregorian(datetime=aware_tehran_dt))
-                            time_str_display = aware_tehran_dt.strftime('%H:%M')
-                            day_name = get_persian_day_name(aware_tehran_dt.weekday())
+                            formatted_datetime = format_datetime_for_display(gregorian_dt)
                             task_preview = reminder.task[:40] + "..." if len(reminder.task) > 40 else reminder.task
                             reminder_item_text = (
                                 f"📝 **{reminder.task}**\n"
-                                f"⏰ {day_name}، {jalali_date_str_display}، ساعت {to_persian_numerals(time_str_display)}"
+                                f"⏰ {formatted_datetime}"
                                 # f"\n🆔 `{reminder.id}`" # ID is in callback, maybe not needed in text
                             )
                             reminder_list_items_text.append(reminder_item_text)
                             # Add a delete button for each reminder
                             action_buttons.append([
-                                {"text": f"حذف یادآور: «{task_preview}» 🗑️", "callback_data": f"confirm_delete_reminder:{reminder.id}"}
+                                {"text": f"Delete reminder: «{task_preview}» 🗑️", "callback_data": f"confirm_delete_reminder:{reminder.id}"}
                             ])
                         except Exception as e:
                             logger.error(f"Error formatting reminder ID {reminder.id} for display: {e}", exc_info=True)
-                            reminder_list_items_text.append(f"⚠️ خطای نمایشی برای یادآور با شناسه {reminder.id}")
+                            reminder_list_items_text.append(f"⚠️ Display error for reminder ID {reminder.id}")
                     response_text = reminder_list_header + "\n\n--------------------\n\n".join(reminder_list_items_text)
                     if not reminder_list_items_text:
-                        response_text = reminder_list_header + "موردی برای نمایش در این صفحه نیست."
+                        response_text = reminder_list_header + "No items to display on this page."
                     # Pagination buttons
                     pagination_row = []
                     if page > 1:
-                        pagination_row.append({"text": "صفحه قبل ⬅️", "callback_data": f"view_reminders:page:{page-1}"})
+                        pagination_row.append({"text": "Previous Page ⬅️", "callback_data": f"view_reminders:page:{page-1}"})
                     if total_reminders_count > page * page_size:
-                        pagination_row.append({"text": "➡️ صفحه بعد", "callback_data": f"view_reminders:page:{page+1}"})
+                        pagination_row.append({"text": "➡️ Next Page", "callback_data": f"view_reminders:page:{page+1}"})
                     if pagination_row:
                         action_buttons.append(pagination_row)
                     if action_buttons:
@@ -1139,7 +1079,7 @@ async def handle_intent_node(state: AgentState) -> Dict[str, Any]:
                         response_keyboard_markup = None
         except Exception as e:
             logger.error(f"Error fetching reminders for user {user_id}: {e}", exc_info=True)
-            response_text = "خطا در دریافت لیست یادآورها. لطفاً دوباره تلاش کنید."
+            response_text = "Error retrieving reminder list. Please try again."
         finally:
             db.close()
 
@@ -1189,14 +1129,14 @@ async def handle_intent_node(state: AgentState) -> Dict[str, Any]:
             delete_status = "error_missing_info"
 
         if delete_status == "deleted":
-            response_text = f"یادآور «{deleted_task_name}» با موفقیت حذف شد. ✅"
+            response_text = f"Reminder '{deleted_task_name}' has been successfully deleted. ✅"
             response_keyboard_markup = None 
         elif delete_status == "already_inactive":
-            response_text = "این یادآور قبلاً غیرفعال شده بود."
+            response_text = "This reminder was already inactive."
         elif delete_status == "not_found":
-            response_text = "یادآور مورد نظر یافت نشد. ممکن است قبلاً حذف شده باشد."
+            response_text = "Reminder not found. It may have been deleted already."
         else: 
-            response_text = "خطا در حذف یادآور. لطفاً دوباره تلاش کنید."
+            response_text = "Error deleting reminder. Please try again."
         
         logger.info(f"handle_intent_node: Delete reminder status for user {user_id}, reminder ID {reminder_id_to_delete}: {delete_status}")
         updated_state_dict["current_operation_status"] = None # Clear status after handling delete
@@ -1219,7 +1159,7 @@ async def handle_intent_node(state: AgentState) -> Dict[str, Any]:
     elif current_intent == "intent_delete_reminder_cancelled":
         # Response text is set by determine_intent_node for this case.
         # We just need to ensure it's passed through.
-        response_text = response_text_from_state or "عملیات حذف لغو شد."
+        response_text = response_text_from_state or "Delete operation was cancelled."
         logger.info(f"handle_intent_node: Reminder deletion cancelled by user {user_id}. Response: '{response_text}'")
         updated_state_dict["current_operation_status"] = None # Clear any related status
 
@@ -1233,43 +1173,41 @@ async def handle_intent_node(state: AgentState) -> Dict[str, Any]:
 
     elif current_intent == "intent_show_payment_options":
         logger.info(f"handle_intent_node: Showing payment options for user {user_id}")
-        response_text = MSG_PAYMENT_PROMPT.format(amount="...") # TODO: Get actual amount
+        amount_usd = DEFAULT_PAYMENT_AMOUNT / 100  # Convert cents to dollars
+        response_text = MSG_PAYMENT_PROMPT.format(amount=f"${amount_usd:.2f}")
         payment_keyboard = {
             "type": "InlineKeyboardMarkup",
             "inline_keyboard": [
-                [{"text": MSG_PAYMENT_BUTTON, "callback_data": "initiate_payment_zibal"}]
+                [{"text": MSG_PAYMENT_BUTTON, "callback_data": "initiate_payment_stripe"}]
             ]
         }
         response_keyboard_markup = payment_keyboard
     
     # After reminder creation (success or failure)
     # This block will now primarily handle alternative messages if current_operation_status
-    # IS correctly propagated and is something other than "success" with the "تمومه! 🎉" message,
+    # IS correctly propagated and is something other than "success" with the "Done! 🎉" message,
     # or if it is "success" and we want the MSG_REMINDER_SET format.
-    # Given the current workaround, if "تمومه! 🎉" was used, current_operation_status was locally set to "success"
+    # Given the current workaround, if "Done! 🎉" was used, current_operation_status was locally set to "success"
     # for cleanup purposes.
 
     if current_operation_status == "success":
-        # If the "تمومه! 🎉" message was already set as response_text, we don't want to overwrite it here
+        # If the "Done! 🎉" message was already set as response_text, we don't want to overwrite it here
         # with MSG_REMINDER_SET unless that's the desired final message.
-        # The user wants "تمومه! 🎉...", so we should ensure it's not overwritten.
-        if "تمومه! 🎉" not in response_text: # Only format with MSG_REMINDER_SET if not already the "تمومه" message
+        # The user wants "Done! 🎉...", so we should ensure it's not overwritten.
+        if "Done! 🎉" not in response_text: # Only format with MSG_REMINDER_SET if not already the "Done" message
             reminder_details = state.get("reminder_details", {})
-            task = reminder_details.get("task", "وظیفه شما")
+            task = reminder_details.get("task", "your task")
             utc_dt_str = reminder_details.get("datetime_utc_iso")
             if utc_dt_str:
                 utc_dt = datetime.datetime.fromisoformat(utc_dt_str.replace("Z", "+00:00"))
-                tehran_dt = utc_dt.astimezone(pytz.timezone('Asia/Tehran'))
-                jalali_date_str_display = format_jalali_date(jdatetime.datetime.fromgregorian(datetime=tehran_dt))
-                time_str_display = tehran_dt.strftime('%H:%M')
-                day_name = get_persian_day_name(tehran_dt.weekday())
+                formatted_datetime = format_datetime_for_display(utc_dt)
                 response_text = MSG_REMINDER_SET.format(
                     task=task, 
-                    date=f"{day_name}، {jalali_date_str_display}", 
-                    time=to_persian_numerals(time_str_display)
+                    date=formatted_datetime, 
+                    time=formatted_datetime
                 )
             else:
-                response_text = f"یادآور شما برای «{task}» با موفقیت تنظیم شد، اما خطایی در نمایش تاریخ و زمان رخ داد."
+                response_text = f"Your reminder for '{task}' has been set successfully, but there was an error displaying the date and time."
             logger.info(f"handle_intent_node: Formatted MSG_REMINDER_SET for success. Task: {task}")
         
         # Cleanup logic, always run for success
@@ -1282,7 +1220,7 @@ async def handle_intent_node(state: AgentState) -> Dict[str, Any]:
         limit_exceeded_keyboard = {
             "type": "InlineKeyboardMarkup",
             "inline_keyboard": [
-                [{"text": "یادآور نامحدود 👑", "callback_data": "show_subscription_options"}]
+                [{"text": "Unlimited Reminders 👑", "callback_data": "show_subscription_options"}]
             ]
         }
         response_keyboard_markup = limit_exceeded_keyboard
@@ -1295,19 +1233,19 @@ async def handle_intent_node(state: AgentState) -> Dict[str, Any]:
         updated_state_dict["current_operation_status"] = None
 
     elif current_operation_status == "error_db": 
-        response_text = "متاسفانه هنگام ذخیره یادآور شما خطایی در پایگاه داده رخ داد. لطفاً دوباره تلاش کنید."
+        response_text = "Sorry, a database error occurred while saving your reminder. Please try again."
         logger.error(f"handle_intent_node: DB error during reminder creation for user {user_id}.")
         updated_state_dict["current_operation_status"] = None
     
     elif current_operation_status == "error_missing_data": 
-        response_text = "اطلاعات کافی برای ایجاد یادآور (مانند متن یا زمان) دریافت نشد. لطفاً دوباره سعی کنید."
+        response_text = "Insufficient information for creating a reminder (such as text or time) was received. Please try again."
         logger.warning(f"handle_intent_node: Missing data for reminder creation for user {user_id}.")
         updated_state_dict["current_operation_status"] = None
     
     elif current_operation_status and "error" in current_operation_status: # Catch other errors from create_reminder_node
         # This handles cases like "error_invalid_datetime_format_in_context", "error_user_not_found", etc.
         # if they set a response_text in create_reminder_node and it made it to the state.
-        # If not, it will be the default "کاری که..." or the specific error text from create_reminder if used.
+        # If not, it will be the default "I didn't understand..." or the specific error text from create_reminder if used.
         if response_text_from_state and response_text == default_response_text: # If create_node set specific error text
             response_text = response_text_from_state
         logger.error(f"handle_intent_node: Handling generic error status '{current_operation_status}' for user {user_id}. Response: '{response_text}'")
@@ -1365,7 +1303,7 @@ async def format_response_node(state: AgentState) -> Dict[str, Any]:
 async def process_reminder_filters_node(state: AgentState) -> Dict[str, Any]:
     """Processes extracted filter parameters (date_phrase, keywords)
     and updates reminder_filters in AgentState.
-    Uses resolve_persian_date_phrase_to_range for date phrases.
+    Uses resolve_english_date_phrase_to_range for date phrases.
     """
     user_id = state.get("user_id")
     logger.info(f"Graph: Entered process_reminder_filters_node for user {user_id}")
@@ -1381,7 +1319,7 @@ async def process_reminder_filters_node(state: AgentState) -> Dict[str, Any]:
         return {
             "reminder_filters": updated_reminder_filters,
             "current_node_name": "process_reminder_filters_node",
-            "filter_processing_status_message": "فیلترها پاک شدند." # Provide feedback
+            "filter_processing_status_message": "Filters cleared." # Provide feedback
         }
 
     date_phrase = extracted_params.get("date_phrase")
@@ -1391,7 +1329,7 @@ async def process_reminder_filters_node(state: AgentState) -> Dict[str, Any]:
         logger.info(f"User {user_id}: Processing date_phrase for filter: '{date_phrase}'")
         updated_reminder_filters["raw_date_phrase"] = date_phrase
         try:
-            start_utc, end_utc = resolve_persian_date_phrase_to_range(date_phrase)
+            start_utc, end_utc = resolve_english_date_phrase_to_range(date_phrase)
             if start_utc and end_utc:
                 updated_reminder_filters["date_start_utc"] = start_utc
                 updated_reminder_filters["date_end_utc"] = end_utc

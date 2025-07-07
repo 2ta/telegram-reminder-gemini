@@ -1,43 +1,41 @@
 import logging
 import json
 import datetime
-import requests
-import sys
+import stripe
 from typing import Dict, Any, Optional, Tuple, Union
 
 from src.database import get_db
-from src.models import User, Payment
+from src.models import User, Payment, SubscriptionTier
 from config.config import settings
 
 logger = logging.getLogger(__name__)
 
-# Zibal API endpoints
-ZIBAL_REQUEST_URL = "https://gateway.zibal.ir/v1/request"
-ZIBAL_VERIFY_URL = "https://gateway.zibal.ir/v1/verify"
-ZIBAL_PAYMENT_GATEWAY = "https://gateway.zibal.ir/start/{track_id}"
+# Configure Stripe
+if settings.STRIPE_SECRET_KEY:
+    stripe.api_key = settings.STRIPE_SECRET_KEY
 
-# Default payment amount (100,000 Tomans in Rials)
-DEFAULT_PAYMENT_AMOUNT = 1000000
+# Default payment amount (in cents - $9.99)
+DEFAULT_PAYMENT_AMOUNT = 999
 
-class ZibalPaymentError(Exception):
-    """Exception raised for errors in Zibal payment processing."""
+class StripePaymentError(Exception):
+    """Exception raised for errors in Stripe payment processing."""
     pass
 
 class PaymentStatus:
-    """Status codes returned by Zibal API"""
+    """Status codes for payment tracking"""
+    PENDING = 1
     SUCCESS = 100
     FAILED = 102
     CANCELED = 201
-    PENDING = 1  # Custom status for internal tracking
 
 def create_payment_link(user_id: int, chat_id: int, amount: int = DEFAULT_PAYMENT_AMOUNT) -> Tuple[bool, str, Optional[str]]:
     """
-    Create a payment link using Zibal API
+    Create a payment link using Stripe API
     
     Args:
         user_id: Telegram user ID
         chat_id: Telegram chat ID
-        amount: Payment amount in Rials
+        amount: Payment amount in cents
         
     Returns:
         (success, message, payment_url) tuple where:
@@ -45,103 +43,115 @@ def create_payment_link(user_id: int, chat_id: int, amount: int = DEFAULT_PAYMEN
         - message: Description message
         - payment_url: URL to redirect user to (if success is True)
     """
-    callback_url = f"{settings.PAYMENT_CALLBACK_URL_BASE}/payment_callback" if settings.PAYMENT_CALLBACK_URL_BASE else "https://example.com/payment_callback"
-    
-    data = {
-        "merchant": settings.ZIBAL_MERCHANT_KEY,
-        "amount": amount,
-        "callbackUrl": callback_url,
-        "description": f"Premium subscription for Telegram bot user {user_id}",
-        "orderId": f"telegram-user-{user_id}-{int(datetime.datetime.now().timestamp())}",
-        "metadata": {
-            "user_id": user_id,
-            "chat_id": chat_id
-        }
-    }
+    if not settings.STRIPE_SECRET_KEY:
+        return False, "Stripe is not configured", None
     
     try:
-        response = requests.post(ZIBAL_REQUEST_URL, json=data)
-        result = response.json()
+        # Create a Stripe checkout session
+        session = stripe.checkout.Session.create(
+            payment_method_types=['card'],
+            line_items=[{
+                'price_data': {
+                    'currency': 'usd',
+                    'product_data': {
+                        'name': 'Premium Subscription',
+                        'description': f'Premium subscription for Telegram bot user {user_id}',
+                    },
+                    'unit_amount': amount,
+                },
+                'quantity': 1,
+            }],
+            mode='payment',
+            success_url=f"{settings.PAYMENT_CALLBACK_URL_BASE}/payment_success?session_id={{CHECKOUT_SESSION_ID}}" if settings.PAYMENT_CALLBACK_URL_BASE else "https://example.com/success",
+            cancel_url=f"{settings.PAYMENT_CALLBACK_URL_BASE}/payment_cancel" if settings.PAYMENT_CALLBACK_URL_BASE else "https://example.com/cancel",
+            metadata={
+                'user_id': str(user_id),
+                'chat_id': str(chat_id),
+                'telegram_user_id': str(user_id)
+            }
+        )
         
-        if response.status_code == 200 and result.get("result") == 100:
-            track_id = result.get("trackId")
-            payment_url = ZIBAL_PAYMENT_GATEWAY.format(track_id=track_id)
+        # Save payment info to database
+        db = next(get_db())
+        try:
+            # Create payment record
+            payment = Payment(
+                user_id=user_id,
+                chat_id=chat_id,
+                track_id=session.id,  # Use Stripe session ID as track_id
+                amount=amount,
+                status=PaymentStatus.PENDING,
+                created_at=datetime.datetime.now()
+            )
+            db.add(payment)
+            db.commit()
             
-            # Save payment info to database
-            db = next(get_db())
-            try:
-                # Create payment record
-                payment = Payment(
-                    user_id=user_id,
-                    chat_id=chat_id,
-                    track_id=str(track_id),
-                    amount=amount,
-                    status=PaymentStatus.PENDING,
-                    created_at=datetime.datetime.now()
-                )
-                db.add(payment)
-                db.commit()
-                
-                logger.info(f"Created payment link for user {user_id} with track_id {track_id}")
-                return True, "Payment link created successfully", payment_url
-                
-            except Exception as e:
-                db.rollback()
-                logger.error(f"Database error when creating payment: {e}")
-                return False, "Internal server error when recording payment", None
-            finally:
-                db.close()
-        else:
-            error_code = result.get("result")
-            error_message = result.get("message", "Unknown error")
-            logger.error(f"Zibal payment creation failed: {error_code} - {error_message}")
-            return False, f"Payment gateway error: {error_message}", None
+            logger.info(f"Created Stripe payment link for user {user_id} with session_id {session.id}")
+            return True, "Payment link created successfully", session.url
             
+        except Exception as e:
+            db.rollback()
+            logger.error(f"Database error when creating payment: {e}")
+            return False, "Internal server error when recording payment", None
+        finally:
+            db.close()
+            
+    except stripe.error.StripeError as e:
+        logger.error(f"Stripe payment creation failed: {e}")
+        return False, f"Payment gateway error: {str(e)}", None
     except Exception as e:
         logger.error(f"Exception during payment link creation: {e}")
         return False, "Failed to connect to payment gateway", None
 
-def verify_payment(track_id: str) -> Dict[str, Any]:
+def verify_payment(session_id: str) -> Dict[str, Any]:
     """
-    Verify a payment with Zibal
+    Verify a payment with Stripe
     
     Args:
-        track_id: The track ID received from Zibal
+        session_id: The Stripe session ID
         
     Returns:
         Dictionary with verification results including success status
     """
-    data = {
-        "merchant": settings.ZIBAL_MERCHANT_KEY,
-        "trackId": track_id
-    }
+    if not settings.STRIPE_SECRET_KEY:
+        return {
+            "success": False,
+            "message": "Stripe is not configured",
+            "data": None
+        }
     
     try:
-        response = requests.post(ZIBAL_VERIFY_URL, json=data)
-        result = response.json()
+        # Retrieve the session from Stripe
+        session = stripe.checkout.Session.retrieve(session_id)
         
         # Log verification details
-        logger.info(f"Payment verification result for track_id {track_id}: {json.dumps(result)}")
+        logger.info(f"Payment verification result for session_id {session_id}: {json.dumps(session.to_dict())}")
         
-        # Process verification result
-        status = result.get("result")
-        
-        if status == PaymentStatus.SUCCESS:
+        # Check payment status
+        if session.payment_status == 'paid':
             # Update payment status in database
-            update_payment_status(track_id, status, result)
+            update_payment_status(session_id, PaymentStatus.SUCCESS, session.to_dict())
             return {
                 "success": True,
                 "message": "Payment verified successfully",
-                "data": result
+                "data": session.to_dict()
             }
         else:
-            update_payment_status(track_id, status, result)
+            status = PaymentStatus.FAILED if session.payment_status == 'unpaid' else PaymentStatus.CANCELED
+            update_payment_status(session_id, status, session.to_dict())
             return {
                 "success": False,
-                "message": f"Payment verification failed: {result.get('message', 'Unknown error')}",
-                "data": result
+                "message": f"Payment verification failed: {session.payment_status}",
+                "data": session.to_dict()
             }
             
+    except stripe.error.StripeError as e:
+        logger.error(f"Stripe error during payment verification: {e}")
+        return {
+            "success": False,
+            "message": f"Error verifying payment: {str(e)}",
+            "data": None
+        }
     except Exception as e:
         logger.error(f"Exception during payment verification: {e}")
         return {
@@ -150,57 +160,57 @@ def verify_payment(track_id: str) -> Dict[str, Any]:
             "data": None
         }
 
-def update_payment_status(track_id: str, status: int, result_data: Dict[str, Any]) -> bool:
+def update_payment_status(session_id: str, status: int, result_data: Dict[str, Any]) -> bool:
     """
     Update payment status in database
     
     Args:
-        track_id: The track ID of the payment
-        status: Status code from Zibal
-        result_data: Full response data from Zibal
+        session_id: The Stripe session ID of the payment
+        status: Status code
+        result_data: Full response data from Stripe
         
     Returns:
         Boolean indicating if update was successful
     """
     db = next(get_db())
     try:
-        payment = db.query(Payment).filter(Payment.track_id == track_id).first()
+        payment = db.query(Payment).filter(Payment.track_id == session_id).first()
         
         if not payment:
-            logger.error(f"Payment with track_id {track_id} not found in database")
+            logger.error(f"Payment with session_id {session_id} not found in database")
             return False
         
         payment.status = status
         payment.verified_at = datetime.datetime.now() if status == PaymentStatus.SUCCESS else None
-        payment.ref_id = result_data.get("refNumber")
-        payment.card_number = result_data.get("cardNumber")
+        payment.ref_id = result_data.get("payment_intent")
+        payment.card_number = "****"  # Stripe doesn't provide card number in session
         payment.response_data = json.dumps(result_data)
         db.commit()
         
         # If payment was successful, set user as premium
         if status == PaymentStatus.SUCCESS:
-            user = db.query(User).filter(User.user_id == payment.user_id).first()
+            user = db.query(User).filter(User.telegram_id == payment.user_id).first()
             if not user:
                 # Create user if not exists
                 user = User(
-                    user_id=payment.user_id,
+                    telegram_id=payment.user_id,
                     chat_id=payment.chat_id,
-                    is_premium=True,
-                    premium_until=datetime.datetime.now() + datetime.timedelta(days=30)  # 30 days subscription
+                    subscription_tier=SubscriptionTier.PREMIUM,
+                    subscription_expiry=datetime.datetime.now() + datetime.timedelta(days=30)  # 30 days subscription
                 )
                 db.add(user)
             else:
                 # Update existing user
-                user.is_premium = True
-                if user.premium_until and user.premium_until > datetime.datetime.now():
+                user.subscription_tier = SubscriptionTier.PREMIUM
+                if user.subscription_expiry and user.subscription_expiry > datetime.datetime.now():
                     # Extend existing subscription
-                    user.premium_until = user.premium_until + datetime.timedelta(days=30)
+                    user.subscription_expiry = user.subscription_expiry + datetime.timedelta(days=30)
                 else:
                     # New subscription period
-                    user.premium_until = datetime.datetime.now() + datetime.timedelta(days=30)
+                    user.subscription_expiry = datetime.datetime.now() + datetime.timedelta(days=30)
             
             db.commit()
-            logger.info(f"User {payment.user_id} is now premium until {user.premium_until}")
+            logger.info(f"User {payment.user_id} is now premium until {user.subscription_expiry}")
         
         return True
     except Exception as e:
@@ -222,16 +232,80 @@ def is_user_premium(user_id: int) -> bool:
     """
     db = next(get_db())
     try:
-        user = db.query(User).filter(User.user_id == user_id).first()
+        user = db.query(User).filter(User.telegram_id == user_id).first()
         if not user:
             return False
         
-        return user.is_premium and user.premium_until > datetime.datetime.now()
+        return user.subscription_tier == SubscriptionTier.PREMIUM and user.subscription_expiry > datetime.datetime.now()
     except Exception as e:
         logger.error(f"Error checking premium status for user {user_id}: {e}")
         return False
     finally:
         db.close()
+
+def handle_stripe_webhook(payload: str, sig_header: str) -> Dict[str, Any]:
+    """
+    Handle Stripe webhook events
+    
+    Args:
+        payload: Raw webhook payload
+        sig_header: Stripe signature header
+        
+    Returns:
+        Dictionary with webhook processing results
+    """
+    if not settings.STRIPE_WEBHOOK_SECRET:
+        return {
+            "success": False,
+            "message": "Stripe webhook secret not configured",
+            "data": None
+        }
+    
+    try:
+        # Verify webhook signature
+        event = stripe.Webhook.construct_event(
+            payload, sig_header, settings.STRIPE_WEBHOOK_SECRET
+        )
+        
+        logger.info(f"Received Stripe webhook event: {event['type']}")
+        
+        # Handle the event
+        if event['type'] == 'checkout.session.completed':
+            session = event['data']['object']
+            session_id = session['id']
+            
+            # Verify and process the payment
+            result = verify_payment(session_id)
+            return result
+        else:
+            logger.info(f"Unhandled event type: {event['type']}")
+            return {
+                "success": True,
+                "message": f"Event {event['type']} received but not processed",
+                "data": event
+            }
+            
+    except ValueError as e:
+        logger.error(f"Invalid payload: {e}")
+        return {
+            "success": False,
+            "message": "Invalid payload",
+            "data": None
+        }
+    except stripe.error.SignatureVerificationError as e:
+        logger.error(f"Invalid signature: {e}")
+        return {
+            "success": False,
+            "message": "Invalid signature",
+            "data": None
+        }
+    except Exception as e:
+        logger.error(f"Exception during webhook processing: {e}")
+        return {
+            "success": False,
+            "message": f"Error processing webhook: {str(e)}",
+            "data": None
+        }
 
 if __name__ == "__main__":
     import sys
@@ -239,11 +313,11 @@ if __name__ == "__main__":
                        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
     
     # Test payment flow
-    print("\n------ Testing Zibal Payment Integration ------\n")
+    print("\n------ Testing Stripe Payment Integration ------\n")
     
     # Check if required environment variables are set
-    if not settings.ZIBAL_MERCHANT_KEY:
-        print("ERROR: ZIBAL_MERCHANT_KEY is not set in environment variables")
+    if not settings.STRIPE_SECRET_KEY:
+        print("ERROR: STRIPE_SECRET_KEY is not set in environment variables")
         sys.exit(1)
     
     if not settings.PAYMENT_CALLBACK_URL_BASE:
@@ -252,10 +326,10 @@ if __name__ == "__main__":
     # Simple test case
     test_user_id = 12345
     test_chat_id = 12345
-    test_amount = 10000  # 10,000 Rials
+    test_amount = 999  # $9.99 in cents
     
     # Create a payment link
-    print(f"Creating payment link for user_id: {test_user_id}, amount: {test_amount} Rials")
+    print(f"Creating payment link for user_id: {test_user_id}, amount: {test_amount} cents")
     success, message, payment_url = create_payment_link(test_user_id, test_chat_id, test_amount)
     
     if success:
@@ -263,7 +337,7 @@ if __name__ == "__main__":
         print("\nTo complete the test:")
         print("1. Visit the link above in a browser")
         print("2. Complete or cancel the payment")
-        print("3. The callback URL should be called automatically")
+        print("3. The webhook should be called automatically")
         print("4. Check your database to verify the payment status was updated")
     else:
         print(f"ERROR: Failed to create payment link. Message: {message}")

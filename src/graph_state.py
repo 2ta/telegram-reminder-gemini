@@ -62,7 +62,7 @@ class AgentState(TypedDict):
                                                 # amount: Optional[int]
                                                 # status: Optional[str] (e.g., from PaymentStatus enum)
                                                 # payment_url: Optional[str]
-                                                # zibal_ref_id: Optional[str]
+                                                # stripe_session_id: Optional[str]
 
     # User Profile (loaded at start of graph run, or updated after payment)
     user_profile: Optional[Dict[str, Any]]      # user_db_id: int

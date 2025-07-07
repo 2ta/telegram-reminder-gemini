@@ -26,8 +26,8 @@ async def download_voice_message(voice_file_id: str, context: ContextTypes.DEFAU
         logger.error(f"Error downloading voice message {voice_file_id}: {e}", exc_info=True)
         return None
 
-def transcribe_persian_voice(audio_file_path: str) -> Optional[str]:
-    """Transcribes a Persian voice message using Google Cloud Speech-to-Text."""
+def transcribe_english_voice(audio_file_path: str) -> Optional[str]:
+    """Transcribes an English voice message using Google Cloud Speech-to-Text."""
     if not settings.GOOGLE_APPLICATION_CREDENTIALS:
         logger.warning("GOOGLE_APPLICATION_CREDENTIALS not set. Skipping transcription.")
         return None
@@ -48,7 +48,7 @@ def transcribe_persian_voice(audio_file_path: str) -> Optional[str]:
         config = speech.RecognitionConfig(
             encoding=speech.RecognitionConfig.AudioEncoding.WEBM_OPUS, # Changed from OGG_OPUS to WEBM_OPUS
             sample_rate_hertz=48000,  # Changed from 16000 to 48000 Hz for Telegram voice messages
-            language_code="fa-IR",
+            language_code="en-US",
             enable_automatic_punctuation=True,
             model="default", # Added model specification
         )
@@ -69,7 +69,7 @@ def transcribe_persian_voice(audio_file_path: str) -> Optional[str]:
             config = speech.RecognitionConfig(
                 encoding=speech.RecognitionConfig.AudioEncoding.OGG_OPUS,
                 sample_rate_hertz=48000,
-                language_code="fa-IR",
+                language_code="en-US",
                 enable_automatic_punctuation=True,
                 model="default",
             )
@@ -105,19 +105,19 @@ async def process_voice_message(update: Update, context: ContextTypes.DEFAULT_TY
 
     # Basic validation (e.g., duration, file size if available)
     if voice.duration > 300: # Example: limit to 5 minutes
-        await update.message.reply_text("فایل صوتی شما بیش از حد طولانی است. لطفاً فایل‌های کوتاه‌تر ارسال کنید.")
+        await update.message.reply_text("Your voice file is too long. Please send shorter files.")
         logger.warning(f"Voice message too long: {voice.duration}s. User: {update.effective_user.id}")
         return None
     
     temp_audio_path = await download_voice_message(voice.file_id, context)
     if not temp_audio_path:
-        await update.message.reply_text("متاسفانه در دانلود فایل صوتی مشکلی پیش آمد.")
+        await update.message.reply_text("Sorry, there was a problem downloading your voice file.")
         return None
 
-    transcribed_text = transcribe_persian_voice(temp_audio_path)
+    transcribed_text = transcribe_english_voice(temp_audio_path)
 
     if not transcribed_text:
-        await update.message.reply_text("متاسفانه در تبدیل گفتار به نوشتار مشکلی پیش آمد. لطفاً دوباره تلاش کنید یا پیام خود را بنویسید.")
+        await update.message.reply_text("Sorry, there was a problem converting speech to text. Please try again or type your message.")
         return None
     
     return transcribed_text 

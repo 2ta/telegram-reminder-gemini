@@ -25,7 +25,7 @@ from config.config import MSG_ERROR_GENERIC, MSG_WELCOME, MSG_PRIVACY_POLICY # I
 
 from .database import init_db, get_db
 from .models import Reminder, User
-from .payment import create_payment_link, verify_payment, is_user_premium, PaymentStatus, ZibalPaymentError
+from .payment import create_payment_link, verify_payment, is_user_premium, PaymentStatus, StripePaymentError, handle_stripe_webhook
 
 # Import the LangGraph app
 from .graph import lang_graph_app
@@ -253,28 +253,26 @@ async def privacy_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     await _handle_graph_invocation(update, context, initial_state)
     log_memory_usage(f"after privacy_command for user {user_id}")
 
-async def handle_zibal_webhook(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def handle_stripe_webhook(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.message or not update.effective_user or not update.effective_chat:
-        logger.warning("handle_zibal_webhook received an update without message, user or chat.")
+        logger.warning("handle_stripe_webhook received an update without message, user or chat.")
         return
 
     user_id = update.effective_user.id
     chat_id = update.effective_chat.id
-    full_command_text = update.message.text # e.g., "/zibal_webhook trackId=123&status=1&success=1"
-    logger.info(f"Received Zibal webhook simulation for user {user_id}: {full_command_text}")
+    full_command_text = update.message.text # e.g., "/stripe_webhook event=invoice.payment_succeeded&data.object.id=inv_123456789012345678901234"
+    logger.info(f"Received Stripe webhook simulation for user {user_id}: {full_command_text}")
 
     # Simplified parsing for simulation via command
     # Real webhook would be POST request with JSON body or form data
-    track_id_match = re.search(r"trackId=(\d+)", full_command_text)
-    status_match = re.search(r"status=(\d+)", full_command_text)
-    success_match = re.search(r"success=(\d)", full_command_text)
+    event_match = re.search(r"event=([^&]+)", full_command_text)
+    data_object_id_match = re.search(r"data\.object\.id=([^&]+)", full_command_text)
 
-    track_id_param: Optional[int] = int(track_id_match.group(1)) if track_id_match else None
-    status_param: Optional[int] = int(status_match.group(1)) if status_match else None
-    success_param: Optional[int] = int(success_match.group(1)) if success_match else None # 0 or 1
+    event_param: Optional[str] = event_match.group(1) if event_match else None
+    data_object_id_param: Optional[str] = data_object_id_match.group(1) if data_object_id_match else None
 
-    if track_id_param is None or status_param is None or success_param is None:
-        logger.error(f"Could not parse trackId, status, or success from Zibal webhook simulation: {full_command_text}")
+    if event_param is None or data_object_id_param is None:
+        logger.error(f"Could not parse event or data.object.id from Stripe webhook simulation: {full_command_text}")
         await update.message.reply_text("Webhook format error.")
         return
 
@@ -284,9 +282,8 @@ async def handle_zibal_webhook(update: Update, context: ContextTypes.DEFAULT_TYP
         input_text=full_command_text, # The full command text
         message_type="command_webhook_simulation", # Differentiate from "text" or "voice"
         extracted_parameters={
-            "track_id": track_id_param,
-            "status": status_param,
-            "success": bool(success_param) # Convert 0/1 to False/True
+            "event": event_param,
+            "data_object_id": data_object_id_param
         },
         current_intent="intent_payment_callback_process", # Pre-set intent for processing payment callback
         user_telegram_details = {
@@ -303,7 +300,7 @@ async def handle_zibal_webhook(update: Update, context: ContextTypes.DEFAULT_TYP
     )
 
     await _handle_graph_invocation(update, context, initial_state)
-    log_memory_usage(f"after handle_zibal_webhook for user {user_id}")
+    log_memory_usage(f"after handle_stripe_webhook for user {user_id}")
 
 # General Message and Voice Handlers
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -438,7 +435,7 @@ async def save_or_update_reminder_in_db(
             user_id=user_db_id,
                 chat_id=chat_id,
             task=task_description,
-            jalali_date_str=None,
+            date_str=None,
             time_str=None,
                 recurrence_rule=recurrence_rule,
                 is_active=True,
@@ -461,29 +458,29 @@ async def save_or_update_reminder_in_db(
 # Conversation Handlers
 async def handle_initial_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int: 
     logger.warning("Legacy ConversationHandler state: handle_initial_message called. Should be handled by LangGraph.")
-    await update.message.reply_text("این بخش از ربات در حال بروزرسانی است. لطفا از دستورات اصلی استفاده کنید.")
+    await update.message.reply_text("This part of the bot is being updated. Please use the main commands.")
     return ConversationHandler.END
 
 async def received_task_description(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     logger.warning("Legacy ConversationHandler state: received_task_description called. Should be handled by LangGraph.")
-    await update.message.reply_text("این بخش از ربات در حال بروزرسانی است. لطفا از دستورات اصلی استفاده کنید.")
+    await update.message.reply_text("This part of the bot is being updated. Please use the main commands.")
     return ConversationHandler.END
 
 async def received_full_datetime(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     logger.warning("Legacy ConversationHandler state: received_full_datetime called. Should be handled by LangGraph.")
-    await update.message.reply_text("این بخش از ربات در حال بروزرسانی است. لطفا از دستورات اصلی استفاده کنید.")
+    await update.message.reply_text("This part of the bot is being updated. Please use the main commands.")
     return ConversationHandler.END
 
 async def received_time_only(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     logger.warning("Legacy ConversationHandler state: received_time_only called. Should be handled by LangGraph.")
-    await update.message.reply_text("این بخش از ربات در حال بروزرسانی است. لطفا از دستورات اصلی استفاده کنید.")
+    await update.message.reply_text("This part of the bot is being updated. Please use the main commands.")
     return ConversationHandler.END
 
 async def received_am_pm_clarification(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     logger.warning("Legacy ConversationHandler state: received_am_pm_clarification called. Should be handled by LangGraph.")
     # This function might have had logic to process AM/PM from context.user_data
     # Now, such clarifications are handled within the LangGraph flow.
-    await update.message.reply_text("این بخش از ربات در حال بروزرسانی است. لطفا از دستورات اصلی استفاده کنید.")
+    await update.message.reply_text("This part of the bot is being updated. Please use the main commands.")
     return ConversationHandler.END
 
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -511,8 +508,8 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     import datetime
     import pytz
     
-    task_match = re.search(r'برای «(.+?)»', reminder_text)
-    date_match = re.search(r'در تاریخ «(.+?)»', reminder_text)
+    task_match = re.search(r'Task: (.+?)\n', reminder_text)
+    date_match = re.search(r'Time: (.+?)\n', reminder_text)
     
     if callback_data.startswith("confirm_create_reminder:") and task_match and date_match:
         # Only populate for confirmation buttons
@@ -524,9 +521,9 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         try:
             # For demonstration, create a fixed datetime for tomorrow at 14:00
             # In a real system, you would use the actual datetime from the message
-            tomorrow = datetime.datetime.now(pytz.timezone('Asia/Tehran')) + datetime.timedelta(days=1)
+            tomorrow = datetime.datetime.now(pytz.utc) + datetime.timedelta(days=1)
             tomorrow = tomorrow.replace(hour=14, minute=0, second=0, microsecond=0)
-            parsed_utc_datetime = tomorrow.astimezone(pytz.utc)
+            parsed_utc_datetime = tomorrow
             logger.info(f"Using parsed datetime: {parsed_utc_datetime}")
             
             # Store in context
@@ -597,7 +594,7 @@ def main() -> None:
     # application.add_handler(CommandHandler("reminders", reminders_command))
     # application.add_handler(CommandHandler("cancel", cancel_command))
     # Webhook simulation command for testing payment callbacks
-    application.add_handler(CommandHandler("zibal_webhook", handle_zibal_webhook)) 
+    application.add_handler(CommandHandler("stripe_webhook", handle_stripe_webhook)) 
 
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     application.add_handler(MessageHandler(filters.VOICE, handle_voice))
