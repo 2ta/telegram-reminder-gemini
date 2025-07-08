@@ -65,20 +65,20 @@ async def invoke_graph_with_input(input_text: str, user_id: int, message_type: s
         # Since all graph nodes are defined as async functions, we need to use ainvoke
         final_state = await lang_graph_app.ainvoke(graph_input, config=config)
 
-        response_text = final_state.get("response_text", "متاسفانه پاسخی دریافت نشد.")
+        response_text = final_state.get("response_text", "Sorry, no response was received.")
         response_keyboard_markup = final_state.get("response_keyboard_markup") # Can be None
         
         logger.info(f"Graph for user_id {user_id} responded with text: '{response_text}' and keyboard: {bool(response_keyboard_markup)}")
         return {"text": response_text, "keyboard_markup": response_keyboard_markup}
     except KeyError as e:
         logger.error(f"KeyError in LangGraph for user_id {user_id}: {e}", exc_info=True)
-        return {"text": f"خطا در پردازش: اطلاعات لازم '{e}' برای پردازش یافت نشد.", "keyboard_markup": None}
+        return {"text": f"Processing error: Required information '{e}' was not found.", "keyboard_markup": None}
     except ValueError as e:
         logger.error(f"ValueError in LangGraph for user_id {user_id}: {e}", exc_info=True)
-        return {"text": f"خطا در مقادیر ورودی: {str(e)}", "keyboard_markup": None}
+        return {"text": f"Input value error: {str(e)}", "keyboard_markup": None}
     except Exception as e:
         logger.error(f"Error invoking LangGraph for user_id {user_id}: {e}", exc_info=True)
-        return {"text": "متاسفانه در پردازش درخواست شما از طریق گراف خطایی رخ داد. لطفا با دستور /start مجددا شروع کنید.", "keyboard_markup": None}
+        return {"text": "Sorry, an error occurred while processing your request. Please try /start again.", "keyboard_markup": None}
 
 # --- Command Handlers ---
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -95,9 +95,9 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     )
 
     welcome_message = (
-        f"سلام {user.first_name}! به ربات یادآور خوش آمدید.\n"
-        "من به شما کمک می‌کنم تا کارهایتان را به موقع به یاد بیاورید.\n"
-        "برای مشاهده دستورات موجود، از /help استفاده کنید."
+        f"Hello {user.first_name}! Welcome to the Reminder Bot.\n"
+        "I can help you remember your important tasks and events.\n"
+        "To see available commands, use /help."
     )
     # Example of a custom keyboard
     # keyboard = [[KeyboardButton("/new_reminder"), KeyboardButton("/my_reminders")]]
@@ -110,25 +110,24 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     """Handles the /help command."""
     logger.info(f"/help command received from user_id: {update.effective_user.id}")
     help_text = (
-        "دستورات موجود:\n"
-        "/start - شروع به کار با ربات و ثبت‌نام\n"
-        "/help - نمایش این پیام راهنما\n"
-        "/privacy - مشاهده سیاست‌های حریم خصوصی\n"
+        "Available commands:\n"
+        "/start - Start using the bot and register\n"
+        "/help - Show this help message\n"
+        "/privacy - View privacy policy\n"
         "\n"
-        "می‌توانید پیام‌های خود را به صورت متنی یا صوتی ارسال کنید.\n"
-        "مثال برای ایجاد یادآور:\n"
-        "'یادآوری کن فردا ساعت ۱۰ صبح جلسه با تیم فروش'"
+        "You can send your reminders as text or voice messages.\n"
+        "Example to create a reminder:\n"
+        "'Remind me to call the sales team tomorrow at 10am'"
     )
     await update.message.reply_text(help_text)
 
 async def privacy_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handles the /privacy command."""
     logger.info(f"/privacy command received from user_id: {update.effective_user.id}")
-    # TODO: Replace with actual privacy policy link or text from a resource file
     privacy_text = (
-        "سیاست حریم خصوصی ربات یادآور:\n"
-        "ما به حریم خصوصی شما احترام می‌گذاریم. اطلاعات شما فقط برای ارائه خدمات یادآوری استفاده می‌شود و با هیچ شخص ثالثی به اشتراک گذاشته نخواهد شد.\n"
-        "برای اطلاعات بیشتر، لطفاً به [لینک کامل سیاست حریم خصوصی] مراجعه کنید."
+        "Reminder Bot Privacy Policy:\n"
+        "We respect your privacy. Your information is only used to provide reminder services and is never shared with third parties.\n"
+        "For more information, please see the full privacy policy link."
     )
     await update.message.reply_text(privacy_text)
 

@@ -108,7 +108,7 @@ async def _handle_graph_invocation(
         reply_markup = None
         # Define the persistent reply keyboard
         persistent_reply_keyboard = ReplyKeyboardMarkup(
-            [["یادآورهای من", "یادآور نامحدود 👑"]],
+            [["My Reminders", "Unlimited Reminders 👑"]],
             resize_keyboard=True
         )
 
@@ -349,7 +349,7 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         transcribed_text = await process_voice_message(update, context)
         
         if not transcribed_text:
-            await update.message.reply_text("متاسفانه نتوانستم صدای شما را تشخیص دهم. لطفاً دوباره تلاش کنید یا متن خود را تایپ کنید.")
+            await update.message.reply_text("Sorry, I could not recognize your voice. Please try again or type your message.")
             return
             
         logger.info(f"Voice message successfully transcribed for user {user_id}: '{transcribed_text}'")

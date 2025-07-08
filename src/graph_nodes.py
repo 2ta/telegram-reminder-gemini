@@ -121,7 +121,7 @@ async def determine_intent_node(state: AgentState) -> Dict[str, Any]:
                     logger.warning(f"Confirmation ID '{confirmation_id}' not found in cache for {effective_input}. Current cache keys: {list(PENDING_REMINDER_CONFIRMATIONS.keys())}")
                     return {
                         "current_intent": "unknown_intent", 
-                        "response_text": "این یادآور قبلاً ثبت شده یا منقضی شده.", 
+                        "response_text": "This reminder has already been set or has expired.", 
                         "current_node_name": "determine_intent_node"
                     }
                 task = retrieved_data.get("task")
@@ -131,7 +131,7 @@ async def determine_intent_node(state: AgentState) -> Dict[str, Any]:
                     logger.error(f"Incomplete data from cache for ID {confirmation_id}. Retrieved: {retrieved_data}")
                     return {
                         "current_intent": "unknown_intent", 
-                        "response_text": "خطا: اطلاعات تاییدیه ناقص است (کش).", 
+                        "response_text": "Error: Confirmation information is incomplete (cache).", 
                         "current_node_name": "determine_intent_node"
                     }
                 populated_context = {
@@ -151,7 +151,7 @@ async def determine_intent_node(state: AgentState) -> Dict[str, Any]:
                 logger.error(f"Error processing 'yes:id' callback '{effective_input}': {e}", exc_info=True)
                 return {
                     "current_intent": "unknown_intent", 
-                    "response_text": "خطا در پردازش تاییدیه.", 
+                    "response_text": "Error in processing confirmation.", 
                     "current_node_name": "determine_intent_node"
                 }
 
@@ -164,7 +164,7 @@ async def determine_intent_node(state: AgentState) -> Dict[str, Any]:
                     logger.info(f"Removed pending confirmation {confirmation_id} due to 'no' callback.")
                     return {
                         "current_intent": "intent_create_reminder_cancelled",
-                        "response_text": "باشه، تنظیمش نکردم ❌\nفقط کافیه دوباره بگی چی رو کی یادت بندازم 🙂",
+                        "response_text": "Okay, I didn't set it. ❌ Just tell me again what and when to remind you. 🙂",
                         "current_node_name": "determine_intent_node",
                         "reminder_creation_context": {}, 
                         "pending_confirmation": None
@@ -173,7 +173,7 @@ async def determine_intent_node(state: AgentState) -> Dict[str, Any]:
                     logger.warning(f"Confirmation ID {confirmation_id} not found in cache for 'no' callback {effective_input}")
                     return {
                         "current_intent": "unknown_intent",
-                        "response_text": "این درخواست قبلاً لغو شده است یا منقضی شده.",
+                        "response_text": "This request has already been cancelled or has expired.",
                         "current_node_name": "determine_intent_node",
                         "reminder_creation_context": {},
                         "pending_confirmation": None
@@ -182,7 +182,7 @@ async def determine_intent_node(state: AgentState) -> Dict[str, Any]:
                 logger.error(f"Error cleaning up pending confirmation for ID in '{effective_input}': {e}", exc_info=True)
                 return {
                     "current_intent": "unknown_intent",
-                    "response_text": "خطا در پردازش لغو تاییدیه.",
+                    "response_text": "Error in processing cancellation.",
                     "current_node_name": "determine_intent_node",
                     "reminder_creation_context": {},
                     "pending_confirmation": None
@@ -191,7 +191,7 @@ async def determine_intent_node(state: AgentState) -> Dict[str, Any]:
             logger.warning(f"DEBUG: Matched DEPRECATED callback for 'confirm_create_reminder:no': {effective_input}. Should include ID.")
             return {
                 "current_intent": "intent_create_reminder_cancelled",
-                "response_text": "باشه، تنظیمش نکردم ❌\nفقط کافیه دوباره بگی چی رو کی یادت بندازم 🙂",
+                "response_text": "Okay, I didn't set it. ❌ Just tell me again what and when to remind you. 🙂",
                 "current_node_name": "determine_intent_node",
                 "reminder_creation_context": {}, 
                 "pending_confirmation": None
@@ -208,7 +208,7 @@ async def determine_intent_node(state: AgentState) -> Dict[str, Any]:
                 }
             except (ValueError, IndexError) as e:
                 logger.error(f"Error processing confirm_delete_reminder callback '{effective_input}': {e}", exc_info=True)
-                return {"current_intent": "unknown_intent", "response_text": "خطا در پردازش درخواست حذف.", "current_node_name": "determine_intent_node"}
+                return {"current_intent": "unknown_intent", "response_text": "Error in processing delete request.", "current_node_name": "determine_intent_node"}
         elif effective_input.startswith("execute_delete_reminder:"):
             try:
                 reminder_id_str = effective_input.split("execute_delete_reminder:", 1)[1]
@@ -221,12 +221,12 @@ async def determine_intent_node(state: AgentState) -> Dict[str, Any]:
                 }
             except (ValueError, IndexError) as e:
                 logger.error(f"Error processing execute_delete_reminder callback '{effective_input}': {e}", exc_info=True)
-                return {"current_intent": "unknown_intent", "response_text": "خطا در پردازش دستور حذف.", "current_node_name": "determine_intent_node"}
+                return {"current_intent": "unknown_intent", "response_text": "Error in processing delete command.", "current_node_name": "determine_intent_node"}
         elif effective_input == "cancel_delete_reminder":
             logger.info(f"DEBUG: Matched callback for 'cancel_delete_reminder'")
             return {
                 "current_intent": "intent_delete_reminder_cancelled",
-                "response_text": "باشه، حذفش نکردم. یادآور شما فعال باقی می‌مونه 👍",
+                "response_text": "Okay, I didn't delete it. Your reminder remains active 👍",
                 "current_node_name": "determine_intent_node"
             }
         elif effective_input.startswith("view_reminders:page:"):
@@ -236,7 +236,7 @@ async def determine_intent_node(state: AgentState) -> Dict[str, Any]:
                 return {"current_intent": "intent_view_reminders", "extracted_parameters": {"page": page}, "current_node_name": "determine_intent_node"}
             except (ValueError, IndexError) as e:
                 logger.error(f"Error processing view_reminders pagination callback '{effective_input}': {e}", exc_info=True)
-                return {"current_intent": "unknown_intent", "response_text": "خطا در پردازش صفحه بندی.", "current_node_name": "determine_intent_node"}
+                return {"current_intent": "unknown_intent", "response_text": "Error in processing pagination.", "current_node_name": "determine_intent_node"}
         elif effective_input == "show_subscription_options":
             logger.info(f"Detected 'show_subscription_options' callback.")
             return {"current_intent": "intent_show_payment_options", "current_node_name": "determine_intent_node"}
@@ -268,13 +268,13 @@ async def determine_intent_node(state: AgentState) -> Dict[str, Any]:
                 return {"current_intent": "intent_confirm_delete_reminder", "extracted_parameters": {"reminder_id_to_confirm_delete": reminder_id}, "current_node_name": "determine_intent_node"}
             except (IndexError, ValueError) as e:
                 logger.warning(f"Invalid delete reminder command: {input_text}, error: {e}")
-                return {"current_intent": "unknown_intent", "response_text": "فرمت دستور حذف نامعتبر است. لطفاً از دکمه حذف کنار یادآور استفاده کنید.", "current_node_name": "determine_intent_node"}
+                return {"current_intent": "unknown_intent", "response_text": "Invalid delete command format. Please use the delete button next to the reminder.", "current_node_name": "determine_intent_node"}
     
-    if input_text == "یادآورهای من":
-        logger.info(f"Detected 'یادآورهای من' text input from user {state.get('user_id')}")
+    if input_text == "My Reminders":
+        logger.info(f"Detected 'My Reminders' text input from user {state.get('user_id')}")
         return {"current_intent": "intent_view_reminders", "extracted_parameters": {"page": 1}, "current_node_name": "determine_intent_node"}
-    elif input_text == "یادآور نامحدود 👑": 
-        logger.info(f"Detected 'یادآور نامحدود 👑' text input from user {state.get('user_id')}")
+    elif input_text == "Unlimited Reminders 👑": 
+        logger.info(f"Detected 'Unlimited Reminders 👑' text input from user {state.get('user_id')}")
         return {"current_intent": "intent_show_payment_options", "current_node_name": "determine_intent_node"}
 
     # --- Priority 3: LLM for Potential Reminder Creation (General Text Input) ---
@@ -767,7 +767,7 @@ async def create_reminder_node(state: AgentState) -> Dict[str, Any]:
                 logger.error(f"Could not parse datetime string from context: {parsed_dt_utc_from_ctx}")
                 return {
                     "current_operation_status": "error_invalid_datetime_format_in_context", # MODIFIED KEY
-                    "response_text": "خطا: فرمت تاریخ و زمان ذخیره شده نامعتبر است.",
+                    "response_text": "Error: Invalid datetime format in context.",
                     "current_node_name": "create_reminder_node",
                     "reminder_creation_context": reminder_ctx,
                     "pending_confirmation": None
@@ -775,7 +775,7 @@ async def create_reminder_node(state: AgentState) -> Dict[str, Any]:
         logger.error(f"Invalid datetime in context for user {user_id}. Task: {task}, DT: {parsed_dt_utc_from_ctx} (type: {type(parsed_dt_utc_from_ctx)}) ")
         return {
             "current_operation_status": "error_missing_details", # MODIFIED KEY
-            "response_text": "خطا: اطلاعات یادآور ناقص یا نامعتبر است.",
+            "response_text": "Error: Missing details for reminder creation.",
             "current_node_name": "create_reminder_node",
             "reminder_creation_context": reminder_ctx,
             "pending_confirmation": None
@@ -788,7 +788,7 @@ async def create_reminder_node(state: AgentState) -> Dict[str, Any]:
         logger.error(f"Missing task or datetime for user {user_id} in create_reminder_node. Task: {task}, DT: {parsed_dt_utc}")
         return {
             "current_operation_status": "error_missing_details", # MODIFIED KEY
-            "response_text": "خطا: اطلاعات یادآور برای ایجاد ناقص است.",
+            "response_text": "Error: Missing details for reminder creation.",
             "current_node_name": "create_reminder_node",
             "reminder_creation_context": reminder_ctx, # Pass context
             "pending_confirmation": None
@@ -807,14 +807,14 @@ async def create_reminder_node(state: AgentState) -> Dict[str, Any]:
                 logger.info(f"Successfully re-loaded user_db_id: {user_db_obj_temp.id} for user {user_id}")
             else:
                 logger.error(f"Failed to find user {user_id} in DB during create_reminder_node.")
-                return {"current_operation_status": "error_user_not_found", "response_text": "خطا: کاربر برای ایجاد یادآور یافت نشد.", "current_node_name": "create_reminder_node", "pending_confirmation": None} # MODIFIED KEY
+                return {"current_operation_status": "error_user_not_found", "response_text": "Error: User not found for reminder creation.", "current_node_name": "create_reminder_node", "pending_confirmation": None} # MODIFIED KEY
         finally:
             db_temp.close()
     
     user_db_id = user_profile.get("user_db_id")
     if not user_db_id: # Should not happen if above logic works
         logger.error(f"Critical: user_db_id still missing for user {user_id} before DB operation.")
-        return {"current_operation_status": "error_internal_user_id_missing", "response_text": "خطای داخلی: شناسه کاربر موجود نیست.", "current_node_name": "create_reminder_node", "pending_confirmation": None} # MODIFIED KEY
+        return {"current_operation_status": "error_internal_user_id_missing", "response_text": "Error: Internal user ID missing.", "current_node_name": "create_reminder_node", "pending_confirmation": None} # MODIFIED KEY
 
 
     # Reminder Limit Check (re-check here as a safeguard, though validate_and_clarify should handle it)
