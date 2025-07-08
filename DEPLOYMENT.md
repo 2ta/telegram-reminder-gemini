@@ -1,268 +1,139 @@
-# 🚀 Deployment Guide
+# Deployment Guide for Render.com
 
-This guide covers automated deployment using GitHub Actions and manual deployment options.
+This guide will help you deploy your Telegram Reminder Bot on Render.com.
 
-## 📋 Prerequisites
+## Prerequisites
 
-### Server Requirements
-- Ubuntu/Debian server with SSH access
-- Python 3.8+ installed
-- Git installed
-- tmux installed
-- Root or sudo access
+1. A GitHub account with your bot repository
+2. A Render.com account
+3. Your Telegram Bot Token from @BotFather
+4. Your Google API Key for Gemini
+5. Your Stripe API keys
 
-### GitHub Repository Setup
-- Repository hosted on GitHub
-- SSH access to your server configured
+## Step 1: Prepare Your Repository
 
-## 🔧 Setup Instructions
+Ensure your repository contains:
+- `app.py` - Combined application for Render
+- `render.yaml` - Render deployment configuration
+- `runtime.txt` - Python version specification
+- `requirements.txt` - Python dependencies
+- All your source code in the `src/` directory
 
-### 1. Server Initial Setup
+## Step 2: Deploy on Render.com
 
-Connect to your server and clone the repository:
+### Option A: Using render.yaml (Recommended)
 
-```bash
-ssh root@45.77.155.59 -p61208
-cd /root
-git clone https://github.com/2ta/telegram-reminder-gemini.git telegram_reminder_bot_project
-cd telegram_reminder_bot_project
-```
+1. **Connect your GitHub repository:**
+   - Go to [Render Dashboard](https://dashboard.render.com)
+   - Click "New" → "Blueprint"
+   - Connect your GitHub account and select your repository
+   - Render will automatically detect the `render.yaml` file
 
-### 2. Environment Configuration
+2. **Configure environment variables:**
+   - In the Render dashboard, go to your service
+   - Navigate to "Environment" tab
+   - Add the following environment variables:
+     ```
+     TELEGRAM_BOT_TOKEN=your_telegram_bot_token
+     GOOGLE_API_KEY=your_google_api_key
+     STRIPE_SECRET_KEY=your_stripe_secret_key
+     STRIPE_WEBHOOK_SECRET=your_stripe_webhook_secret
+     ```
 
-Create your environment file:
+### Option B: Manual Deployment
 
-```bash
-cp env.sample .env
-nano .env
-```
+1. **Create a new Web Service:**
+   - Go to [Render Dashboard](https://dashboard.render.com)
+   - Click "New" → "Web Service"
+   - Connect your GitHub repository
 
-Add your configuration:
-```env
-TELEGRAM_BOT_TOKEN=your_bot_token_here
-GOOGLE_API_KEY=your_google_api_key_here
-DATABASE_URL=sqlite:///./default.db
-# Add other required variables
-```
+2. **Configure the service:**
+   - **Name:** `telegram-reminder-bot`
+   - **Environment:** `Python`
+   - **Build Command:** `pip install -r requirements.txt`
+   - **Start Command:** `python app.py`
+   - **Python Version:** `3.9.18`
 
-### 3. GitHub Actions Setup
+3. **Add environment variables** (same as above)
 
-#### Step 1: Generate SSH Key Pair
+## Step 3: Configure Stripe Webhooks
 
-On your local machine or server:
+1. **Get your Render URL:**
+   - After deployment, Render will provide a URL like: `https://your-app-name.onrender.com`
 
-```bash
-ssh-keygen -t rsa -b 4096 -C "github-actions-deploy"
-```
+2. **Configure Stripe webhook:**
+   - Go to [Stripe Dashboard](https://dashboard.stripe.com/webhooks)
+   - Click "Add endpoint"
+   - **Endpoint URL:** `https://your-app-name.onrender.com/webhook/stripe`
+   - **Events to send:** Select all payment-related events
+   - Copy the webhook signing secret
 
-#### Step 2: Add Public Key to Server
+3. **Update environment variable:**
+   - In Render dashboard, update `STRIPE_WEBHOOK_SECRET` with the signing secret
 
-Copy the public key to your server:
+## Step 4: Test Your Deployment
 
-```bash
-ssh-copy-id -i ~/.ssh/id_rsa.pub -p 61208 root@45.77.155.59
-```
+1. **Check the health endpoint:**
+   - Visit: `https://your-app-name.onrender.com/health`
+   - Should return: `{"status": "healthy"}`
 
-Or manually add it to `~/.ssh/authorized_keys` on the server.
+2. **Test your bot:**
+   - Send a message to your Telegram bot
+   - Check the logs in Render dashboard
 
-#### Step 3: Add Private Key to GitHub Secrets
+## Step 5: Monitor and Maintain
 
-1. Go to your GitHub repository
-2. Navigate to **Settings** → **Secrets and variables** → **Actions**
-3. Click **New repository secret**
-4. Add the following secret:
+### Viewing Logs
+- Go to your service in Render dashboard
+- Click "Logs" tab to view real-time logs
 
-| Name | Value |
-|------|-------|
-| `SSH_PRIVATE_KEY` | Contents of your private key file (`~/.ssh/id_rsa`) |
+### Environment Variables
+- All sensitive data should be stored as environment variables
+- Never commit API keys to your repository
 
-#### Step 4: Test SSH Connection
+### Scaling
+- Render automatically scales based on traffic
+- Free tier has limitations but is sufficient for testing
 
-Verify the connection works:
+## Troubleshooting
 
-```bash
-ssh -p 61208 root@45.77.155.59 "echo 'Connection successful'"
-```
+### Common Issues
 
-## 🤖 Automated Deployment (GitHub Actions)
+1. **Build fails:**
+   - Check that all dependencies are in `requirements.txt`
+   - Verify Python version compatibility
 
-### How It Works
+2. **Bot not responding:**
+   - Check environment variables are set correctly
+   - Verify Telegram bot token is valid
+   - Check logs for errors
 
-The GitHub Actions workflow (`.github/workflows/deploy.yml`) automatically:
+3. **Webhook not working:**
+   - Verify Stripe webhook URL is correct
+   - Check webhook secret is set correctly
+   - Test with Stripe CLI locally first
 
-1. **Triggers** on push to `main` branch
-2. **Connects** to your server via SSH
-3. **Updates** code from GitHub
-4. **Installs** dependencies in virtual environment
-5. **Restarts** the bot in tmux session
-6. **Verifies** deployment success
+### Support
+- Render Documentation: https://render.com/docs
+- Render Community: https://community.render.com
 
-### Manual Trigger
+## Security Notes
 
-You can also trigger deployment manually:
+- Never expose API keys in your code
+- Use environment variables for all sensitive data
+- Regularly rotate your API keys
+- Monitor your Stripe webhook events for security
 
-1. Go to **Actions** tab in your GitHub repository
-2. Select **Deploy Telegram Bot** workflow
-3. Click **Run workflow**
-4. Choose branch and click **Run workflow**
+## Cost Considerations
 
-### Monitoring Deployments
+- **Free Tier:** Limited but sufficient for development/testing
+- **Paid Plans:** Start at $7/month for more resources
+- **Database:** Consider using Render's PostgreSQL for production
 
-- View deployment logs in the **Actions** tab
-- Check deployment status and any errors
-- Monitor bot status on the server
+## Next Steps
 
-## 🛠️ Manual Deployment
-
-### Using the Deployment Script
-
-Run the automated deployment script on your server:
-
-```bash
-ssh root@45.77.155.59 -p61208
-cd /root/telegram_reminder_bot_project
-./scripts/deploy.sh
-```
-
-### Manual Step-by-Step
-
-If you prefer manual control:
-
-```bash
-# Connect to server
-ssh root@45.77.155.59 -p61208
-
-# Navigate to project
-cd /root/telegram_reminder_bot_project
-
-# Update code
-git pull origin main
-
-# Setup virtual environment
-python3 -m venv .venv
-source .venv/bin/activate
-
-# Install dependencies
-pip install --upgrade pip
-pip uninstall -y google-generativeai langchain-google-genai google-ai-generativelanguage || true
-pip install -r requirements.txt
-
-# Stop existing bot
-tmux kill-session -t telegram_bot 2>/dev/null || true
-
-# Start bot
-tmux new-session -d -s telegram_bot
-tmux send-keys -t telegram_bot "cd /root/telegram_reminder_bot_project" Enter
-tmux send-keys -t telegram_bot "source .venv/bin/activate" Enter
-tmux send-keys -t telegram_bot "python start_bot.py" Enter
-```
-
-## 📊 Managing the Bot
-
-### View Bot Status
-
-```bash
-# List tmux sessions
-tmux list-sessions
-
-# Attach to bot session
-tmux attach-session -t telegram_bot
-
-# Detach from session (Ctrl+B then D)
-```
-
-### Bot Management Commands
-
-```bash
-# Stop bot
-tmux kill-session -t telegram_bot
-
-# Restart bot (run deployment script)
-./scripts/deploy.sh
-
-# View bot logs
-tmux capture-pane -t telegram_bot -p
-
-# Check if bot is running
-tmux has-session -t telegram_bot && echo "Bot is running" || echo "Bot is not running"
-```
-
-### Troubleshooting
-
-#### Bot Not Starting
-
-1. Check tmux session:
-   ```bash
-   tmux attach-session -t telegram_bot
-   ```
-
-2. Check environment variables:
-   ```bash
-   cat .env
-   ```
-
-3. Test imports:
-   ```bash
-   source .venv/bin/activate
-   python -c "from src.bot import main; print('Imports OK')"
-   ```
-
-#### Deployment Fails
-
-1. Check SSH connection:
-   ```bash
-   ssh -p 61208 root@45.77.155.59 "echo 'Connection OK'"
-   ```
-
-2. Check GitHub Actions logs in repository
-
-3. Verify server has enough disk space:
-   ```bash
-   df -h
-   ```
-
-#### Dependencies Issues
-
-1. Clear virtual environment:
-   ```bash
-   rm -rf .venv
-   python3 -m venv .venv
-   source .venv/bin/activate
-   pip install -r requirements.txt
-   ```
-
-## 🔒 Security Considerations
-
-- Keep your SSH private key secure
-- Use GitHub Secrets for sensitive data
-- Regularly update server packages
-- Monitor deployment logs for any issues
-- Consider using a dedicated deployment user instead of root
-
-## 📝 Workflow Customization
-
-You can customize the deployment workflow by editing `.github/workflows/deploy.yml`:
-
-- Change deployment triggers
-- Add additional deployment steps
-- Modify server paths
-- Add notification steps
-
-## 🎯 Quick Commands Reference
-
-```bash
-# Deploy manually
-./scripts/deploy.sh
-
-# View bot logs
-tmux attach-session -t telegram_bot
-
-# Stop bot
-tmux kill-session -t telegram_bot
-
-# Check bot status
-tmux has-session -t telegram_bot && echo "Running" || echo "Stopped"
-
-# Update and restart (full deployment)
-git pull origin main && ./scripts/deploy.sh
-``` 
+After successful deployment:
+1. Set up monitoring and alerts
+2. Configure custom domain (optional)
+3. Set up CI/CD for automatic deployments
+4. Consider database migration for production use 
