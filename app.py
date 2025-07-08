@@ -34,15 +34,6 @@ def run_bot():
     except Exception as e:
         logger.error(f"Bot thread error: {e}")
 
-def run_webhook_server():
-    """Run the Stripe webhook server."""
-    try:
-        logger.info("Starting webhook server...")
-        from src.payment_callback_server import app
-        app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)), debug=False)
-    except Exception as e:
-        logger.error(f"Webhook server error: {e}")
-
 def main():
     """Main function to start both services."""
     logger.info("Starting combined application...")
@@ -55,8 +46,12 @@ def main():
     bot_thread = threading.Thread(target=run_bot, daemon=True)
     bot_thread.start()
     
-    # Start webhook server in main thread (Render expects this)
-    run_webhook_server()
+    # Import and run the Flask app (this will be the main thread)
+    logger.info("Starting webhook server...")
+    from src.payment_callback_server import app
+    
+    # Run the Flask app (this blocks and runs the web server)
+    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)), debug=False)
 
 if __name__ == "__main__":
     main() 

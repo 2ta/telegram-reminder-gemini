@@ -11,7 +11,6 @@ def check_required_files():
     """Check that all required files for deployment exist."""
     required_files = [
         'app.py',
-        'render.yaml',
         'runtime.txt',
         'requirements.txt',
         'src/bot.py',
@@ -97,9 +96,10 @@ def main():
         print("🎉 All checks passed! Your project is ready for Render deployment.")
         print("\nNext steps:")
         print("1. Push your code to GitHub")
-        print("2. Connect your repository to Render.com")
-        print("3. Set up environment variables in Render dashboard")
-        print("4. Deploy!")
+        print("2. Go to Render.com and create a new Web Service")
+        print("3. Connect your repository and configure settings")
+        print("4. Set up environment variables in Render dashboard")
+        print("5. Deploy!")
     else:
         print("❌ Some checks failed. Please fix the issues above before deploying.")
         sys.exit(1)

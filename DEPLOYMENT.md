@@ -1,6 +1,6 @@
 # Deployment Guide for Render.com
 
-This guide will help you deploy your Telegram Reminder Bot on Render.com.
+This guide will help you deploy your Telegram Reminder Bot on Render.com using the free tier.
 
 ## Prerequisites
 
@@ -14,24 +14,30 @@ This guide will help you deploy your Telegram Reminder Bot on Render.com.
 
 Ensure your repository contains:
 - `app.py` - Combined application for Render
-- `render.yaml` - Render deployment configuration
 - `runtime.txt` - Python version specification
 - `requirements.txt` - Python dependencies
 - All your source code in the `src/` directory
 
 ## Step 2: Deploy on Render.com
 
-### Option A: Using render.yaml (Recommended)
+### Manual Deployment (Free Tier)
 
-1. **Connect your GitHub repository:**
+1. **Create a new Web Service:**
    - Go to [Render Dashboard](https://dashboard.render.com)
-   - Click "New" → "Blueprint"
+   - Click "New" → "Web Service"
    - Connect your GitHub account and select your repository
-   - Render will automatically detect the `render.yaml` file
 
-2. **Configure environment variables:**
-   - In the Render dashboard, go to your service
-   - Navigate to "Environment" tab
+2. **Configure the service:**
+   - **Name:** `telegram-reminder-bot` (or any name you prefer)
+   - **Environment:** `Python`
+   - **Region:** Choose closest to your users
+   - **Branch:** `main`
+   - **Build Command:** `pip install -r requirements.txt`
+   - **Start Command:** `python app.py`
+   - **Plan:** `Free`
+
+3. **Add environment variables:**
+   - Click "Advanced" to expand the section
    - Add the following environment variables:
      ```
      TELEGRAM_BOT_TOKEN=your_telegram_bot_token
@@ -40,21 +46,9 @@ Ensure your repository contains:
      STRIPE_WEBHOOK_SECRET=your_stripe_webhook_secret
      ```
 
-### Option B: Manual Deployment
-
-1. **Create a new Web Service:**
-   - Go to [Render Dashboard](https://dashboard.render.com)
-   - Click "New" → "Web Service"
-   - Connect your GitHub repository
-
-2. **Configure the service:**
-   - **Name:** `telegram-reminder-bot`
-   - **Environment:** `Python`
-   - **Build Command:** `pip install -r requirements.txt`
-   - **Start Command:** `python app.py`
-   - **Python Version:** `3.9.18`
-
-3. **Add environment variables** (same as above)
+4. **Create the service:**
+   - Click "Create Web Service"
+   - Wait for the build to complete (2-5 minutes)
 
 ## Step 3: Configure Stripe Webhooks
 
@@ -69,7 +63,8 @@ Ensure your repository contains:
    - Copy the webhook signing secret
 
 3. **Update environment variable:**
-   - In Render dashboard, update `STRIPE_WEBHOOK_SECRET` with the signing secret
+   - In Render dashboard, go to your service → "Environment" tab
+   - Update `STRIPE_WEBHOOK_SECRET` with the signing secret
 
 ## Step 4: Test Your Deployment
 
@@ -130,10 +125,17 @@ Ensure your repository contains:
 - **Paid Plans:** Start at $7/month for more resources
 - **Database:** Consider using Render's PostgreSQL for production
 
+## Free Tier Limitations
+
+- **Sleep after inactivity:** Your app will sleep after 15 minutes of inactivity
+- **Build time:** Limited build minutes per month
+- **Bandwidth:** Limited bandwidth
+- **No custom domains** on free tier
+
 ## Next Steps
 
 After successful deployment:
 1. Set up monitoring and alerts
-2. Configure custom domain (optional)
+2. Configure custom domain (optional, requires paid plan)
 3. Set up CI/CD for automatic deployments
 4. Consider database migration for production use 
