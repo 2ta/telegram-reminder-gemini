@@ -581,35 +581,22 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     await _handle_graph_invocation(update, context, initial_state, is_callback=True)
     log_memory_usage(f"after button_callback for user {user_id}")
 
-def main() -> None:
-    """Start the bot."""
+async def main() -> None:
+    """Start the bot (async-compatible for asyncio.run)."""
     init_db()
     application = Application.builder().token(settings.TELEGRAM_BOT_TOKEN).build()
 
     application.add_handler(CommandHandler("start", start_command))
-    # application.add_handler(CommandHandler("help", help_command)) # Help is handled by graph or direct message
     application.add_handler(CommandHandler("pay", payment_command))
     application.add_handler(CommandHandler("privacy", privacy_command))
-    # Temporarily commented out undefined handlers
-    # application.add_handler(CommandHandler("reminders", reminders_command))
-    # application.add_handler(CommandHandler("cancel", cancel_command))
-    # Webhook simulation command for testing payment callbacks
-    application.add_handler(CommandHandler("stripe_webhook", handle_stripe_webhook)) 
-
+    application.add_handler(CommandHandler("stripe_webhook", handle_stripe_webhook))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     application.add_handler(MessageHandler(filters.VOICE, handle_voice))
-
-    # General callback handler for all inline buttons, invokes LangGraph
     application.add_handler(CallbackQueryHandler(button_callback))
 
-    # Temporarily commented out undefined job
-    # if application.job_queue:
-    #     application.job_queue.run_repeating(check_reminders, interval=60, first=10)
-    # else:
-    #     logger.warning("Job queue is not available. Reminder checks will not run.")
-
-    logger.info("Starting bot polling...")
-    application.run_polling()
+    logger.info("Starting bot polling (async)...")
+    await application.run_polling()
 
 if __name__ == "__main__":
-    main()
+    import asyncio
+    asyncio.run(main())
