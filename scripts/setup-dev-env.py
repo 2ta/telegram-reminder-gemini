@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Development Environment Setup Script
-Helps configure the bot for Render.com + Supabase development deployment
+Helps configure the bot for Render.com development deployment (SQLite only)
 """
 import os
 import sys
@@ -58,7 +58,6 @@ def validate_env_vars():
     """Check if critical environment variables are set"""
     critical_vars = [
         "TELEGRAM_BOT_TOKEN",
-        "DATABASE_URL", 
         "GEMINI_API_KEY"
     ]
     
@@ -80,38 +79,32 @@ def validate_env_vars():
 def print_next_steps():
     """Print next steps for setup"""
     print("\n" + "="*50)
-    print("🚀 NEXT STEPS FOR DEVELOPMENT SETUP")
+    print("🚀 NEXT STEPS FOR DEVELOPMENT SETUP (SQLite)")
     print("="*50)
     
-    print("\n1. 📊 SUPABASE SETUP:")
-    print("   - Go to https://supabase.com/dashboard")
-    print("   - Create new project: telegram-reminder-bot-dev")
-    print("   - Copy database connection details")
-    print("   - Update DATABASE_URL in .env or Render dashboard")
-    
-    print("\n2. 🌐 RENDER.COM SETUP:")
+    print("\n1. 🌐 RENDER.COM SETUP:")
     print("   - Go to https://dashboard.render.com")
     print("   - Create new Web Service")
     print("   - Connect your GitHub repository")
     print("   - Set environment variables in Render dashboard")
     
-    print("\n3. 🤖 TELEGRAM BOT:")
+    print("\n2. 🤖 TELEGRAM BOT:")
     print("   - Get bot token from @BotFather")
     print("   - Set TELEGRAM_BOT_TOKEN in environment")
     
-    print("\n4. 🧠 GEMINI AI:")
+    print("\n3. 🧠 GEMINI AI:")
     print("   - Get API key from Google AI Studio")
     print("   - Set GEMINI_API_KEY in environment")
     
-    print("\n5. 🧪 TEST DEPLOYMENT:")
+    print("\n4. 🧪 TEST DEPLOYMENT:")
     print("   - Deploy on Render")
     print("   - Test bot functionality")
-    print("   - Check database tables in Supabase")
+    print("   - SQLite database will be created automatically")
     
     print("\n📚 For detailed instructions, see: docs/setup-render-supabase.md")
 
 def main():
-    print("🔧 Telegram Reminder Bot - Development Setup")
+    print("🔧 Telegram Reminder Bot - Development Setup (SQLite)")
     print("="*50)
     
     # Check requirements

@@ -11,17 +11,13 @@ services:
       - key: LOG_LEVEL
         value: INFO
       - key: DEFAULT_LANGUAGE
-        value: EN
+        value: fa
       - key: IGNORE_REMINDER_LIMITS
         value: "True"
       - key: PORT
         value: 5000
-      # These will be set manually in Render dashboard:
+      # Set these manually in Render dashboard:
       # - TELEGRAM_BOT_TOKEN
-      # - DATABASE_URL (Supabase PostgreSQL URL)
-      # - SUPABASE_URL
-      # - SUPABASE_ANON_KEY
-      # - SUPABASE_SERVICE_ROLE_KEY
       # - GEMINI_API_KEY
       # - STRIPE_SECRET_KEY (if using payments)
       # - STRIPE_WEBHOOK_SECRET (if using payments)
