@@ -1,45 +1,34 @@
-# Quick Start Guide - Development Setup (SQLite)
+# Quick Start Guide - VPS Deployment
 
-Get your Telegram Reminder Bot running on Render.com (with SQLite) in 5 minutes!
+Get your Telegram Reminder Bot running on your own VPS in minutes!
 
 ## 🚀 Quick Setup
 
-### 1. Run Setup Script
+### 1. Clone and Install
 ```bash
-python scripts/setup-dev-env.py
+git clone <your-repo-url>
+cd <your-repo>
+python3.11 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
 ```
 
-### 2. Deploy on Render (5 minutes)
-1. Go to [Render Dashboard](https://dashboard.render.com)
-2. Create new Web Service
-3. Connect your GitHub repository
-4. Set environment variables (copy from your `.env` file):
-   - `TELEGRAM_BOT_TOKEN=your_bot_token_from_botfather`
-   - `GEMINI_API_KEY=your_google_api_key`
-5. Deploy!
+### 2. Configure Environment
+- Copy `env.sample` to `.env` and fill in your secrets (Telegram token, etc).
 
-## 📋 Required Environment Variables
-
-Set these in Render dashboard:
-
-```
-TELEGRAM_BOT_TOKEN=your_bot_token_from_botfather
-GEMINI_API_KEY=your_google_api_key
+### 3. Start the Bot
+```bash
+python -m src.bot
 ```
 
-## ✅ Test Your Deployment
+### 4. (Optional) Start the Flask Webhook Server
+```bash
+python -m src.payment_callback_server
+```
 
-1. **Health Check:** Visit `https://your-app.onrender.com/health`
-2. **Test Bot:** Send message to your Telegram bot
-3. **Check Database:** SQLite file will be created automatically in your Render instance
+## 📝 Notes
+- Use `systemd`, `supervisor`, or `tmux`/`screen` to keep your processes running.
+- For production, use a WSGI server (like gunicorn or uvicorn) for the Flask app.
+- Secure your VPS and keep your secrets safe.
 
-## 🆘 Need Help?
-
-- **Detailed Guide:** See `docs/setup-render-supabase.md`
-- **Setup Script:** Run `python scripts/setup-dev-env.py`
-- **Issues:** Check Render logs
-
-## 🆓 Free Tier Limits
-
-- **Render:** Sleeps after 15min inactivity
-- **Perfect for development and testing!** 
+**All Render.com-specific instructions have been removed.** 
