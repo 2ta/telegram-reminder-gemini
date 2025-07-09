@@ -1,0 +1,28 @@
+services:
+  - type: web
+    name: telegram-reminder-bot-dev
+    env: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: python app.py
+    envVars:
+      - key: APP_ENV
+        value: development
+      - key: LOG_LEVEL
+        value: INFO
+      - key: DEFAULT_LANGUAGE
+        value: EN
+      - key: IGNORE_REMINDER_LIMITS
+        value: "True"
+      - key: PORT
+        value: 5000
+      # These will be set manually in Render dashboard:
+      # - TELEGRAM_BOT_TOKEN
+      # - DATABASE_URL (Supabase PostgreSQL URL)
+      # - SUPABASE_URL
+      # - SUPABASE_ANON_KEY
+      # - SUPABASE_SERVICE_ROLE_KEY
+      # - GEMINI_API_KEY
+      # - STRIPE_SECRET_KEY (if using payments)
+      # - STRIPE_WEBHOOK_SECRET (if using payments)
+      # - PAYMENT_CALLBACK_URL_BASE (if using payments) 

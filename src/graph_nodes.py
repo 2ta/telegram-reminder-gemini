@@ -284,7 +284,11 @@ async def determine_intent_node(state: AgentState) -> Dict[str, Any]:
             # Fall through to unknown_intent at the end
         else:
             try:
-                llm = ChatGoogleGenerativeAI(model=settings.GEMINI_MODEL_NAME, temperature=0.3)
+                llm = ChatGoogleGenerativeAI(
+                    model=settings.GEMINI_MODEL_NAME, 
+                    temperature=0.3,
+                    google_api_key=settings.GEMINI_API_KEY
+                )
                 current_english_datetime = get_current_english_datetime_for_prompt()
                 prompt_template = f"""You are an intelligent assistant for detecting user intent from English text.
 Your task is to determine whether the user intends to create a new reminder or not.
@@ -1044,7 +1048,7 @@ async def handle_intent_node(state: AgentState) -> Dict[str, Any]:
                         try:
                             gregorian_dt = reminder.gregorian_datetime
                             if not gregorian_dt:
-                                logger.warning(f"Could not get datetime for reminder ID {reminder.id}. Skipping display.")
+                                logger.warning(f"Could not get datetime for reminder ID {reminder.id}. Skipping display. date_str={reminder.date_str}, time_str={reminder.time_str}, due_datetime_utc={reminder.due_datetime_utc}")
                                 reminder_list_items_text.append(f"⚠️ Date and time information for reminder ID {reminder.id} is invalid.")
                                 continue
                             formatted_datetime = format_datetime_for_display(gregorian_dt)
@@ -1052,7 +1056,6 @@ async def handle_intent_node(state: AgentState) -> Dict[str, Any]:
                             reminder_item_text = (
                                 f"📝 **{reminder.task}**\n"
                                 f"⏰ {formatted_datetime}"
-                                # f"\n🆔 `{reminder.id}`" # ID is in callback, maybe not needed in text
                             )
                             reminder_list_items_text.append(reminder_item_text)
                             # Add a delete button for each reminder
@@ -1060,7 +1063,7 @@ async def handle_intent_node(state: AgentState) -> Dict[str, Any]:
                                 {"text": f"Delete reminder: «{task_preview}» 🗑️", "callback_data": f"confirm_delete_reminder:{reminder.id}"}
                             ])
                         except Exception as e:
-                            logger.error(f"Error formatting reminder ID {reminder.id} for display: {e}", exc_info=True)
+                            logger.error(f"Error formatting reminder ID {reminder.id} for display: {e}. Raw values: date_str={getattr(reminder, 'date_str', None)}, time_str={getattr(reminder, 'time_str', None)}, due_datetime_utc={getattr(reminder, 'due_datetime_utc', None)}", exc_info=True)
                             reminder_list_items_text.append(f"⚠️ Display error for reminder ID {reminder.id}")
                     response_text = reminder_list_header + "\n\n--------------------\n\n".join(reminder_list_items_text)
                     if not reminder_list_items_text:

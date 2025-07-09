@@ -240,9 +240,16 @@ def resolve_english_date_phrase_to_range(phrase: Optional[str]) -> Optional[Tupl
     
     return (start_dt, end_dt)
 
-def format_datetime_for_display(dt: datetime) -> str:
-    """Format datetime for display in English."""
-    return dt.strftime("%A, %B %d, %Y at %I:%M %p")
+def format_datetime_for_display(dt: Optional[datetime]) -> str:
+    """Format datetime for display in English, with robust error handling and debug logging."""
+    if dt is None:
+        logger.warning("format_datetime_for_display called with None.")
+        return "[Date/time unavailable]"
+    try:
+        return dt.strftime("%A, %B %d, %Y at %I:%M %p")
+    except Exception as e:
+        logger.error(f"Error formatting datetime for display: {dt} ({type(dt)}): {e}", exc_info=True)
+        return "[Invalid date/time]"
 
 def format_date_for_display(dt: datetime) -> str:
     """Format date for display in English."""

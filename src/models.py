@@ -81,8 +81,32 @@ class Reminder(BaseModel):
 
     @property
     def gregorian_datetime(self):
-        """Get the UTC datetime from due_datetime_utc"""
-        return self.due_datetime_utc
+        """Get the UTC datetime from due_datetime_utc or construct from date_str and time_str"""
+        if self.due_datetime_utc:
+            return self.due_datetime_utc
+        
+        # Try to construct from date_str and time_str if due_datetime_utc is not available
+        if self.date_str and self.time_str:
+            try:
+                from datetime import datetime, timezone
+                # Parse date and time strings
+                date_obj = datetime.strptime(self.date_str, "%Y-%m-%d").date()
+                time_obj = datetime.strptime(self.time_str, "%H:%M").time()
+                # Combine and assume UTC
+                combined_dt = datetime.combine(date_obj, time_obj)
+                return combined_dt.replace(tzinfo=timezone.utc)
+            except ValueError as e:
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.error(f"Error constructing datetime from date_str='{self.date_str}' and time_str='{self.time_str}': {e}")
+                return None
+            except Exception as e:
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.error(f"Unexpected error constructing datetime for reminder {self.id}: {e}", exc_info=True)
+                return None
+        
+        return None
 
 class Payment(BaseModel):
     __tablename__ = "payments"
