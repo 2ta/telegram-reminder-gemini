@@ -581,6 +581,10 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     await _handle_graph_invocation(update, context, initial_state, is_callback=True)
     log_memory_usage(f"after button_callback for user {user_id}")
 
+async def ping(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    logger.info(f"Received /ping from user {update.effective_user.id if update.effective_user else 'unknown'}")
+    await update.message.reply_text("pong")
+
 async def main() -> None:
     """Start the bot (async-compatible for asyncio.run)."""
     init_db()
@@ -590,9 +594,20 @@ async def main() -> None:
     application.add_handler(CommandHandler("pay", payment_command))
     application.add_handler(CommandHandler("privacy", privacy_command))
     application.add_handler(CommandHandler("stripe_webhook", handle_stripe_webhook))
+    application.add_handler(CommandHandler("ping", ping))  # Add ping handler
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     application.add_handler(MessageHandler(filters.VOICE, handle_voice))
     application.add_handler(CallbackQueryHandler(button_callback))
+
+    # Add detailed logging for all updates
+    async def log_all_updates(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        logger.info(f"Received update: {update}")
+    application.add_handler(MessageHandler(filters.ALL, log_all_updates), group=100)
+
+    # Add error handler for more verbose error logging
+    async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+        logger.error(f"Exception while handling an update: {context.error}", exc_info=True)
+    application.add_error_handler(error_handler)
 
     logger.info("Starting bot polling (async)...")
     await application.run_polling()
