@@ -24,7 +24,7 @@ class Settings(BaseSettings):
     STRIPE_SECRET_KEY: Optional[str] = None
     STRIPE_PUBLISHABLE_KEY: Optional[str] = None
     STRIPE_WEBHOOK_SECRET: Optional[str] = None
-    PAYMENT_CALLBACK_URL_BASE: Optional[AnyHttpUrl] = None
+    PAYMENT_CALLBACK_URL_BASE: Optional[str] = None
 
     # Logging Configuration
     LOG_LEVEL: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
