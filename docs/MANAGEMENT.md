@@ -147,6 +147,37 @@ tmux attach-session -t telegram_bot
 
 ## Troubleshooting
 
+### Voice Message Issues
+
+**Voice message not working**:
+```bash
+# Check if Google Speech-to-Text API is enabled
+python test_voice.py
+
+# Common issues and solutions:
+# 1. API not enabled - go to Google Cloud Console
+# 2. API key missing - check .env file
+# 3. API quota exceeded - check Google Cloud Console
+
+# Check logs for specific errors
+sudo journalctl -u telegram-reminder-bot | grep -i "voice\|speech\|transcrib"
+```
+
+**Google Speech-to-Text API Setup**:
+1. Go to [Google Cloud Console](https://console.cloud.google.com/)
+2. Select your project or create a new one
+3. Enable the Speech-to-Text API:
+   - Visit: https://console.developers.google.com/apis/api/speech.googleapis.com/overview
+   - Click "Enable" if not already enabled
+4. Create or use existing API key with Speech-to-Text permissions
+5. Add the API key to your `.env` file as `GEMINI_API_KEY`
+
+**Voice processing errors**:
+- "Service disabled" → Enable Speech-to-Text API in Google Cloud Console
+- "Permission denied" → Check API key has correct permissions  
+- "Quota exceeded" → Check your Google Cloud billing and quotas
+- "No transcription result" → Audio might be unclear or unsupported format
+
 ### Common Issues
 
 **Bot not responding**:
