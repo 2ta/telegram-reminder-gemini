@@ -74,9 +74,16 @@ def create_payment_link(user_id: int, chat_id: int, amount: int = DEFAULT_PAYMEN
         # Save payment info to database
         db = next(get_db())
         try:
-            # Create payment record
+            # Get the database user ID from Telegram user ID
+            from src.models import User
+            user_db_obj = db.query(User).filter(User.telegram_id == user_id).first()
+            if not user_db_obj:
+                logger.error(f"User with telegram_id {user_id} not found in database when creating payment")
+                return False, "User not found. Please start the bot first with /start", None
+            
+            # Create payment record using database user ID
             payment = Payment(
-                user_id=user_id,
+                user_id=user_db_obj.id,  # Use database user ID, not Telegram user ID
                 chat_id=chat_id,
                 track_id=session.id,  # Use Stripe session ID as track_id
                 amount=amount,
@@ -86,7 +93,7 @@ def create_payment_link(user_id: int, chat_id: int, amount: int = DEFAULT_PAYMEN
             db.add(payment)
             db.commit()
             
-            logger.info(f"Created Stripe payment link for user {user_id} with session_id {session.id}")
+            logger.info(f"Created Stripe payment link for telegram_user {user_id} (db_user {user_db_obj.id}) with session_id {session.id}")
             return True, "Payment link created successfully", session.url
             
         except Exception as e:
@@ -189,16 +196,13 @@ def update_payment_status(session_id: str, status: int, result_data: Dict[str, A
         
         # If payment was successful, set user as premium
         if status == PaymentStatus.SUCCESS:
-            user = db.query(User).filter(User.telegram_id == payment.user_id).first()
+            # payment.user_id is now the database user ID, so we can query directly
+            user = db.query(User).filter(User.id == payment.user_id).first()
             if not user:
-                # Create user if not exists
-                user = User(
-                    telegram_id=payment.user_id,
-                    chat_id=payment.chat_id,
-                    subscription_tier=SubscriptionTier.PREMIUM,
-                    subscription_expiry=datetime.datetime.now() + datetime.timedelta(days=30)  # 30 days subscription
-                )
-                db.add(user)
+                # This should not happen since payment.user_id is now the database user ID
+                # But if it does, we need to log it as an error
+                logger.error(f"Critical: User with db_id {payment.user_id} not found when updating payment {session_id}")
+                return False
             else:
                 # Update existing user
                 user.subscription_tier = SubscriptionTier.PREMIUM
