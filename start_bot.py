@@ -31,7 +31,7 @@ async def start_bot():
     """Start the bot in a clean async environment."""
     try:
         # Import here to avoid import issues
-        from bot import main
+        from src.bot import main
         
         logger.info("Starting Telegram reminder bot...")
         await main()
