@@ -6,6 +6,7 @@ from typing import Optional
 from telegram import Update, Voice
 from telegram.ext import ContextTypes
 from google.cloud import speech
+from google.oauth2 import service_account
 
 from config.config import settings
 
@@ -36,8 +37,13 @@ def transcribe_english_voice(audio_file_path: str) -> Optional[str]:
         return None
 
     try:
+        # Load credentials explicitly from the file
+        credentials = service_account.Credentials.from_service_account_file(
+            settings.GOOGLE_APPLICATION_CREDENTIALS
+        )
+        
         client_options = {"api_endpoint": "eu-speech.googleapis.com"} if settings.GEMINI_LOCATION == "europe-west1" else {}
-        client = speech.SpeechClient(client_options=client_options) # Consider client_options for regional endpoints
+        client = speech.SpeechClient(credentials=credentials, client_options=client_options)
 
         with open(audio_file_path, "rb") as audio_file:
             content = audio_file.read()
