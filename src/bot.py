@@ -614,4 +614,27 @@ async def main() -> None:
 
 if __name__ == "__main__":
     import asyncio
-    asyncio.run(main())
+    import sys
+    
+    try:
+        # Try to get the current running loop
+        loop = asyncio.get_running_loop()
+        # If we reach here, there's already a running loop
+        print("Detected existing event loop. Running bot as a task...")
+        # Create the task and run it in the existing loop
+        task = loop.create_task(main())
+        # If you're in an interactive environment, you might want to store the task
+        print(f"Bot task created: {task}")
+        print("Note: The bot is now running in the background.")
+        print("To stop it, you can cancel the task or restart your environment.")
+        
+    except RuntimeError:
+        # No event loop is running, safe to use asyncio.run()
+        try:
+            asyncio.run(main())
+        except KeyboardInterrupt:
+            print("\nBot stopped by user")
+            sys.exit(0)
+        except Exception as e:
+            print(f"Error running bot: {e}")
+            sys.exit(1)
