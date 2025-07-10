@@ -1185,7 +1185,35 @@ async def handle_intent_node(state: AgentState) -> Dict[str, Any]:
             ]
         }
         response_keyboard_markup = payment_keyboard
-    
+
+    elif current_intent == "intent_payment_initiate_stripe":
+        logger.info(f"handle_intent_node: Initiating Stripe payment for user {user_id}")
+        from src.payment import create_payment_link
+        
+        user_profile = state.get("user_profile", {})
+        chat_id = state.get("chat_id", user_id)  # fallback to user_id if chat_id not available
+        
+        try:
+            success, message, payment_url = create_payment_link(user_id, chat_id, DEFAULT_PAYMENT_AMOUNT)
+            
+            if success and payment_url:
+                response_text = f"Great! Click the button below to complete your payment:\n\n💳 Amount: ${DEFAULT_PAYMENT_AMOUNT/100:.2f}"
+                payment_keyboard = {
+                    "type": "InlineKeyboardMarkup", 
+                    "inline_keyboard": [
+                        [{"text": "💳 Pay Now", "url": payment_url}]
+                    ]
+                }
+                response_keyboard_markup = payment_keyboard
+                logger.info(f"Stripe payment link created for user {user_id}: {payment_url}")
+            else:
+                response_text = f"Sorry, there was an issue creating the payment link: {message}"
+                logger.error(f"Failed to create Stripe payment link for user {user_id}: {message}")
+                
+        except Exception as e:
+            response_text = "Sorry, there was a technical error processing your payment request. Please try again later."
+            logger.error(f"Exception creating Stripe payment for user {user_id}: {e}", exc_info=True)
+
     # After reminder creation (success or failure)
     # This block will now primarily handle alternative messages if current_operation_status
     # IS correctly propagated and is something other than "success" with the "Done! 🎉" message,
