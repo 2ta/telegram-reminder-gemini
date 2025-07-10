@@ -13,8 +13,7 @@ from pathlib import Path
 
 # Ensure the src directory is in Python path
 project_root = Path(__file__).parent
-src_path = project_root / "src"
-sys.path.insert(0, str(src_path))
+sys.path.insert(0, str(project_root))
 
 # Setup basic logging
 logging.basicConfig(

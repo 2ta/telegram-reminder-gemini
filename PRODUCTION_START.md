@@ -14,7 +14,15 @@ source venv/bin/activate
 python start_bot.py
 ```
 
-### Option 2: Using the module directly
+### Option 2: Simple Module Runner (Alternative)
+```bash
+# If start_bot.py has issues, use this simpler approach
+cd /root/telegram-reminder-gemini
+source venv/bin/activate
+python run_bot.py
+```
+
+### Option 3: Using the module directly
 ```bash
 # If you get event loop errors, exit any Python REPL first
 cd /root/telegram-reminder-gemini
