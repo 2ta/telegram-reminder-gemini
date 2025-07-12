@@ -142,14 +142,8 @@ SUCCESS_PAGE_HTML = """
         <p>Thank you! Your premium subscription has been activated successfully.</p>
         
         <div class="features-list">
-            <h3>🎉 Premium Features Now Active:</h3>
-            <ul>
-                <li>✨ Unlimited reminders</li>
-                <li>🔔 Priority notifications</li>
-                <li>📅 Advanced scheduling</li>
-                <li>👑 Premium badge</li>
-                <li>🎯 Enhanced AI features</li>
-            </ul>
+            <h3>🚀 You now have unlimited reminders!</h3>
+            <p style="margin: 0; color: #555; font-size: 1.1rem;">Start creating as many reminders as you need!</p>
         </div>
         
         <div class="notification-info">
@@ -176,11 +170,7 @@ SUCCESS_PAGE_HTML = """
             }
         }, 1000);
         
-        // Send verification request immediately
-        fetch('/verify_payment?session_id={{ session_id }}', {method: 'POST'})
-            .then(response => response.json())
-            .then(data => console.log('Payment verified:', data))
-            .catch(error => console.log('Verification error:', error));
+        // Payment already verified by server when loading this page
     </script>
 </body>
 </html>
@@ -615,21 +605,12 @@ def send_telegram_notification(user_id: int, chat_id: int, amount: int):
         logger.error("TELEGRAM_BOT_TOKEN not configured")
         return
     
-    message = f"""🎉 **Premium Activated!**
+    message = f"""🎉 Premium Activated!
 
 ✅ Payment successful: ${amount/100:.2f}
 🚀 You now have unlimited reminders!
-💎 Premium features unlocked:
 
-• ✨ Unlimited reminders
-• 🔔 Priority notifications  
-• 📅 Advanced scheduling
-• 👑 Premium badge
-• 🎯 Enhanced AI features
-
-Start creating reminders now! 🎯
-
-Type anything to create your first premium reminder or use /start to see your new premium status."""
+Start creating reminders now! 🎯"""
 
     url = f"https://api.telegram.org/bot{settings.TELEGRAM_BOT_TOKEN}/sendMessage"
     data = {
