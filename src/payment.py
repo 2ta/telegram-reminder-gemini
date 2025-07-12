@@ -88,7 +88,7 @@ def create_payment_link(user_id: int, chat_id: int, amount: int = DEFAULT_PAYMEN
                 track_id=session.id,  # Use Stripe session ID as track_id
                 amount=amount,
                 status=PaymentStatus.PENDING,
-                created_at=datetime.datetime.now()
+                created_at=datetime.datetime.now(datetime.timezone.utc)
             )
             db.add(payment)
             db.commit()
@@ -188,7 +188,7 @@ def update_payment_status(session_id: str, status: int, result_data: Dict[str, A
             return False
         
         payment.status = status
-        payment.verified_at = datetime.datetime.now() if status == PaymentStatus.SUCCESS else None
+        payment.verified_at = datetime.datetime.now(datetime.timezone.utc) if status == PaymentStatus.SUCCESS else None
         payment.ref_id = result_data.get("payment_intent")
         payment.card_number = "****"  # Stripe doesn't provide card number in session
         payment.response_data = json.dumps(result_data)
@@ -206,12 +206,12 @@ def update_payment_status(session_id: str, status: int, result_data: Dict[str, A
             else:
                 # Update existing user
                 user.subscription_tier = SubscriptionTier.PREMIUM
-                if user.subscription_expiry and user.subscription_expiry > datetime.datetime.now():
+                if user.subscription_expiry and user.subscription_expiry > datetime.datetime.now(datetime.timezone.utc):
                     # Extend existing subscription
                     user.subscription_expiry = user.subscription_expiry + datetime.timedelta(days=30)
                 else:
                     # New subscription period
-                    user.subscription_expiry = datetime.datetime.now() + datetime.timedelta(days=30)
+                    user.subscription_expiry = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=30)
             
             db.commit()
             logger.info(f"User {payment.user_id} is now premium until {user.subscription_expiry}")
@@ -240,7 +240,7 @@ def is_user_premium(user_id: int) -> bool:
         if not user:
             return False
         
-        return user.subscription_tier == SubscriptionTier.PREMIUM and user.subscription_expiry > datetime.datetime.now()
+        return user.subscription_tier == SubscriptionTier.PREMIUM and user.subscription_expiry > datetime.datetime.now(datetime.timezone.utc)
     except Exception as e:
         logger.error(f"Error checking premium status for user {user_id}: {e}")
         return False

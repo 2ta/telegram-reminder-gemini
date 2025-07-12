@@ -8,6 +8,7 @@ project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, project_root)
 
 from flask import Flask, request, jsonify, render_template_string
+import requests
 from src.payment import handle_stripe_webhook, verify_payment
 from config.config import settings
 
