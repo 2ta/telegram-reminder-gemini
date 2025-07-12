@@ -392,11 +392,6 @@ CANCEL_PAGE_HTML = """
             background: #545b62;
             transform: translateY(-2px);
         }
-        .redirect-timer {
-            color: #888;
-            font-size: 0.9rem;
-            margin-top: 20px;
-        }
     </style>
 </head>
 <body>
@@ -406,26 +401,11 @@ CANCEL_PAGE_HTML = """
         <p>No worries! Your payment was cancelled and no charges were made.</p>
         <p>You can try again anytime or continue using the free features of our bot.</p>
         
-        <a href="https://t.me/ai_reminderbot?start=try_premium_again" class="btn btn-primary">🔄 Try Premium Again</a>
+        <a href="https://t.me/ai_reminderbot?start=pay" class="btn btn-primary">🔄 Try Premium Again</a>
         <a href="https://t.me/ai_reminderbot" class="btn btn-secondary">🤖 Return to Bot</a>
-        
-        <div class="redirect-timer">
-            Auto-redirecting to bot in <span id="countdown">8</span> seconds...
-        </div>
     </div>
     
     <script>
-        // Countdown timer
-        let countdown = 8;
-        const timer = setInterval(() => {
-            countdown--;
-            document.getElementById('countdown').textContent = countdown;
-            if (countdown <= 0) {
-                clearInterval(timer);
-                window.location.href = "https://t.me/ai_reminderbot";
-            }
-        }, 1000);
-        
         // Send cancel notification
         fetch('/notify_payment_cancelled', {method: 'POST'})
             .then(response => response.json())
