@@ -89,17 +89,17 @@ telegram_reminder_bot_project/
 ### Local Development
 
 1. **Clone and setup**:
-   ```bash
+    ```bash
    git clone https://github.com/2ta/telegram-reminder-gemini.git
    cd telegram-reminder-gemini
    python3.11 -m venv .venv
    source .venv/bin/activate
-   pip install -r requirements.txt
-   ```
+    pip install -r requirements.txt
+    ```
 
 2. **Configure environment**:
-   ```bash
-   cp env.sample .env
+    ```bash
+    cp env.sample .env
    # Edit .env with your API keys and tokens
    ```
 
@@ -155,7 +155,7 @@ See `env.sample` for additional configuration options including logging levels, 
 ## 🧪 Testing
 
 Run the test suite:
-```bash
+    ```bash
 # Install test dependencies
 pip install pytest pytest-asyncio
 
@@ -167,7 +167,7 @@ pytest tests/
 
 ### Production Monitoring
 
-```bash
+    ```bash
 # Check service status
 sudo systemctl status telegram-reminder-bot
 

@@ -101,8 +101,8 @@ Let's implement the core Telegram bot functionality that will receive and respon
    - Connection to Telegram API
 
 2. Implement command handlers for:
-   - /start - Persian welcome message and bot introduction
-   - /help - List of commands and capabilities in Persian
+   - /start - welcome message and bot introduction
+   - /help - List of commands and capabilities
    - /privacy - Privacy information
 
 3. Create a basic message handler that:

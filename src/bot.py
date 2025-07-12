@@ -593,7 +593,7 @@ async def main() -> None:
     application.add_handler(CommandHandler("start", start_command))
     application.add_handler(CommandHandler("pay", payment_command))
     application.add_handler(CommandHandler("privacy", privacy_command))
-    application.add_handler(CommandHandler("stripe_webhook", handle_stripe_webhook))
+    application.add_handler(CommandHandler("stripe_webhook", handle_stripe_webhook)) 
     application.add_handler(CommandHandler("ping", ping))  # Add ping handler
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     application.add_handler(MessageHandler(filters.VOICE, handle_voice))
