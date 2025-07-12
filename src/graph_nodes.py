@@ -14,7 +14,7 @@ import secrets
 from src.graph_state import AgentState
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import AIMessage, HumanMessage
-from config.config import settings, MSG_WELCOME, MSG_REMINDER_SET, MSG_LIST_EMPTY_NO_REMINDERS, MSG_PAYMENT_PROMPT, MSG_PAYMENT_BUTTON
+from config.config import settings, MSG_WELCOME, MSG_REMINDER_SET, MSG_LIST_EMPTY_NO_REMINDERS, MSG_PAYMENT_PROMPT, MSG_PAYMENT_BUTTON, MSG_ALREADY_PREMIUM
 from src.datetime_utils import parse_english_datetime_to_utc, resolve_english_date_phrase_to_range, format_datetime_for_display
 from src.models import Reminder, User, SubscriptionTier
 from src.database import get_db
@@ -77,13 +77,28 @@ async def load_user_profile_node(state: AgentState) -> Dict[str, Any]:
         is_premium = user_db_obj.subscription_tier == SubscriptionTier.PREMIUM
         max_reminders = settings.MAX_REMINDERS_PREMIUM_TIER if is_premium else settings.MAX_REMINDERS_FREE_TIER
 
+        # For premium users, expiry date is mandatory
+        premium_until = None
+        if is_premium:
+            if not user_db_obj.subscription_expiry:
+                logger.error(f"Premium user {user_id} has no subscription expiry date! This is a data integrity issue.")
+                return {
+                    "user_profile": None,
+                    "error_message": f"Premium user {user_id} has no expiry date. Data integrity issue.",
+                    "current_node_name": "load_user_profile_node"
+                }
+            premium_until = user_db_obj.subscription_expiry.isoformat()
+        else:
+            # Free users don't have expiry dates
+            premium_until = None
+
         user_profile_data = {
             "user_db_id": user_db_obj.id,
             "username": user_db_obj.username,
             "first_name": user_db_obj.first_name,
             "last_name": user_db_obj.last_name,
             "is_premium": is_premium,  # Derived from subscription_tier
-            "premium_until": user_db_obj.subscription_expiry.isoformat() if user_db_obj.subscription_expiry else None,
+            "premium_until": premium_until,
             "language_code": user_db_obj.language_code,
             "reminder_limit": max_reminders,
             "current_reminder_count": active_reminder_count
@@ -1176,15 +1191,46 @@ async def handle_intent_node(state: AgentState) -> Dict[str, Any]:
 
     elif current_intent == "intent_show_payment_options":
         logger.info(f"handle_intent_node: Showing payment options for user {user_id}")
-        amount_usd = DEFAULT_PAYMENT_AMOUNT / 100  # Convert cents to dollars
-        response_text = MSG_PAYMENT_PROMPT.format(amount=f"${amount_usd:.2f}")
-        payment_keyboard = {
-            "type": "InlineKeyboardMarkup",
-            "inline_keyboard": [
-                [{"text": MSG_PAYMENT_BUTTON, "callback_data": "initiate_payment_stripe"}]
-            ]
-        }
-        response_keyboard_markup = payment_keyboard
+        
+        # Check if user already has premium
+        if user_profile and user_profile.get("is_premium", False):
+            # User already has premium - expiry date is mandatory for premium users
+            expiry_date = user_profile.get("premium_until")
+            if not expiry_date:
+                logger.error(f"Premium user {user_id} has no expiry date! This should not happen.")
+                response_text = "Sorry, there was an error retrieving your premium subscription details. Please contact support."
+                response_keyboard_markup = None
+            else:
+                # Format the expiry date for display
+                if isinstance(expiry_date, str):
+                    try:
+                        expiry_date = datetime.datetime.fromisoformat(expiry_date.replace("Z", "+00:00"))
+                    except ValueError:
+                        logger.error(f"Invalid expiry date format for premium user {user_id}: {expiry_date}")
+                        response_text = "Sorry, there was an error retrieving your premium subscription details. Please contact support."
+                        response_keyboard_markup = None
+                    else:
+                        formatted_expiry = format_datetime_for_display(expiry_date)
+                        response_text = MSG_ALREADY_PREMIUM.format(expiry_date=formatted_expiry)
+                        response_keyboard_markup = None
+                else:
+                    # expiry_date is already a datetime object
+                    formatted_expiry = format_datetime_for_display(expiry_date)
+                    response_text = MSG_ALREADY_PREMIUM.format(expiry_date=formatted_expiry)
+                    response_keyboard_markup = None
+            
+            logger.info(f"handle_intent_node: User {user_id} already has premium, showing premium status message")
+        else:
+            # User doesn't have premium, show payment options
+            amount_usd = DEFAULT_PAYMENT_AMOUNT / 100  # Convert cents to dollars
+            response_text = MSG_PAYMENT_PROMPT.format(amount=f"${amount_usd:.2f}")
+            payment_keyboard = {
+                "type": "InlineKeyboardMarkup",
+                "inline_keyboard": [
+                    [{"text": MSG_PAYMENT_BUTTON, "callback_data": "initiate_payment_stripe"}]
+                ]
+            }
+            response_keyboard_markup = payment_keyboard
 
     elif current_intent == "intent_payment_initiate_stripe":
         logger.info(f"handle_intent_node: Initiating Stripe payment for user {user_id}")
