@@ -190,8 +190,16 @@ def parse_english_datetime_to_utc(date_str: Optional[str], time_str: Optional[st
             utc_dt = datetime.combine(target_date, now_utc.time()).replace(tzinfo=timezone.utc)
     else:
         if target_time:
-            # Only time specified, use today's date
-            utc_dt = datetime.combine(now_utc.date(), target_time).replace(tzinfo=timezone.utc)
+            # Only time specified, use today's date or tomorrow if time has passed
+            today_with_time = datetime.combine(now_utc.date(), target_time).replace(tzinfo=timezone.utc)
+            if today_with_time <= now_utc:
+                # Time has already passed today, use tomorrow
+                tomorrow_with_time = datetime.combine((now_utc + timedelta(days=1)).date(), target_time).replace(tzinfo=timezone.utc)
+                utc_dt = tomorrow_with_time
+                logger.info(f"Time '{time_str}' has passed today, using tomorrow instead")
+            else:
+                # Time is still in the future today
+                utc_dt = today_with_time
         else:
             # Neither date nor time specified
             return None
