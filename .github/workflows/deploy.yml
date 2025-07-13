@@ -20,20 +20,20 @@ jobs:
         
     - name: Add server to known hosts
       run: |
-        ssh-keyscan -p 61208 45.77.155.59 >> ~/.ssh/known_hosts
+        ssh-keyscan -p ${{ secrets.SSH_PORT }} ${{ secrets.SERVER_IP }} >> ~/.ssh/known_hosts
         
     - name: Deploy to server
       run: |
-        ssh -p 61208 root@45.77.155.59 << 'EOF'
+        ssh -p ${{ secrets.SSH_PORT }} ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }} << 'EOF'
           set -e
           
           echo "🚀 Starting deployment..."
           
           # Navigate to project directory
-          cd /root/telegram_reminder_bot_project || {
+          cd ${{ secrets.DEPLOY_PATH }} || {
             echo "❌ Project directory not found. Creating it..."
-            mkdir -p /root/telegram_reminder_bot_project
-            cd /root/telegram_reminder_bot_project
+            mkdir -p ${{ secrets.DEPLOY_PATH }}
+            cd ${{ secrets.DEPLOY_PATH }}
             git clone https://github.com/2ta/telegram-reminder-gemini.git .
           }
           
@@ -42,20 +42,13 @@ jobs:
           git reset --hard origin/main
           
           echo "🐍 Setting up Python environment..."
-          # Create virtual environment if it doesn't exist
-          if [ ! -d ".venv" ]; then
-            python3 -m venv .venv
-          fi
+          # Remove and recreate virtual environment to avoid interpreter issues
+          rm -rf .venv
+          python3 -m venv .venv
           
-          # Activate virtual environment
-          source .venv/bin/activate
-          
-          # Upgrade pip
-          pip install --upgrade pip
-          
-          echo "📦 Installing dependencies..."
-          # Install requirements
-          pip install -r requirements.txt
+          # Upgrade pip and install requirements using venv's pip
+          .venv/bin/pip install --upgrade pip
+          .venv/bin/pip install -r requirements.txt
           
           echo "🗄️ Setting up database..."
           # Initialize database if needed
@@ -79,9 +72,9 @@ jobs:
           
           [Service]
           Type=simple
-          User=root
-          WorkingDirectory=/root/telegram_reminder_bot_project
-          ExecStart=/root/telegram_reminder_bot_project/.venv/bin/python /root/telegram_reminder_bot_project/start_bot.py
+          User=${{ secrets.SSH_USER }}
+          WorkingDirectory=${{ secrets.DEPLOY_PATH }}
+          ExecStart=${{ secrets.DEPLOY_PATH }}/.venv/bin/python ${{ secrets.DEPLOY_PATH }}/start_bot.py
           Restart=on-failure
           RestartSec=10
           StartLimitBurst=3
@@ -119,7 +112,7 @@ jobs:
         
     - name: Verify deployment
       run: |
-        ssh -p 61208 root@45.77.155.59 << 'EOF'
+        ssh -p ${{ secrets.SSH_PORT }} ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }} << 'EOF'
           echo "🔍 Verifying deployment..."
           
           # Wait for service to start
