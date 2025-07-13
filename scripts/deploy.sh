@@ -1,170 +1,171 @@
 #!/bin/bash
 
-# Telegram Bot Deployment Script
-# This script deploys the telegram reminder bot to the server
+# Telegram Reminder Bot Deployment Script
+# This script deploys the bot to the production server
 
 set -e
 
-echo "🚀 Starting Telegram Bot Deployment..."
-
 # Configuration
+SERVER_HOST="45.77.155.59"
+SERVER_PORT="61208"
+SERVER_USER="root"
 PROJECT_DIR="/root/telegram_reminder_bot_project"
-TMUX_SESSION="telegram_bot"
-PYTHON_CMD="python3"
-BOT_SCRIPT="start_bot.py"
+REPO_URL="https://github.com/2ta/telegram-reminder-gemini.git"
 
-# Colors for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m' # No Color
+echo "🚀 Starting deployment to $SERVER_HOST:$SERVER_PORT..."
 
-# Function to print colored output
-print_status() {
-    echo -e "${BLUE}[INFO]${NC} $1"
+# Function to execute commands on remote server
+remote_exec() {
+    ssh -p $SERVER_PORT $SERVER_USER@$SERVER_HOST "$1"
 }
 
-print_success() {
-    echo -e "${GREEN}[SUCCESS]${NC} $1"
+# Function to copy files to remote server
+remote_copy() {
+    scp -P $SERVER_PORT "$1" $SERVER_USER@$SERVER_HOST:"$2"
 }
 
-print_warning() {
-    echo -e "${YELLOW}[WARNING]${NC} $1"
-}
-
-print_error() {
-    echo -e "${RED}[ERROR]${NC} $1"
-}
-
-# Check if project directory exists
-if [ ! -d "$PROJECT_DIR" ]; then
-    print_error "Project directory $PROJECT_DIR not found!"
-    print_status "Please clone the repository first:"
-    echo "  git clone https://github.com/2ta/telegram-reminder-gemini.git $PROJECT_DIR"
+echo "📥 Checking server connection..."
+if ! remote_exec "echo 'Connection test successful'"; then
+    echo "❌ Failed to connect to server"
     exit 1
 fi
 
-# Navigate to project directory
-cd "$PROJECT_DIR"
-print_status "Working in directory: $(pwd)"
-
-# Pull latest changes
-print_status "Pulling latest changes from GitHub..."
-git pull origin main
-print_success "Code updated successfully"
-
-# Set up Python virtual environment
-print_status "Setting up Python virtual environment..."
-if [ ! -d ".venv" ]; then
-    $PYTHON_CMD -m venv .venv
-    print_success "Virtual environment created"
-else
-    print_status "Virtual environment already exists"
-fi
-
-# Activate virtual environment
-source .venv/bin/activate
-print_success "Virtual environment activated"
-
-# Upgrade pip
-print_status "Upgrading pip..."
-pip install --upgrade pip
-
-# Install dependencies
-print_status "Installing dependencies..."
-# Remove conflicting packages first
-pip uninstall -y google-generativeai langchain-google-genai google-ai-generativelanguage 2>/dev/null || true
-
-# Install requirements
-pip install -r requirements.txt
-print_success "Dependencies installed successfully"
-
-# Check if .env file exists
-if [ ! -f ".env" ]; then
-    print_warning ".env file not found!"
-    if [ -f "env.sample" ]; then
-        print_status "Copying env.sample to .env..."
-        cp env.sample .env
-        print_warning "Please edit .env file with your actual configuration"
+echo "🔧 Setting up project directory..."
+remote_exec "
+    set -e
+    mkdir -p $PROJECT_DIR
+    cd $PROJECT_DIR
+    
+    # Clone or update repository
+    if [ ! -d '.git' ]; then
+        echo 'Cloning repository...'
+        git clone $REPO_URL .
     else
-        print_error "No env.sample file found. Please create .env file manually."
+        echo 'Updating repository...'
+        git fetch origin
+        git reset --hard origin/main
     fi
-fi
-
-# Initialize database
-print_status "Setting up database..."
-python -c "
-import sys
-sys.path.append('.')
-try:
-    from src.database import init_db
-    init_db()
-    print('Database initialized successfully!')
-except Exception as e:
-    print(f'Database setup error: {e}')
-    # Don't exit on database error, continue deployment
 "
 
-# Test imports
-print_status "Testing bot imports..."
-python -c "
-import sys
-sys.path.append('.')
-try:
-    from src.bot import main
-    print('Bot imports successful!')
-except Exception as e:
-    print(f'Import error: {e}')
-    exit(1)
-"
-print_success "Bot imports verified"
-
-# Stop existing bot
-print_status "Stopping existing bot..."
-tmux kill-session -t "$TMUX_SESSION" 2>/dev/null || true
-print_status "Waiting for graceful shutdown..."
-sleep 3
-
-# Start bot in tmux
-print_status "Starting bot in tmux session '$TMUX_SESSION'..."
-tmux new-session -d -s "$TMUX_SESSION"
-tmux send-keys -t "$TMUX_SESSION" "cd $PROJECT_DIR" Enter
-tmux send-keys -t "$TMUX_SESSION" "source .venv/bin/activate" Enter
-tmux send-keys -t "$TMUX_SESSION" "python $BOT_SCRIPT" Enter
-
-# Wait a moment for bot to start
-sleep 5
-
-# Verify deployment
-print_status "Verifying deployment..."
-if tmux has-session -t "$TMUX_SESSION" 2>/dev/null; then
-    print_success "Bot tmux session is running"
+echo "🐍 Setting up Python environment..."
+remote_exec "
+    set -e
+    cd $PROJECT_DIR
     
-    # Check if bot is actually running
-    if tmux capture-pane -t "$TMUX_SESSION" -p | grep -q "Bot started\|Application\|Telegram\|Started"; then
-        print_success "Bot appears to be running successfully!"
-    else
-        print_warning "Bot session exists but may not be running properly"
-        print_status "Last few lines from bot session:"
-        tmux capture-pane -t "$TMUX_SESSION" -p | tail -5
+    # Create virtual environment if it doesn't exist
+    if [ ! -d '.venv' ]; then
+        python3 -m venv .venv
     fi
     
-    print_status "To view bot logs, run: tmux attach-session -t $TMUX_SESSION"
-    print_status "To detach from tmux, press: Ctrl+B then D"
-else
-    print_error "Bot tmux session not found!"
-    exit 1
-fi
+    # Activate virtual environment and install dependencies
+    source .venv/bin/activate
+    pip install --upgrade pip
+    pip install -r requirements.txt
+"
 
-print_success "🎉 Deployment completed successfully!"
-print_status "Bot is running in tmux session '$TMUX_SESSION'"
+echo "🗄️ Setting up database..."
+remote_exec "
+    set -e
+    cd $PROJECT_DIR
+    source .venv/bin/activate
+    
+    python -c \"
+    import sys
+    sys.path.append('.')
+    try:
+        from src.database import init_db
+        init_db()
+        print('Database initialized successfully!')
+    except Exception as e:
+        print(f'Database setup: {e}')
+    \"
+"
 
-# Show useful commands
-echo ""
-print_status "Useful commands:"
-echo "  View bot logs:    tmux attach-session -t $TMUX_SESSION"
-echo "  Stop bot:         tmux kill-session -t $TMUX_SESSION"
-echo "  List sessions:    tmux list-sessions"
-echo "  Restart bot:      $0"
-echo "" 
+echo "🔧 Setting up systemd service..."
+remote_exec "
+    set -e
+    
+    # Create systemd service file
+    cat > /etc/systemd/system/telegram-reminder-bot.service << 'SERVICEFILE'
+[Unit]
+Description=Telegram Reminder Bot with Gemini AI
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=$PROJECT_DIR
+ExecStart=$PROJECT_DIR/.venv/bin/python $PROJECT_DIR/start_bot.py
+Restart=on-failure
+RestartSec=10
+StartLimitBurst=3
+StartLimitInterval=60
+
+# Memory Management
+MemoryHigh=500M
+MemoryMax=800M
+MemorySwapMax=0
+
+# Environment
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target
+SERVICEFILE
+
+    # Reload systemd and enable service
+    systemctl daemon-reload
+    systemctl enable telegram-reminder-bot.service
+"
+
+echo "🔄 Restarting bot service..."
+remote_exec "
+    set -e
+    
+    # Stop existing service
+    systemctl stop telegram-reminder-bot.service 2>/dev/null || true
+    
+    # Wait a moment
+    sleep 2
+    
+    # Start the service
+    systemctl start telegram-reminder-bot.service
+"
+
+echo "🔍 Verifying deployment..."
+remote_exec "
+    set -e
+    
+    # Wait for service to start
+    sleep 5
+    
+    # Check service status
+    if systemctl is-active --quiet telegram-reminder-bot.service; then
+        echo '✅ Bot service is running'
+        
+        # Check service logs for any errors
+        echo '📋 Recent service logs:'
+        journalctl -u telegram-reminder-bot.service --no-pager -n 10
+        
+        # Check if bot is responding
+        echo '🔍 Checking bot process...'
+        if pgrep -f 'start_bot.py' > /dev/null; then
+            echo '✅ Bot process is running'
+        else
+            echo '⚠️ Bot process not found, but service is active'
+        fi
+        
+    else
+        echo '❌ Bot service is not running'
+        echo '📋 Service status:'
+        systemctl status telegram-reminder-bot.service --no-pager
+        echo '📋 Recent logs:'
+        journalctl -u telegram-reminder-bot.service --no-pager -n 20
+        exit 1
+    fi
+"
+
+echo "✅ Deployment completed successfully!"
+echo "📊 Bot is now running on the server"
+echo "🔗 To check logs: ssh -p $SERVER_PORT $SERVER_USER@$SERVER_HOST 'journalctl -u telegram-reminder-bot.service -f'"
+echo "🔗 To restart: ssh -p $SERVER_PORT $SERVER_USER@$SERVER_HOST 'systemctl restart telegram-reminder-bot.service'" 

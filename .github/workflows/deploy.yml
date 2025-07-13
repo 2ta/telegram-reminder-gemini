@@ -31,12 +31,15 @@ jobs:
           
           # Navigate to project directory
           cd /root/telegram_reminder_bot_project || {
-            echo "❌ Project directory not found. Please clone the repository first."
-            exit 1
+            echo "❌ Project directory not found. Creating it..."
+            mkdir -p /root/telegram_reminder_bot_project
+            cd /root/telegram_reminder_bot_project
+            git clone https://github.com/2ta/telegram-reminder-gemini.git .
           }
           
           echo "📥 Pulling latest changes..."
-          git pull origin main
+          git fetch origin
+          git reset --hard origin/main
           
           echo "🐍 Setting up Python environment..."
           # Create virtual environment if it doesn't exist
@@ -51,9 +54,6 @@ jobs:
           pip install --upgrade pip
           
           echo "📦 Installing dependencies..."
-          # Uninstall conflicting packages first
-          pip uninstall -y google-generativeai langchain-google-genai google-ai-generativelanguage || true
-          
           # Install requirements
           pip install -r requirements.txt
           
@@ -70,22 +70,50 @@ jobs:
               print(f'Database setup: {e}')
           "
           
+          echo "🔧 Setting up systemd service..."
+          # Create systemd service file
+          cat > /etc/systemd/system/telegram-reminder-bot.service << 'SERVICEFILE'
+          [Unit]
+          Description=Telegram Reminder Bot with Gemini AI
+          After=network.target
+          
+          [Service]
+          Type=simple
+          User=root
+          WorkingDirectory=/root/telegram_reminder_bot_project
+          ExecStart=/root/telegram_reminder_bot_project/.venv/bin/python /root/telegram_reminder_bot_project/start_bot.py
+          Restart=on-failure
+          RestartSec=10
+          StartLimitBurst=3
+          StartLimitInterval=60
+          
+          # Memory Management
+          MemoryHigh=500M
+          MemoryMax=800M
+          MemorySwapMax=0
+          
+          # Environment
+          Environment=PYTHONUNBUFFERED=1
+          
+          [Install]
+          WantedBy=multi-user.target
+          SERVICEFILE
+          
+          # Reload systemd and enable service
+          systemctl daemon-reload
+          systemctl enable telegram-reminder-bot.service
+          
           echo "🔄 Restarting bot service..."
-          # Stop existing tmux session
-          tmux kill-session -t telegram_bot 2>/dev/null || true
+          # Stop existing service
+          systemctl stop telegram-reminder-bot.service 2>/dev/null || true
           
           # Wait a moment
           sleep 2
           
-          # Start new tmux session with bot
-          tmux new-session -d -s telegram_bot
-          tmux send-keys -t telegram_bot "cd /root/telegram_reminder_bot_project" Enter
-          tmux send-keys -t telegram_bot "source .venv/bin/activate" Enter
-          tmux send-keys -t telegram_bot "python start_bot.py" Enter
+          # Start the service
+          systemctl start telegram-reminder-bot.service
           
           echo "✅ Deployment completed successfully!"
-          echo "📊 Bot status:"
-          tmux list-sessions | grep telegram_bot || echo "❌ Bot session not found"
           
         EOF
         
@@ -94,20 +122,31 @@ jobs:
         ssh -p 61208 root@45.77.155.59 << 'EOF'
           echo "🔍 Verifying deployment..."
           
-          # Check if tmux session exists
-          if tmux has-session -t telegram_bot 2>/dev/null; then
-            echo "✅ Bot tmux session is running"
+          # Wait for service to start
+          sleep 5
+          
+          # Check service status
+          if systemctl is-active --quiet telegram-reminder-bot.service; then
+            echo "✅ Bot service is running"
             
-            # Check if bot process is actually running
-            if tmux capture-pane -t telegram_bot -p | grep -q "Bot started\|Application\|Telegram"; then
-              echo "✅ Bot appears to be running successfully"
+            # Check service logs for any errors
+            echo "📋 Recent service logs:"
+            journalctl -u telegram-reminder-bot.service --no-pager -n 10
+            
+            # Check if bot is responding
+            echo "🔍 Checking bot process..."
+            if pgrep -f "start_bot.py" > /dev/null; then
+              echo "✅ Bot process is running"
             else
-              echo "⚠️ Bot session exists but may not be running properly"
-              echo "Last few lines from bot session:"
-              tmux capture-pane -t telegram_bot -p | tail -5
+              echo "⚠️ Bot process not found, but service is active"
             fi
+            
           else
-            echo "❌ Bot tmux session not found"
+            echo "❌ Bot service is not running"
+            echo "📋 Service status:"
+            systemctl status telegram-reminder-bot.service --no-pager
+            echo "📋 Recent logs:"
+            journalctl -u telegram-reminder-bot.service --no-pager -n 20
             exit 1
           fi
         EOF 
