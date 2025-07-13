@@ -35,16 +35,15 @@ jobs:
             .venv/bin/pip install --upgrade pip
             .venv/bin/pip install -r requirements.txt
             echo "🗄️ Setting up database..."
-            cat <<'EOF' | .venv/bin/python
-              import sys
-              sys.path.append('.')
-              try:
-                  from src.database import init_db
-                  init_db()
-                  print('Database initialized successfully!')
-              except Exception as e:
-                  print(f'Database setup: {e}')
-              EOF
+            echo "import sys" > /tmp/init_db_script.py
+            echo "sys.path.append('.')" >> /tmp/init_db_script.py
+            echo "try:" >> /tmp/init_db_script.py
+            echo "    from src.database import init_db" >> /tmp/init_db_script.py
+            echo "    init_db()" >> /tmp/init_db_script.py
+            echo "    print('Database initialized successfully!')" >> /tmp/init_db_script.py
+            echo "except Exception as e:" >> /tmp/init_db_script.py
+            echo "    print(f'Database setup: {e}')" >> /tmp/init_db_script.py
+            .venv/bin/python /tmp/init_db_script.py
             echo "🔧 Setting up systemd service..."
             # Write the systemd service file with placeholders to avoid GitHub Actions interpolation
             cat > /etc/systemd/system/telegram-reminder-bot.service << 'SERVICEFILE'
