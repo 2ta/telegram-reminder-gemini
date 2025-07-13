@@ -379,8 +379,8 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             temp_file_path = temp_file.name
         
         # Transcribe using Google Speech-to-Text
-        from src.voice_utils import transcribe_voice_persian
-        transcribed_text = await transcribe_voice_persian(temp_file_path)
+        from src.voice_utils import transcribe_english_voice
+        transcribed_text = transcribe_english_voice(temp_file_path)
         
         # Clean up temporary file
         os.unlink(temp_file_path)
