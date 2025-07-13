@@ -86,17 +86,32 @@ async def _handle_graph_invocation(
         # Send response if we have an update object
         if update_obj and (response_text or error_message):
             if is_callback and update_obj.callback_query:
-                # For callback queries, edit the message
-                if error_message:
-                    await update_obj.callback_query.edit_message_text(
-                        text=error_message,
-                        reply_markup=response_keyboard_markup
-                    )
-                elif response_text:
-                    await update_obj.callback_query.edit_message_text(
-                        text=response_text,
-                        reply_markup=response_keyboard_markup
-                    )
+                # For confirmation callbacks, send a new message instead of editing
+                callback_data = update_obj.callback_query.data
+                if callback_data and callback_data.startswith("confirm_create_reminder:"):
+                    # Keep the original confirmation message and send a new response message
+                    if error_message:
+                        await update_obj.callback_query.message.reply_text(
+                            text=error_message,
+                            reply_markup=response_keyboard_markup
+                        )
+                    elif response_text:
+                        await update_obj.callback_query.message.reply_text(
+                            text=response_text,
+                            reply_markup=response_keyboard_markup
+                        )
+                else:
+                    # For other callbacks (like snooze, done), edit the message
+                    if error_message:
+                        await update_obj.callback_query.edit_message_text(
+                            text=error_message,
+                            reply_markup=response_keyboard_markup
+                        )
+                    elif response_text:
+                        await update_obj.callback_query.edit_message_text(
+                            text=response_text,
+                            reply_markup=response_keyboard_markup
+                        )
             elif update_obj.message:
                 # For regular messages, send new message
                 if error_message:
