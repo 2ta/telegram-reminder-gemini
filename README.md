@@ -2,7 +2,7 @@
 
 A smart Telegram bot that helps users set reminders using natural language processing powered by Google's Gemini AI.
 
-<!-- Deployment test - Updated for GitHub Actions workflow testing -->
+<!-- Deployment test 2 - Triggering GitHub Actions workflow again -->
 
 ## Features
 
