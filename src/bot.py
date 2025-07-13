@@ -374,12 +374,12 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             logger.info(f"Transcribed voice message from user {user_id}: {transcribed_text[:50]}...")
         else:
             logger.warning(f"Failed to transcribe voice message from user {user_id}")
-            await update.message.reply_text("متأسفانه نتوانستم پیام صوتی شما را تشخیص دهم. لطفاً دوباره تلاش کنید یا از متن استفاده کنید.")
+            await update.message.reply_text("Sorry, I could not recognize your voice message. Please try again or use text input.")
             return
             
     except Exception as e:
         logger.error(f"Error processing voice message from user {user_id}: {e}", exc_info=True)
-        await update.message.reply_text("خطا در پردازش پیام صوتی. لطفاً دوباره تلاش کنید.")
+        await update.message.reply_text("Error processing voice message. Please try again.")
         return
     
     initial_state = AgentState(
@@ -578,17 +578,17 @@ async def send_reminder_notification(
     """
     try:
         # Create notification message
-        message_text = f"🔔 یادآوری:\n{reminder.task}"
+        message_text = f"🔔 Reminder:\n{reminder.task}"
         
         # Add snooze buttons for non-recurring reminders
         if not reminder.recurrence_rule:
             keyboard = [
                 [
-                    InlineKeyboardButton("⏰ 15 دقیقه دیگر", callback_data=f"snooze:{reminder.id}:15"),
-                    InlineKeyboardButton("⏰ 1 ساعت دیگر", callback_data=f"snooze:{reminder.id}:60")
+                    InlineKeyboardButton("⏰ Snooze 15 min", callback_data=f"snooze:{reminder.id}:15"),
+                    InlineKeyboardButton("⏰ Snooze 1 hour", callback_data=f"snooze:{reminder.id}:60")
                 ],
                 [
-                    InlineKeyboardButton("✅ انجام شد", callback_data=f"done:{reminder.id}")
+                    InlineKeyboardButton("✅ Mark as done", callback_data=f"done:{reminder.id}")
                 ]
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)
@@ -676,18 +676,18 @@ async def handle_snooze_callback(update: Update, context: ContextTypes.DEFAULT_T
                 reminder.notification_sent_at = None
                 db.commit()
                 
-                await query.answer(f"یادآوری برای {snooze_minutes} دقیقه دیگر تنظیم شد")
-                await query.edit_message_text(f"⏰ یادآوری برای {snooze_minutes} دقیقه دیگر تنظیم شد")
+                await query.answer(f"Reminder snoozed for {snooze_minutes} minutes")
+                await query.edit_message_text(f"⏰ Reminder snoozed for {snooze_minutes} minutes")
                 
                 logger.info(f"Reminder {reminder_id} snoozed for {snooze_minutes} minutes")
             else:
-                await query.answer("یادآوری پیدا نشد")
+                await query.answer("Reminder not found")
         finally:
             db.close()
             
     except Exception as e:
         logger.error(f"Error handling snooze callback: {e}", exc_info=True)
-        await query.answer("خطا در تنظیم یادآوری")
+        await query.answer("Error setting reminder snooze")
 
 async def handle_done_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """
@@ -719,18 +719,18 @@ async def handle_done_callback(update: Update, context: ContextTypes.DEFAULT_TYP
                 reminder.is_notified = True
                 db.commit()
                 
-                await query.answer("یادآوری به عنوان انجام شده علامت‌گذاری شد")
-                await query.edit_message_text("✅ یادآوری انجام شد")
+                await query.answer("Reminder marked as done")
+                await query.edit_message_text("✅ Reminder completed")
                 
                 logger.info(f"Reminder {reminder_id} marked as done")
             else:
-                await query.answer("یادآوری پیدا نشد")
+                await query.answer("Reminder not found")
         finally:
             db.close()
             
     except Exception as e:
         logger.error(f"Error handling done callback: {e}", exc_info=True)
-        await query.answer("خطا در علامت‌گذاری یادآوری")
+        await query.answer("Error marking reminder as done")
 
 # Conversation Handlers
 async def handle_initial_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int: 
