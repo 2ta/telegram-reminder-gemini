@@ -18,6 +18,12 @@ This directory contains comprehensive documentation for the Telegram Reminder Bo
   - Payment flow management
 
 ### Technical Documentation
+- **[FEATURES.md](FEATURES.md)** - Comprehensive features documentation
+  - All implemented features with status
+  - Technical architecture details
+  - Language support specifications
+  - Development history and roadmap
+
 - **[specs/spec.md](specs/spec.md)** - Detailed technical specifications
   - Architecture overview
   - Database schema
@@ -46,7 +52,7 @@ This directory contains comprehensive documentation for the Telegram Reminder Bo
 
 **For Payment Setup**: See [PAYMENT_DOMAIN_SETUP.md](PAYMENT_DOMAIN_SETUP.md)
 
-**For Development**: Review [specs/spec.md](specs/spec.md) and [planning/todo.md](planning/todo.md)
+**For Development**: Review [FEATURES.md](FEATURES.md), [specs/spec.md](specs/spec.md) and [planning/todo.md](planning/todo.md)
 
 **For Testing**: See [testing/test_scenarios.md](testing/test_scenarios.md)
 

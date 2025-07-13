@@ -1,0 +1,22 @@
+---
+alwaysApply: true
+description: SSH connection information for the deployment server.
+---
+# Server SSH Connection Details
+- Server IP: 45.77.155.59
+- SSH Port: 61208
+- SSH User: root
+- Connection Command: ssh root@45.77.155.59 -p61208
+- Note: This server is used for deploying the Telegram reminder bot
+
+---
+alwaysApply: true
+description: Documentation update requirements for the project.
+---
+# Documentation Update Rules
+- After every new feature development or significant change, update docs/FEATURES.md
+- Include technical details, implementation status, and user-facing features
+- Update the "Last Updated" date and "Recent Updates" section
+- Document any breaking changes or configuration updates
+- Keep the language specification clear: Bot UI is English-only, voice input supports Persian
+- Update troubleshooting section with any new common issues 

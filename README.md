@@ -6,13 +6,19 @@ A smart Telegram bot that helps users set reminders using natural language proce
 
 ## Features
 
-- **Natural Language Understanding**: Create reminders using natural Persian language
-- **Voice Message Support**: Send voice messages to create reminders
-- **Jalali Calendar Support**: Full support for Persian/Jalali calendar dates
-- **Smart Time Parsing**: Understands relative dates like "فردا" (tomorrow), "هفته آینده" (next week)
+- **Natural Language Understanding**: Create reminders using natural English language
+- **Voice Message Support**: Send voice messages to create reminders (supports Persian voice input)
+- **Smart Time Parsing**: Understands relative dates like "tomorrow", "next week", "in 2 hours"
 - **LangGraph Integration**: Structured conversation flows for complex interactions
-- **Payment Integration**: Subscription tiers with Zibal payment gateway
+- **Payment Integration**: Subscription tiers with Stripe payment gateway
+- **Automated Notifications**: Background job system for sending reminder notifications
+- **Interactive Reminders**: Snooze and mark-as-done functionality
+- **Recurring Reminders**: Support for daily, weekly, and monthly recurring reminders
 - **Production Ready**: Systemd service configuration with auto-restart
+
+## 🌐 Language Support
+
+**Important**: This bot is designed to work in English. While voice input supports Persian language for transcription, all user interface elements, commands, and responses are in English to ensure consistency and broader accessibility.
 
 ## 🎯 Project Status
 
@@ -22,15 +28,19 @@ A smart Telegram bot that helps users set reminders using natural language proce
 - ✅ Creating reminders from text and voice messages
 - ✅ Viewing and filtering reminders with pagination
 - ✅ Deleting reminders with confirmation
-- ✅ Payment integration with Zibal gateway
+- ✅ Payment integration with Stripe gateway
+- ✅ Automated reminder notifications with background jobs
+- ✅ Interactive reminder buttons (snooze, mark as done)
+- ✅ Recurring reminders (daily, weekly, monthly)
+- ✅ Premium user system with tier limits
 - ✅ Production deployment with systemd service
 - ✅ Comprehensive error handling and logging
 
-**In Development**:
-- 🔄 Reminder editing functionality
-- 🔄 Recurring reminder support
-- 🔄 Snooze functionality
-- 🔄 Enhanced notification system
+**Recently Completed**:
+- ✅ Reminder notification system
+- ✅ Interactive reminder management
+- ✅ Recurring reminder support
+- ✅ Premium user logic enforcement
 
 ## 🛠 Technology Stack
 
@@ -40,7 +50,7 @@ A smart Telegram bot that helps users set reminders using natural language proce
 - **Agent Framework**: LangGraph for conversation flows
 - **Database**: SQLAlchemy with SQLite
 - **Speech Recognition**: Google Speech-to-Text API
-- **Payments**: Zibal Payment Gateway
+- **Payments**: Stripe Payment Gateway
 - **Deployment**: VPS with systemd service
 
 ## 📁 Project Structure
@@ -56,7 +66,7 @@ telegram_reminder_bot_project/
 │   ├── database.py         # Database utilities and CRUD operations
 │   ├── voice_utils.py      # Voice message processing (STT)
 │   ├── datetime_utils.py   # Persian/Jalali date parsing utilities
-│   └── payment.py          # Zibal payment integration
+│   └── payment.py          # Stripe payment integration
 ├── config/                 # Configuration files
 │   └── config.py          # Environment variables and settings
 ├── scripts/               # Deployment and utility scripts
@@ -128,7 +138,8 @@ TELEGRAM_BOT_TOKEN=your_telegram_bot_token
 GOOGLE_API_KEY=your_google_api_key
 
 # Payment (Optional)
-ZIBAL_MERCHANT_ID=your_zibal_merchant_id
+STRIPE_SECRET_KEY=your_stripe_secret_key
+STRIPE_PUBLISHABLE_KEY=your_stripe_publishable_key
 
 # Database (Optional - defaults to SQLite)
 SUPABASE_URL=your_supabase_url
@@ -178,7 +189,7 @@ The bot includes built-in health monitoring:
 - Environment variables for sensitive data
 - Input validation and sanitization
 - Rate limiting for API calls
-- Secure payment processing with Zibal
+- Secure payment processing with Stripe
 - Regular security updates
 
 ## 📝 Contributing
