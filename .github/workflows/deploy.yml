@@ -52,7 +52,7 @@ jobs:
           
           echo "🗄️ Setting up database..."
           # Initialize database if needed
-          python -c "
+          .venv/bin/python -c "
           import sys
           sys.path.append('.')
           try:
