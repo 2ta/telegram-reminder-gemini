@@ -1,42 +1,42 @@
+---
 name: Deploy Telegram Bot
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   workflow_dispatch:
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      
-    - name: Setup SSH
-      uses: webfactory/ssh-agent@v0.7.0
-      with:
-        ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
-        
-    - name: Add server to known hosts
-      run: |
-        ssh-keyscan -p ${{ secrets.SSH_PORT }} ${{ secrets.SERVER_IP }} >> ~/.ssh/known_hosts
-        
-    - name: Deploy to server
-      run: |
-        ssh -p ${{ secrets.SSH_PORT }} ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }} <<'EOSSH'
-          set -e
-          cd ${{ secrets.DEPLOY_PATH }}
-          echo "🚀 Starting deployment..."
-          git fetch origin
-          git reset --hard origin/main
-          echo "🐍 Setting up Python environment..."
-          rm -rf .venv
-          python3 -m venv .venv
-          .venv/bin/pip install --upgrade pip
-          .venv/bin/pip install -r requirements.txt
-          echo "🗄️ Setting up database..."
-cat <<'EOF' | .venv/bin/python
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup SSH
+        uses: webfactory/ssh-agent@v0.7.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      - name: Add server to known hosts
+        run: |
+          ssh-keyscan -p ${{ secrets.SSH_PORT }} ${{ secrets.SERVER_IP }} >> ~/.ssh/known_hosts
+
+      - name: Deploy to server
+        run: |
+          ssh -p ${{ secrets.SSH_PORT }} ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }} <<'EOSSH'
+            set -e
+            cd ${{ secrets.DEPLOY_PATH }}
+            echo "🚀 Starting deployment..."
+            git fetch origin
+            git reset --hard origin/main
+            echo "🐍 Setting up Python environment..."
+            rm -rf .venv
+            python3 -m venv .venv
+            .venv/bin/pip install --upgrade pip
+            .venv/bin/pip install -r requirements.txt
+            echo "🗄️ Setting up database..."
+            cat <<'EOF' | .venv/bin/python
 import sys
 sys.path.append('.')
 try:
@@ -46,8 +46,8 @@ try:
 except Exception as e:
     print(f'Database setup: {e}')
 EOF
-          echo "🔧 Setting up systemd service..."
-          cat > /etc/systemd/system/telegram-reminder-bot.service << 'SERVICEFILE'
+            echo "🔧 Setting up systemd service..."
+            cat > /etc/systemd/system/telegram-reminder-bot.service << 'SERVICEFILE'
 [Unit]
 Description=Telegram Reminder Bot with Gemini AI
 After=network.target
@@ -73,44 +73,35 @@ Environment=PYTHONUNBUFFERED=1
 [Install]
 WantedBy=multi-user.target
 SERVICEFILE
-          systemctl daemon-reload
-          systemctl enable telegram-reminder-bot.service
-          echo "🔄 Restarting bot service..."
-          systemctl stop telegram-reminder-bot.service 2>/dev/null || true
-          sleep 2
-          systemctl start telegram-reminder-bot.service
-        EOSSH
-        
-    - name: Verify deployment
-      run: |
-        ssh -p ${{ secrets.SSH_PORT }} ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }} << 'EOF'
-          echo "🔍 Verifying deployment..."
-          
-          # Wait for service to start
-          sleep 5
-          
-          # Check service status
-          if systemctl is-active --quiet telegram-reminder-bot.service; then
-            echo "✅ Bot service is running"
-            
-            # Check service logs for any errors
-            echo "📋 Recent service logs:"
-            journalctl -u telegram-reminder-bot.service --no-pager -n 10
-            
-            # Check if bot is responding
-            echo "🔍 Checking bot process..."
-            if pgrep -f "start_bot.py" > /dev/null; then
-              echo "✅ Bot process is running"
+            systemctl daemon-reload
+            systemctl enable telegram-reminder-bot.service
+            echo "🔄 Restarting bot service..."
+            systemctl stop telegram-reminder-bot.service 2>/dev/null || true
+            sleep 2
+            systemctl start telegram-reminder-bot.service
+          EOSSH
+
+      - name: Verify deployment
+        run: |
+          ssh -p ${{ secrets.SSH_PORT }} ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }} << 'EOF'
+            echo "🔍 Verifying deployment..."
+            sleep 5
+            if systemctl is-active --quiet telegram-reminder-bot.service; then
+              echo "✅ Bot service is running"
+              echo "📋 Recent service logs:"
+              journalctl -u telegram-reminder-bot.service --no-pager -n 10
+              echo "🔍 Checking bot process..."
+              if pgrep -f "start_bot.py" > /dev/null; then
+                echo "✅ Bot process is running"
+              else
+                echo "⚠️ Bot process not found, but service is active"
+              fi
             else
-              echo "⚠️ Bot process not found, but service is active"
+              echo "❌ Bot service is not running"
+              echo "📋 Service status:"
+              systemctl status telegram-reminder-bot.service --no-pager
+              echo "📋 Recent logs:"
+              journalctl -u telegram-reminder-bot.service --no-pager -n 20
+              exit 1
             fi
-            
-          else
-            echo "❌ Bot service is not running"
-            echo "📋 Service status:"
-            systemctl status telegram-reminder-bot.service --no-pager
-            echo "📋 Recent logs:"
-            journalctl -u telegram-reminder-bot.service --no-pager -n 20
-            exit 1
-          fi
-        EOF 
+          EOF 
