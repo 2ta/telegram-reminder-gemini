@@ -54,22 +54,23 @@ remote_exec "
     
     # Create virtual environment if it doesn't exist
     if [ ! -d '.venv' ]; then
+        echo 'Creating virtual environment...'
         python3 -m venv .venv
     fi
     
     # Activate virtual environment and install dependencies
+    echo 'Installing dependencies in virtual environment...'
     source .venv/bin/activate
-    pip install --upgrade pip
-    pip install -r requirements.txt
+    .venv/bin/pip install --upgrade pip
+    .venv/bin/pip install -r requirements.txt
 "
 
 echo "🗄️ Setting up database..."
 remote_exec "
     set -e
     cd $PROJECT_DIR
-    source .venv/bin/activate
     
-    python -c \"
+    .venv/bin/python -c \"
     import sys
     sys.path.append('.')
     try:

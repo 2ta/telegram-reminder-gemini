@@ -1,76 +1,86 @@
 #!/usr/bin/env python3
 """
-Production bot startup script.
-This script ensures the bot runs in a clean environment without event loop conflicts.
+Simple bot startup script.
 """
-
 import sys
-import os
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent))
+
 import asyncio
 import signal
 import logging
-from pathlib import Path
+from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters
+from config.config import settings
+from src.bot import start_command, payment_command, privacy_command, handle_stripe_webhook, handle_message, handle_voice, button_callback, ping
+from src.database import init_db
 
-# Ensure the src directory is in Python path
-project_root = Path(__file__).parent
-sys.path.insert(0, str(project_root))
-
-# Setup basic logging
+# Setup logging
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", 
+    level=logging.INFO
 )
 logger = logging.getLogger(__name__)
 
+# Global variable to handle shutdown
+running = True
+
 def signal_handler(signum, frame):
-    """Handle shutdown signals gracefully."""
-    logger.info(f"Received signal {signum}. Shutting down...")
-    sys.exit(0)
+    global running
+    logger.info(f'Received signal {signum}. Shutting down...')
+    running = False
 
-async def start_bot():
-    """Start the bot in a clean async environment."""
-    try:
-        # Import here to avoid import issues
-        from src.bot import main
-        
-        logger.info("Starting Telegram reminder bot...")
-        await main()
-        
-    except KeyboardInterrupt:
-        logger.info("Bot stopped by user")
-    except Exception as e:
-        logger.error(f"Error starting bot: {e}", exc_info=True)
-        raise
-
-def main_entry():
-    """Main entry point that ensures clean event loop."""
+async def main():
+    """Run bot with proper shutdown handling"""
+    global running
+    
     # Set up signal handlers
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
     
-    # Check if we're in an interactive environment
-    if hasattr(sys, 'ps1') or hasattr(sys, 'ps2'):
-        logger.warning("Detected interactive Python environment.")
-        logger.warning("For production use, run this script from a clean shell.")
-        return
+    init_db()
     
-    try:
-        # Check if there's already an event loop running
-        loop = asyncio.get_running_loop()
-        logger.error("An event loop is already running!")
-        logger.error("Please run this script from a clean shell environment.")
-        logger.error("Exit any Python REPL, Jupyter notebook, or IPython session first.")
-        sys.exit(1)
-        
-    except RuntimeError:
-        # No event loop running - this is what we want
-        try:
-            asyncio.run(start_bot())
-        except KeyboardInterrupt:
-            logger.info("Bot shutdown completed")
-        except Exception as e:
-            logger.error(f"Failed to start bot: {e}")
-            sys.exit(1)
+    application = Application.builder().token(settings.TELEGRAM_BOT_TOKEN).build()
 
-if __name__ == "__main__":
-    main_entry() 
+    # Add handlers
+    application.add_handler(CommandHandler("start", start_command))
+    application.add_handler(CommandHandler("pay", payment_command))
+    application.add_handler(CommandHandler("privacy", privacy_command))
+    application.add_handler(CommandHandler("stripe_webhook", handle_stripe_webhook))
+    application.add_handler(CommandHandler("ping", ping))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    application.add_handler(MessageHandler(filters.VOICE, handle_voice))
+    application.add_handler(CallbackQueryHandler(button_callback))
+
+    logger.info("Starting bot...")
+    
+    # Initialize and start
+    await application.initialize()
+    await application.start()
+    
+    # Start polling
+    await application.updater.start_polling()
+    
+    logger.info("✅ Bot is running! Send /ping to test.")
+    
+    # Keep running until signal received
+    try:
+        while running:
+            await asyncio.sleep(1)
+    except KeyboardInterrupt:
+        logger.info("Received keyboard interrupt")
+        running = False
+    
+    logger.info("Stopping bot...")
+    await application.updater.stop()
+    await application.stop()
+    await application.shutdown()
+    logger.info("Bot stopped successfully")
+
+if __name__ == '__main__':
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        logger.info('Bot stopped by user')
+    except Exception as e:
+        logger.error(f'Failed to start bot: {e}')
+        sys.exit(1) 

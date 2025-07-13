@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Working bot runner that successfully starts the bot
+Simple bot startup script.
 """
 import sys
 from pathlib import Path
@@ -26,7 +26,7 @@ running = True
 
 def signal_handler(signum, frame):
     global running
-    print(f"\nReceived signal {signum}. Shutting down...")
+    logger.info(f'Received signal {signum}. Shutting down...')
     running = False
 
 async def main():
@@ -60,28 +60,27 @@ async def main():
     # Start polling
     await application.updater.start_polling()
     
-    print("✅ Bot is running! Send /ping to test. Press Ctrl+C to stop.")
+    logger.info("✅ Bot is running! Send /ping to test.")
     
     # Keep running until signal received
     try:
         while running:
             await asyncio.sleep(1)
     except KeyboardInterrupt:
-        print("Received keyboard interrupt")
+        logger.info("Received keyboard interrupt")
         running = False
     
-    print("Stopping bot...")
+    logger.info("Stopping bot...")
     await application.updater.stop()
     await application.stop()
     await application.shutdown()
-    print("Bot stopped successfully")
+    logger.info("Bot stopped successfully")
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        print("Bot stopped by user")
+        logger.info('Bot stopped by user')
     except Exception as e:
-        print(f"Error: {e}")
-        import traceback
-        traceback.print_exc() 
+        logger.error(f'Failed to start bot: {e}')
+        sys.exit(1) 
