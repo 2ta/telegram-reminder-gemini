@@ -1,6 +1,6 @@
 # Documentation Index
 
-This directory contains comprehensive documentation for the Telegram Reminder Bot project.
+This directory contains production documentation for the Telegram Reminder Bot project.
 
 ## 📁 Documentation Structure
 
@@ -11,6 +11,12 @@ This directory contains comprehensive documentation for the Telegram Reminder Bo
   - Troubleshooting and monitoring
   - Backup and recovery procedures
 
+### Payment Integration
+- **[PAYMENT_DOMAIN_SETUP.md](PAYMENT_DOMAIN_SETUP.md)** - Payment gateway setup and configuration
+  - Stripe integration setup
+  - Webhook configuration
+  - Payment flow management
+
 ### Technical Documentation
 - **[specs/spec.md](specs/spec.md)** - Detailed technical specifications
   - Architecture overview
@@ -18,29 +24,13 @@ This directory contains comprehensive documentation for the Telegram Reminder Bo
   - API integrations
   - Security considerations
 
-### Development
-- **[planning/todo.md](planning/todo.md)** - Development roadmap and current status
-  - Feature implementation status
-  - TODO checklist
-  - Architecture decisions
-  - Future enhancements
-
-- **[planning/prompt_plan.md](planning/prompt_plan.md)** - AI prompt engineering and LLM integration planning
-
-### Testing
-- **[testing/test_scenarios.md](testing/test_scenarios.md)** - Test scenarios and coverage
-  - User interaction flows
-  - Edge cases
-  - Performance testing
-  - Security testing
-
 ## 🚀 Quick Navigation
 
 **For Production Deployment**: Start with [MANAGEMENT.md](MANAGEMENT.md)
 
-**For Development**: Review [specs/spec.md](specs/spec.md) and [planning/todo.md](planning/todo.md)
+**For Payment Setup**: See [PAYMENT_DOMAIN_SETUP.md](PAYMENT_DOMAIN_SETUP.md)
 
-**For Testing**: See [testing/test_scenarios.md](testing/test_scenarios.md)
+**For Technical Details**: Review [specs/spec.md](specs/spec.md)
 
 ## 📖 External Resources
 
@@ -50,7 +40,7 @@ This directory contains comprehensive documentation for the Telegram Reminder Bo
 
 ## 🔄 Documentation Maintenance
 
-This documentation is actively maintained alongside the codebase. When making significant changes:
+This documentation is maintained for production use. When making significant changes:
 
 1. Update relevant documentation files
 2. Update this index if adding/removing docs
