@@ -1,23 +1,10 @@
 # Telegram Reminder Bot with Gemini AI
 
-![Version](https://img.shields.io/badge/version-v1.0.0--voice--text--working-brightgreen)
-![Status](https://img.shields.io/badge/status-Production%20Ready-success)
-![Voice](https://img.shields.io/badge/voice-✅%20Working-green)
-![Text](https://img.shields.io/badge/text-✅%20Working-green)
+A smart Telegram bot that helps users set reminders using natural language processing powered by Google's Gemini AI.
 
-## 🎯 Current Status
+<!-- Deployment test - Updated for GitHub Actions workflow testing -->
 
-**✅ FULLY FUNCTIONAL** - Both voice and text messaging work perfectly!
-
-- 🗣️ **Voice Messages**: Speech-to-text transcription with Google Cloud Speech API
-- 💬 **Text Messages**: Direct text processing with Gemini 2.0 Flash
-- 🤖 **AI Agent**: LangGraph-powered intelligent reminder creation
-- 🔄 **Production**: Running live on VPS with systemd service
-- 🇺🇸 **Language**: Full English support
-
-> **Latest Working Version**: `v1.0.0-voice-text-working` - [View Release](https://github.com/2ta/telegram-reminder-gemini/releases/tag/v1.0.0-voice-text-working)
-
-## 🚀 Features
+## Features
 
 - **Natural Language Understanding**: Create reminders using natural Persian language
 - **Voice Message Support**: Send voice messages to create reminders
