@@ -24,91 +24,62 @@ jobs:
         
     - name: Deploy to server
       run: |
-        ssh -p ${{ secrets.SSH_PORT }} ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }} << 'EOF'
+        ssh -p ${{ secrets.SSH_PORT }} ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }} <<'EOSSH'
           set -e
-          
+          cd ${{ secrets.DEPLOY_PATH }}
           echo "🚀 Starting deployment..."
-          
-          # Navigate to project directory
-          cd ${{ secrets.DEPLOY_PATH }} || {
-            echo "❌ Project directory not found. Creating it..."
-            mkdir -p ${{ secrets.DEPLOY_PATH }}
-            cd ${{ secrets.DEPLOY_PATH }}
-            git clone https://github.com/2ta/telegram-reminder-gemini.git .
-          }
-          
-          echo "📥 Pulling latest changes..."
           git fetch origin
           git reset --hard origin/main
-          
           echo "🐍 Setting up Python environment..."
-          # Remove and recreate virtual environment to avoid interpreter issues
           rm -rf .venv
           python3 -m venv .venv
-          
-          # Upgrade pip and install requirements using venv's pip
           .venv/bin/pip install --upgrade pip
           .venv/bin/pip install -r requirements.txt
-          
           echo "🗄️ Setting up database..."
-          # Initialize database if needed
-          .venv/bin/python -c "
-          import sys
-          sys.path.append('.')
-          try:
-              from src.database import init_db
-              init_db()
-              print('Database initialized successfully!')
-          except Exception as e:
-              print(f'Database setup: {e}')
-          "
-          
+cat <<'EOF' | .venv/bin/python
+import sys
+sys.path.append('.')
+try:
+    from src.database import init_db
+    init_db()
+    print('Database initialized successfully!')
+except Exception as e:
+    print(f'Database setup: {e}')
+EOF
           echo "🔧 Setting up systemd service..."
-          # Create systemd service file
           cat > /etc/systemd/system/telegram-reminder-bot.service << 'SERVICEFILE'
-          [Unit]
-          Description=Telegram Reminder Bot with Gemini AI
-          After=network.target
-          
-          [Service]
-          Type=simple
-          User=${{ secrets.SSH_USER }}
-          WorkingDirectory=${{ secrets.DEPLOY_PATH }}
-          ExecStart=${{ secrets.DEPLOY_PATH }}/.venv/bin/python ${{ secrets.DEPLOY_PATH }}/start_bot.py
-          Restart=on-failure
-          RestartSec=10
-          StartLimitBurst=3
-          StartLimitInterval=60
-          
-          # Memory Management
-          MemoryHigh=500M
-          MemoryMax=800M
-          MemorySwapMax=0
-          
-          # Environment
-          Environment=PYTHONUNBUFFERED=1
-          
-          [Install]
-          WantedBy=multi-user.target
-          SERVICEFILE
-          
-          # Reload systemd and enable service
+[Unit]
+Description=Telegram Reminder Bot with Gemini AI
+After=network.target
+
+[Service]
+Type=simple
+User=${{ secrets.SSH_USER }}
+WorkingDirectory=${{ secrets.DEPLOY_PATH }}
+ExecStart=${{ secrets.DEPLOY_PATH }}/.venv/bin/python ${{ secrets.DEPLOY_PATH }}/start_bot.py
+Restart=on-failure
+RestartSec=10
+StartLimitBurst=3
+StartLimitInterval=60
+
+# Memory Management
+MemoryHigh=500M
+MemoryMax=800M
+MemorySwapMax=0
+
+# Environment
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target
+SERVICEFILE
           systemctl daemon-reload
           systemctl enable telegram-reminder-bot.service
-          
           echo "🔄 Restarting bot service..."
-          # Stop existing service
           systemctl stop telegram-reminder-bot.service 2>/dev/null || true
-          
-          # Wait a moment
           sleep 2
-          
-          # Start the service
           systemctl start telegram-reminder-bot.service
-          
-          echo "✅ Deployment completed successfully!"
-          
-        EOF
+        EOSSH
         
     - name: Verify deployment
       run: |
