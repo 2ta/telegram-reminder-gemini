@@ -293,7 +293,26 @@ async def determine_intent_node(state: AgentState) -> Dict[str, Any]:
         return {"current_intent": "intent_show_payment_options", "current_node_name": "determine_intent_node"}
 
     # --- Priority 3: LLM for Potential Reminder Creation (General Text Input) ---
-    if message_type == "text" or message_type == "voice":  # Voice messages are transcribed before reaching here
+    reminder_ctx = state.get("reminder_creation_context", {})
+    pending_clarification = reminder_ctx.get("pending_clarification_type")
+
+    if message_type == "text" or message_type == "voice":
+        if pending_clarification:
+            logger.info(f"Handling reply to clarification question: {pending_clarification}")
+            if pending_clarification == "task":
+                reminder_ctx["collected_task"] = effective_input
+            elif pending_clarification == "datetime":
+                # Assume the input is a date/time string
+                reminder_ctx["collected_date_str"] = effective_input
+                reminder_ctx["collected_time_str"] = None # Reset time string
+
+            reminder_ctx["pending_clarification_type"] = None # Clear pending clarification
+            return {
+                "current_intent": "intent_create_reminder",
+                "reminder_creation_context": reminder_ctx,
+                "current_node_name": "determine_intent_node"
+            }
+
         if not settings.GEMINI_API_KEY:
             logger.warning("GEMINI_API_KEY is not set. LLM NLU will be skipped.")
             # Fall through to unknown_intent at the end
@@ -322,7 +341,10 @@ Please provide your response only and only in the format of a JSON object with t
   "task": "string or null",
   "date_str": "string or null",
   "time_str": "string or null"
-}}"""
+}}
+
+The user may provide only the task. If so, `is_reminder_creation_intent` should be true and the `task` field should be populated.
+"""
                 logger.info(f"Sending prompt to LLM for intent determination. User input: '{input_text}'")
                 llm_response = await llm.ainvoke([HumanMessage(content=prompt_template)])
                 llm_response_content = llm_response.content.strip()
@@ -337,7 +359,8 @@ Please provide your response only and only in the format of a JSON object with t
                         task = parsed_llm_response.get("task")
                         date_str = parsed_llm_response.get("date_str")
                         time_str = parsed_llm_response.get("time_str")
-                        if task and (date_str or time_str):  # Need at least a task and some date/time info
+                        # Allow reminder intent if at least a task is present.
+                        if task:
                             logger.info(f"LLM determined 'intent_create_reminder'. Task: '{task}', Date: '{date_str}', Time: '{time_str}'")
                             return {
                                 "current_intent": "intent_create_reminder",
@@ -351,8 +374,8 @@ Please provide your response only and only in the format of a JSON object with t
                                 }
                             }
                         else:
-                            logger.warning(f"LLM indicated reminder intent, but task or all date/time info is missing. LLM Output: {parsed_llm_response}")
-                            # Fall through to unknown_intent if critical parts are missing
+                            logger.warning(f"LLM indicated reminder intent, but task is missing. LLM Output: {parsed_llm_response}")
+                            # Fall through to unknown_intent if task is missing
                     else:
                         logger.info(f"LLM determined 'is_reminder_creation_intent' is false for input: '{input_text}'")
                         # Fall through to unknown_intent
@@ -600,18 +623,14 @@ async def validate_and_clarify_reminder_node(state: AgentState) -> Dict[str, Any
     if not collected_task:
         logger.info(f"Validation failed for user {user_id}: Task is missing.")
         pending_clarification_type = "task"
-        clarification_question_text = "Please tell me what you want me to remind you about?"
+        clarification_question_text = "What would you like to be reminded of?"
         new_reminder_creation_status = "clarification_needed_task"
     # 3. Validate Datetime
     elif not collected_parsed_dt_utc:
         logger.info(f"Validation failed for user {user_id}, task '{collected_task}': Datetime is missing or unparseable.")
         pending_clarification_type = "datetime"
-        clarification_question_text = f"For the reminder \"{collected_task}\", what date and time do you have in mind?"
+        clarification_question_text = f"When should I remind you about '{collected_task}'?"
         new_reminder_creation_status = "clarification_needed_datetime"
-        # Potentially check if ambiguous_time_details is set from a previous AM/PM NLU attempt that didn't parse
-        # This would primarily be if parse_english_datetime_to_utc itself could signal ambiguity.
-        # For now, relying on separate AM/PM clarification if `collected_am_pm_choice` was needed and not provided to `parse_english_datetime_to_utc`.
-        # If `collected_am_pm_choice` is present in `reminder_ctx` but parsing still failed, it means the date/time itself was bad.
 
     # (Future AM/PM specific clarification check - assuming parse_english_datetime_to_utc handles am_pm_choice or returns None if it's ambiguous and choice is missing)
     # For instance, if parse_english_datetime_to_utc returned a specific error or flag for AM/PM:

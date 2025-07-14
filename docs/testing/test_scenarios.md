@@ -101,4 +101,10 @@
 **System:** (باید تاریخ امروز را تشخیص دهد و اگر ساعت از ۲۳:۱۵ دقیقه شب نگذشته باشد این یادآور را تنظیم کند) باشه، یادآوری تنظیم شد.
 📝 متن: زنگ زدن به برادرم
 ⏰ زمان: دوشنبه، 22 اردیبهشت 1404، ساعت ۲۳:۱۵  
+
+## Scenario 14: Conversational Reminder Creation
+**User:** Remind me to call my brother
+**System:** Certainly. When should I remind you?
+**User:** Tomorrow at 2pm
+**System:** Got it. I will remind you to "call my brother" tomorrow at 2pm.
 ``` 
