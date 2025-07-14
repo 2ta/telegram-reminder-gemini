@@ -885,66 +885,26 @@ async def ping(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     logger.info(f"Received /ping from user {update.effective_user.id if update.effective_user else 'unknown'}")
     await update.message.reply_text("pong")
 
-async def main() -> None:
-    """Start the bot (async-compatible for asyncio.run)."""
+def build_application() -> Application:
     global _application_instance
-    
     init_db()
     application = Application.builder().token(settings.TELEGRAM_BOT_TOKEN).build()
-    
-    # Store application instance globally for notification sending
     _application_instance = application
-
     application.add_handler(CommandHandler("start", start_command))
     application.add_handler(CommandHandler("pay", payment_command))
     application.add_handler(CommandHandler("privacy", privacy_command))
-    application.add_handler(CommandHandler("stripe_webhook", handle_stripe_webhook)) 
-    application.add_handler(CommandHandler("ping", ping))  # Add ping handler
+    application.add_handler(CommandHandler("stripe_webhook", handle_stripe_webhook))
+    application.add_handler(CommandHandler("ping", ping))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     application.add_handler(MessageHandler(filters.VOICE, handle_voice))
     application.add_handler(CallbackQueryHandler(button_callback))
-
-    # Add detailed logging for all updates
     async def log_all_updates(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.info(f"Received update: {update}")
     application.add_handler(MessageHandler(filters.ALL, log_all_updates), group=100)
-
-    # Add error handler for more verbose error logging
     async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
         logger.error(f"Exception while handling an update: {context.error}", exc_info=True)
     application.add_error_handler(error_handler)
-
-    # Add background job for checking reminders (runs every minute)
     job_queue = application.job_queue
     job_queue.run_repeating(check_and_send_reminders, interval=60, first=10)
     logger.info("Background reminder checker job scheduled (runs every 60 seconds)")
-
-    logger.info("Starting bot polling (async)...")
-    await application.run_polling()
-
-if __name__ == "__main__":
-    import asyncio
-    import sys
-    
-    try:
-        # Try to get the current running loop
-        loop = asyncio.get_running_loop()
-        # If we reach here, there's already a running loop
-        print("Detected existing event loop. Running bot as a task...")
-        # Create the task and run it in the existing loop
-        task = loop.create_task(main())
-        # If you're in an interactive environment, you might want to store the task
-        print(f"Bot task created: {task}")
-        print("Note: The bot is now running in the background.")
-        print("To stop it, you can cancel the task or restart your environment.")
-        
-    except RuntimeError:
-        # No event loop is running, safe to use asyncio.run()
-        try:
-            asyncio.run(main())
-        except KeyboardInterrupt:
-            print("\nBot stopped by user")
-            sys.exit(0)
-        except Exception as e:
-            print(f"Error running bot: {e}")
-            sys.exit(1)
+    return application
