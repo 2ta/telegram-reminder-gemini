@@ -9,12 +9,12 @@ import math # For math.ceil in pagination
 from pathlib import Path
 from typing import Dict, Any, Tuple, Optional, List, Union, Callable
 
-# Import only what we need from telegram to reduce memory usage
+# Updated import for PTB v22+
 from telegram import Update, ReplyKeyboardMarkup, InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
 from telegram.ext import (
-    Application, CommandHandler, MessageHandler, filters,
-    ContextTypes, ConversationHandler, CallbackQueryHandler
+    Application, CommandHandler, MessageHandler, CallbackQueryHandler, ContextTypes
 )
+from telegram.ext import filters
 from sqlalchemy.orm import Session
 from sqlalchemy import func, and_, or_
 
