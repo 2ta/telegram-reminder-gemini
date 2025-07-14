@@ -31,9 +31,14 @@ jobs:
             git reset --hard origin/main
             echo "🐍 Setting up Python environment..."
             rm -rf .venv
+            sudo apt-get update
+            sudo apt-get install -y build-essential libffi-dev
             python3 -m venv .venv
             .venv/bin/pip install --upgrade pip
-            .venv/bin/pip install -r requirements.txt
+            .venv/bin/pip install -v -r requirements.txt
+            .venv/bin/pip install 'python-telegram-bot[job-queue]'
+            .venv/bin/pip list
+            .venv/bin/pip freeze
             echo "🗄️ Setting up database..."
             echo "import sys" > /tmp/init_db_script.py
             echo "sys.path.append('.')" >> /tmp/init_db_script.py

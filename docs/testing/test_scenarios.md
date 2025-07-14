@@ -1,110 +1,128 @@
 # Test Scenarios for Telegram Reminder Bot
 
 ## Scenario 1: Simple Reminder with General Time (Without Hour) and Then Specifying Hour
-**User:** یادم بنداز به برادرم زنگ بزنم  
-**System:** چه زمانی می‌خوای یادت بندازم؟  
-**User:** فردا  
-**System:** باشه، یادآوری تنظیم شد.  
-📝 متن: زنگ زدن به برادرم  
-⏰ زمان: دوشنبه ۲۲ اردیبهشت ۱۴۰۴، ساعت ۹:۰۰ تنظیم شد.  
-ولی اگه ساعت دیگه‌ای رو می‌خوای بهم بگو؟  
-**User:** ساعت ۱۲ یادم بنداز  
-**System:** ۱۲ ظهر یا شب؟  
-**User:** ظهر  
-**System:** باشه، یادآوری تنظیم شد.  
-📝 متن: زنگ زدن به برادرم  
-⏰ زمان: دوشنبه ۲۲ اردیبهشت ۱۴۰۴، ساعت ۱۲:۰۰ ظهر تنظیم شد.  
+**User:** Remind me to call my brother.
+**System:** When do you want me to remind you?
+**User:** Tomorrow
+**System:** Okay, reminder set.
+📝 **Text:** Call my brother
+⏰ **Time:** Monday, May 12, 2025, at 9:00 AM.
+But if you want a different time, just let me know.
+**User:** Remind me at 12 o'clock.
+**System:** 12 PM or 12 AM?
+**User:** PM
+**System:** Okay, reminder set.
+📝 **Text:** Call my brother
+⏰ **Time:** Monday, May 12, 2025, at 12:00 PM.
+
+---
 
 ## Scenario 2: Direct Reminder with Approximate Time and Time Correction
-**User:** یادم بنداز فردا به برادرم زنگ بزنم.  
-**System:** باشه، یادآوری تنظیم شد.  
-📝 متن: زنگ زدن به برادرم  
-⏰ زمان: دوشنبه ۲۲ اردیبهشت ۱۴۰۴، ساعت ۹:۰۰ تنظیم شد.  
-ولی اگه ساعت دیگه‌ای رو می‌خوای بهم بگو؟  
-**User:** ساعت ۱۲ یادم بنداز  
-**System:** ۱۲ ظهر یا شب؟  
-**User:** ظهر  
-**System:** باشه، یادآوری تنظیم شد.  
-📝 متن: زنگ زدن به برادرم  
-⏰ زمان: دوشنبه ۲۲ اردیبهشت ۱۴۰۴، ساعت ۱۲:۰۰ تنظیم شد.  
+**User:** Remind me to call my brother tomorrow.
+**System:** Okay, reminder set.
+📝 **Text:** Call my brother
+⏰ **Time:** Monday, May 12, 2025, at 9:00 AM.
+But if you want a different time, just let me know.
+**User:** Remind me at 12 o'clock.
+**System:** 12 PM or 12 AM?
+**User:** PM
+**System:** Okay, reminder set.
+📝 **Text:** Call my brother
+⏰ **Time:** Monday, May 12, 2025, at 12:00 PM.
+
+---
 
 ## Scenario 3: Reminder with Exact Time on the Same Day
-**User:** به من یادآوری کن ساعت ۱۰ صبح به امیرعلی پیام بدم  
-**System:** باشه، یادآوری تنظیم شد.  
-📝 متن: پیام دادن به علی  
-⏰ زمان: دوشنبه ۲۲ اردیبهشت ۱۴۰۴، ساعت ۱۰:۰۰ تنظیم شد.  
+**User:** Remind me to text Amir Ali at 10 AM.
+**System:** Okay, reminder set.
+📝 **Text:** Text Ali
+⏰ **Time:** Monday, May 12, 2025, at 10:00 AM.
+
+---
 
 ## Scenario 4: Reminder with Specific Date and Time
-**User:** ۲۳ اردیبهشت ساعت ۱۰ صبح یادم بنداز به دکتر پوستم زنگ بزنم.  
-**System:** باشه، یادآوری تنظیم شد.  
-📝 متن: زنگ زدن به دکتر پوستم  
-⏰ زمان: دوشنبه ۲۳ اردیبهشت ۱۴۰۴، ساعت ۱۰:۰۰ تنظیم شد.  
+**User:** Remind me on May 13th at 10 AM to call my dermatologist.
+**System:** Okay, reminder set.
+📝 **Text:** Call my dermatologist
+⏰ **Time:** Tuesday, May 13, 2025, at 10:00 AM.
+
+---
 
 ## Scenario 5: Reminder Time Correction by User
-**User:** یادم بنداز دوشنبه هفته آینده ساعت ۲ بعد از ظهر نون بخرم.  
-**System:** یادآوری برای "خرید نان" برای تاریخ دوشنبه ۲۲ اردیبهشت ۱۴۰۴ ساعت ۱۴:۰۰ تنظیم شد.  
-**User:** تغییرش بده و برای تاریخ ۲۳ اردیبهشت بهم یادآوری کن.  
-**System:** باشه، به‌روز شد.  
-📝 متن: خرید نان  
-⏰ زمان: ۲۳ اردیبهشت ۱۴۰۴، ساعت ۱۴:۰۰  
+**User:** Remind me to buy bread next Monday at 2 PM.
+**System:** Reminder for "buy bread" set for Monday, May 12, 2025, at 2:00 PM.
+**User:** Change it and remind me on May 13th.
+**System:** Okay, updated.
+📝 **Text:** Buy bread
+⏰ **Time:** May 13, 2025, at 2:00 PM.
+
+---
 
 ## Scenario 6: Request for a Re-reminder After Notification
-**System:** 🔔 یادآوری: زنگ زدن به برادرم  
-**User:** دو ساعت دیگه بهم دوباره یادآوری کن  
-**System:** باشه، یادآوری به‌روز شد.  
-📝 متن: زنگ زدن به برادرم  
-⏰ زمان: ۳ اردیبهشت ۱۴۰۴، ساعت ۱۳:۰۰  
+**System:** 🔔 Reminder: Call my brother.
+**User:** Remind me again in two hours.
+**System:** Okay, reminder updated.
+📝 **Text:** Call my brother
+⏰ **Time:** May 13, 2025, at 1:00 PM.
+
+---
 
 ## Scenario 7: Recurring Reminder (Daily, Weekly, Monthly)
-**User:** هر روز ساعت ۸ شب یادم بنداز داروهامو بخورم.  
-**System:** حتماً. یادآوری روزانه تنظیم شد.  
-📝 متن: خوردن دارو  
-⏰ زمان: هر روز ساعت ۲۰:۰۰  
+**User:** Remind me every day at 8 PM to take my medications.
+**System:** Sure. Daily reminder set.
+📝 **Text:** Take medications
+⏰ **Time:** Every day at 8:00 PM.
+
+---
 
 ## Scenario 8: Relative Reminder Based on Specific Time
-**User:** نیم ساعت قبل از جلسه‌م با علی یادم بنداز آماده بشم.  
-**System:** زمان جلسه‌ت با علی رو می‌دونی؟  
-**User:** ساعت ۳ بعد از ظهره.  
-**System:** باشه، یادآوری تنظیم شد.  
-📝 متن: آماده شدن برای جلسه با علی  
-⏰ زمان: امروز، ساعت ۱۴:۳۰  
+**User:** Remind me half an hour before my meeting with Ali to get ready.
+**System:** Do you know the time of your meeting with Ali?
+**User:** It's at 3 PM.
+**System:** Okay, reminder set.
+📝 **Text:** Get ready for the meeting with Ali
+⏰ **Time:** Today, at 2:30 PM.
 
-## Scenario 9: Multi-Stage Reminder 
-**User:** یادم بنداز پنجشنبه لباسارو ببر خشکشویی و شنبه بگیرمشون.  
-**System:** باشه، دو یادآوری تنظیم شد:  
-📝 متن: بردن لباس به خشکشویی  
-⏰ زمان: پنجشنبه ۲۴ اردیبهشت ۱۴۰۴، ساعت ۹:۰۰ صبح  
-📝 متن: گرفتن لباس از خشکشویی  
-⏰ زمان: شنبه ۲۶ اردیبهشت ۱۴۰۴، ساعت ۹:۰۰ صبح  
+---
+
+## Scenario 9: Multi-Stage Reminder
+**User:** Remind me to take the clothes to the dry cleaner on Thursday and pick them up on Saturday.
+**System:** Okay, two reminders set:
+📝 **Text:** Take clothes to the dry cleaner
+⏰ **Time:** Thursday, May 15, 2025, at 9:00 AM.
+📝 **Text:** Pick up clothes from the dry cleaner
+⏰ **Time:** Saturday, May 17, 2025, at 9:00 AM.
+
+---
 
 ## Scenario 10: Show Reminders List
-**User:** یادآور‌هامو نشونم بده  
-**System:** 📅 یادآورهای شما:  
-زنگ زدن به برادرم – دوشنبه ۲۲ اردیبهشت، ساعت ۱۲:۰۰  
-پیام تولد به علی – سه‌شنبه ۲۳ اردیبهشت، ساعت ۱۰:۰۰  
-ورزش کردن – هر جمعه، ساعت ۸:۰۰ صبح  
+**User:** Show me my reminders.
+**System:** 📅 Your reminders:
+1. Call my brother – Monday, May 12, at 12:00 PM
+2. Text a birthday message to Ali – Tuesday, May 13, at 10:00 AM
+3. Work out – Every Friday, at 8:00 AM
+
+---
 
 ## Scenario 11: Delete One Reminder from List
-**User:** شماره ۲ رو حذف کن  
-**System:** 🗑️ یادآور "پیام تولد به علی" حذف شد.  
+**User:** Delete number 2.
+**System:** 🗑️ Reminder "Text a birthday message to Ali" has been deleted.
+
+---
 
 ## Scenario 12: Edit One Reminder from List
-**User:** یادآور شماره ۱ رو ویرایش کن  
-**System:** چه چیزی رو می‌خوای تغییر بدی؟ متن یا زمان؟  
-**User:** زمانش رو بکن ساعت ۲ بعد از ظهر  
-**System:** باشه، به‌روزرسانی شد.  
-📝 متن: زنگ زدن به برادرم  
-⏰ زمان جدید: دوشنبه ۲۲ اردیبهشت، ساعت ۱۴:۰۰  
+**User:** Edit reminder number 1.
+**System:** What do you want to change? The text or the time?
+**User:** Change the time to 2 PM.
+**System:** Okay, it's updated.
+📝 **Text:** Call my brother
+⏰ **New Time:** Monday, May 12, at 2:00 PM.
 
-## Scenario 13: Reminder with Specific Time on the Same Day (Using "Tonight")
-**User:** یادم بنداز ساعت ۱۱:۱۵ امشب به برادرم زنگ بزنم
-**System:** (باید تاریخ امروز را تشخیص دهد و اگر ساعت از ۲۳:۱۵ دقیقه شب نگذشته باشد این یادآور را تنظیم کند) باشه، یادآوری تنظیم شد.
-📝 متن: زنگ زدن به برادرم
-⏰ زمان: دوشنبه، 22 اردیبهشت 1404، ساعت ۲۳:۱۵  
+---
 
-## Scenario 14: Conversational Reminder Creation
+## Scenario 13: Conversational Reminder Creation
 **User:** Remind me to call my brother
 **System:** Certainly. When should I remind you?
 **User:** Tomorrow at 2pm
 **System:** Got it. I will remind you to "call my brother" tomorrow at 2pm.
-``` 
+
