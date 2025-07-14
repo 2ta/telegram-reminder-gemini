@@ -36,6 +36,7 @@ jobs:
             python3 -m venv .venv
             .venv/bin/pip install --upgrade pip
             .venv/bin/pip install -v -r requirements.txt
+            .venv/bin/pip install 'python-telegram-bot[job-queue]'
             .venv/bin/pip list
             .venv/bin/pip freeze
             echo "🗄️ Setting up database..."
