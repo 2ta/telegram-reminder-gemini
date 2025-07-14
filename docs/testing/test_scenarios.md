@@ -120,8 +120,9 @@ But if you want a different time, just let me know.
 
 ---
 
-## Scenario 13: Reminder with Specific Time on the Same Day (Using "Tonight")
-**User:** Remind me to call my brother at 11:15 tonight.
-**System:** (It should detect today's date and set this reminder if the time has not passed 11:15 PM) Okay, reminder set.
-📝 **Text:** Call my brother
-⏰ **Time:** Monday, May 12, 2025, at 11:15 PM.
+## Scenario 13: Conversational Reminder Creation
+**User:** Remind me to call my brother
+**System:** Certainly. When should I remind you?
+**User:** Tomorrow at 2pm
+**System:** Got it. I will remind you to "call my brother" tomorrow at 2pm.
+
