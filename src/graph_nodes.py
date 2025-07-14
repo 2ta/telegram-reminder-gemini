@@ -1200,6 +1200,36 @@ async def handle_intent_node(state: AgentState) -> Dict[str, Any]:
         logger.info(f"handle_intent_node: Reminder deletion cancelled by user {user_id}. Response: '{response_text}'")
         updated_state_dict["current_operation_status"] = None # Clear any related status
 
+    elif current_intent == "intent_create_reminder":
+        # Handle reminder creation intent with clarification needs
+        reminder_ctx = state.get("reminder_creation_context", {})
+        clarification_status = reminder_ctx.get("status")
+        
+        if clarification_status == "clarification_needed_datetime":
+            # Ask for missing date/time
+            task = reminder_ctx.get("collected_task", "this task")
+            response_text = f"Certainly. When should I remind you about '{task}'?"
+            response_keyboard_markup = None
+            logger.info(f"handle_intent_node: Asking for datetime clarification for user {user_id}, task: '{task}'")
+            
+        elif clarification_status == "clarification_needed_task":
+            # Ask for missing task
+            response_text = "What would you like to be reminded of?"
+            response_keyboard_markup = None
+            logger.info(f"handle_intent_node: Asking for task clarification for user {user_id}")
+            
+        elif clarification_status == "ready_for_confirmation":
+            # This should be handled by confirm_reminder_details_node, but fallback here
+            response_text = "Ready to confirm reminder details."
+            response_keyboard_markup = None
+            logger.info(f"handle_intent_node: Reminder ready for confirmation for user {user_id}")
+            
+        else:
+            # Fallback for unknown clarification status
+            response_text = "I need more information to create your reminder. Please provide the task and when you'd like to be reminded."
+            response_keyboard_markup = None
+            logger.warning(f"handle_intent_node: Unknown clarification status '{clarification_status}' for user {user_id}")
+            
     elif current_intent == "unknown_intent":
         if response_text_from_state and response_text == default_response_text : # If determine_intent_node already set a specific error
              response_text = response_text_from_state
