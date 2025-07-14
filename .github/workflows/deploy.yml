@@ -52,34 +52,37 @@ jobs:
             echo "🔧 Setting up systemd service..."
             # Write the systemd service file with placeholders to avoid GitHub Actions interpolation
             cat > /etc/systemd/system/telegram-reminder-bot.service << 'SERVICEFILE'
-            [Unit]
-            Description=Telegram Reminder Bot with Gemini AI
-            After=network.target
+[Unit]
+Description=Telegram Reminder Bot with Gemini AI
+After=network.target
 
-            [Service]
-            Type=simple
-            User=__SSH_USER__
-            WorkingDirectory=__DEPLOY_PATH__
-            ExecStart=__DEPLOY_PATH__/.venv/bin/python __DEPLOY_PATH__/start_bot.py
-            Restart=on-failure
-            RestartSec=10
-            StartLimitBurst=3
-            StartLimitInterval=60
+[Service]
+Type=simple
+User=__SSH_USER__
+WorkingDirectory=__DEPLOY_PATH__
+ExecStart=__DEPLOY_PATH__/.venv/bin/python __DEPLOY_PATH__/start_bot.py
+Restart=on-failure
+RestartSec=10
+StartLimitBurst=3
+StartLimitInterval=60
 
-            # Memory Management
-            MemoryHigh=500M
-            MemoryMax=800M
-            MemorySwapMax=0
+# Memory Management
+MemoryHigh=500M
+MemoryMax=800M
+MemorySwapMax=0
 
-            # Environment
-            Environment=PYTHONUNBUFFERED=1
+# Environment
+Environment=PYTHONUNBUFFERED=1
 
-            [Install]
-            WantedBy=multi-user.target
-            SERVICEFILE
+[Install]
+WantedBy=multi-user.target
+SERVICEFILE
             # Replace placeholders with actual values
             sed -i "s|__SSH_USER__|${{ secrets.SSH_USER }}|g" /etc/systemd/system/telegram-reminder-bot.service
             sed -i "s|__DEPLOY_PATH__|${{ secrets.DEPLOY_PATH }}|g" /etc/systemd/system/telegram-reminder-bot.service
+            # Verify the service file was created correctly
+            echo "📋 Service file contents:"
+            cat /etc/systemd/system/telegram-reminder-bot.service
             systemctl daemon-reload
             systemctl enable telegram-reminder-bot.service
             echo "🔄 Restarting bot service..."
