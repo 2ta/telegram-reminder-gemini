@@ -382,8 +382,7 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         from src.voice_utils import transcribe_english_voice
         transcribed_text = transcribe_english_voice(temp_file_path)
         
-        # Clean up temporary file
-        os.unlink(temp_file_path)
+        # Note: transcribe_english_voice handles file cleanup in its finally block
         
         if transcribed_text:
             logger.info(f"Transcribed voice message from user {user_id}: {transcribed_text[:50]}...")
