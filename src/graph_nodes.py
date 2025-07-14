@@ -164,7 +164,6 @@ async def determine_intent_node(state: AgentState) -> Dict[str, Any]:
         
         elif pending_clarification_type == "task":
             # User is providing task for existing date/time (less common but possible)
-            # For now, we'll treat this as a new reminder creation
             logger.info(f"User {user_id} provided task after date/time clarification, treating as new reminder")
     
     # Check if we have a pending clarification from previous state (fallback)
@@ -609,11 +608,10 @@ async def process_datetime_node(state: AgentState) -> Dict[str, Any]:
 
     # Fields for parsing (now reliably from context or populated from NLU)
     date_str = reminder_ctx.get("collected_date_str") # or extracted_params.get("date") <- no longer needed here
-    time_str = reminder_ctx.get("collected_time_str") # or extracted_params.get("time") <- no longer needed here
-    
-    # am_pm_choice is not used by the current parser, so no need to pull it from extracted_params here.
-    # It was removed from the parse_english_datetime_to_utc call.
+    time_str = reminder_ctx.get("collected_time_str")
 
+    logger.info(f"process_datetime_node: About to parse date_str='{date_str}', time_str='{time_str}' for user {state.get('user_id')}")
+    
     # Only attempt parsing if intent is reminder-related and parameters are present
     if current_intent == "intent_create_reminder": # Or if it's an edit flow later
         if date_str or time_str:
@@ -628,22 +626,21 @@ async def process_datetime_node(state: AgentState) -> Dict[str, Any]:
                     logger.warning(f"Failed to parse date/time from strings: date='{date_str}', time='{time_str}'")
                     # If parsing fails, ensure collected_parsed_datetime_utc is None or removed
                     reminder_ctx["collected_parsed_datetime_utc"] = None
+                    # Add a flag for failed parsing
+                    reminder_ctx["datetime_parse_failed"] = True
             except Exception as e:
                 logger.error(f"Error during date/time parsing: {e}", exc_info=True)
                 reminder_ctx["collected_parsed_datetime_utc"] = None
+                reminder_ctx["datetime_parse_failed"] = True
         else:
             logger.info(f"No date/time strings found in context/params for intent '{current_intent}'")
             reminder_ctx["collected_parsed_datetime_utc"] = None # Ensure it's None
     else:
         logger.info(f"Skipping datetime parsing for intent '{current_intent}'.")
-
-    # Return the direct parsed_dt_utc for immediate use by next node, but also ensure context is updated
+    
     return {
-        "parsed_datetime_utc": reminder_ctx.get("collected_parsed_datetime_utc"), # Use the one from context
-        "current_node_name": "process_datetime_node",
-        "reminder_creation_context": reminder_ctx, # Pass updated context
-        "validated_task": state.get("validated_task"), # Pass through for now
-        "reminder_creation_status": state.get("reminder_creation_status") # Pass through
+        "reminder_creation_context": reminder_ctx,
+        "current_node_name": "process_datetime_node"
     }
 
 async def validate_and_clarify_reminder_node(state: AgentState) -> Dict[str, Any]:
@@ -661,6 +658,7 @@ async def validate_and_clarify_reminder_node(state: AgentState) -> Dict[str, Any
 
     collected_task = reminder_ctx.get("collected_task")
     collected_parsed_dt_utc = reminder_ctx.get("collected_parsed_datetime_utc")
+    datetime_parse_failed = reminder_ctx.get("datetime_parse_failed", False)
     
     # Default to free tier limits if profile is not loaded yet (e.g., new user)
     current_reminder_count = 0
@@ -723,10 +721,19 @@ async def validate_and_clarify_reminder_node(state: AgentState) -> Dict[str, Any
         new_reminder_creation_status = "clarification_needed_task"
     # 3. Validate Datetime
     elif not collected_parsed_dt_utc:
-        logger.info(f"Validation failed for user {user_id}, task '{collected_task}': Datetime is missing or unparseable.")
-        pending_clarification_type = "datetime"
-        clarification_question_text = f"When should I remind you about '{collected_task}'?"
-        new_reminder_creation_status = "clarification_needed_datetime"
+        if datetime_parse_failed:
+            logger.warning(f"Date/time parsing failed for user {user_id}, task '{collected_task}'. Informing user.")
+            pending_clarification_type = "datetime"
+            clarification_question_text = (
+                f"Sorry, I couldn't understand the date and time you provided. "
+                f"Please try a different format, e.g., 'tomorrow at 1 PM' or '2024-06-10 13:00'."
+            )
+            new_reminder_creation_status = "clarification_needed_datetime"
+        else:
+            logger.info(f"Validation failed for user {user_id}, task '{collected_task}': Datetime is missing or unparseable.")
+            pending_clarification_type = "datetime"
+            clarification_question_text = f"When should I remind you about '{collected_task}'?"
+            new_reminder_creation_status = "clarification_needed_datetime"
 
     # (Future AM/PM specific clarification check - assuming parse_english_datetime_to_utc handles am_pm_choice or returns None if it's ambiguous and choice is missing)
     # For instance, if parse_english_datetime_to_utc returned a specific error or flag for AM/PM:
