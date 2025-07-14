@@ -12,10 +12,13 @@ from src.bot import main
 
 if __name__ == '__main__':
     try:
+        if sys.platform == "win32":
+            asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
         asyncio.run(main())
-    except KeyboardInterrupt:
-        print('Bot stopped by user')
-        sys.exit(0)
-    except Exception as e:
-        print(f'Failed to start bot: {e}')
-        sys.exit(1) 
+    except RuntimeError as e:
+        if "Cannot close a running event loop" in str(e):
+            loop = asyncio.get_event_loop()
+            loop.create_task(main())
+            loop.run_forever()
+        else:
+            raise 
