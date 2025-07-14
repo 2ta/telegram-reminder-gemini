@@ -124,6 +124,60 @@ async def determine_intent_node(state: AgentState) -> Dict[str, Any]:
     input_text = input_text_raw.strip() if input_text_raw else ""
     message_type = state.get("message_type")
     effective_input = input_text # Assuming callback_data is in input_text for callbacks
+    
+    # Check if we have a pending clarification from previous state
+    reminder_ctx = state.get("reminder_creation_context", {})
+    pending_clarification_type = reminder_ctx.get("pending_clarification_type")
+    
+    # If we have a pending clarification, treat this input as a response to that clarification
+    if pending_clarification_type and input_text:
+        logger.info(f"User {state.get('user_id')} is responding to pending clarification: {pending_clarification_type}")
+        
+        if pending_clarification_type == "datetime":
+            # User is providing date/time for existing task
+            collected_task = reminder_ctx.get("collected_task")
+            if collected_task:
+                # Combine the previous task with the new date/time input
+                combined_input = f"Remind me to {collected_task} {input_text}"
+                logger.info(f"Combined input for datetime clarification: '{combined_input}'")
+                
+                # Update the context with the new date/time
+                reminder_ctx["collected_date_str"] = input_text
+                reminder_ctx["pending_clarification_type"] = None
+                reminder_ctx["status"] = "ready_for_processing"
+                
+                # Re-run intent determination on the combined input
+                # For now, we'll set the intent directly since we know it's a reminder creation
+                return {
+                    "current_intent": "intent_create_reminder",
+                    "extracted_parameters": {"task": collected_task, "date": input_text, "time": None},
+                    "current_node_name": "determine_intent_node",
+                    "reminder_creation_context": reminder_ctx,
+                    "input_text": combined_input  # Update input_text for downstream processing
+                }
+        
+        elif pending_clarification_type == "task":
+            # User is providing task for existing date/time (less common but possible)
+            collected_date_str = reminder_ctx.get("collected_date_str")
+            collected_time_str = reminder_ctx.get("collected_time_str")
+            if collected_date_str or collected_time_str:
+                # Combine the new task with the previous date/time
+                date_time_part = f"{collected_date_str or ''} {collected_time_str or ''}".strip()
+                combined_input = f"Remind me to {input_text} {date_time_part}"
+                logger.info(f"Combined input for task clarification: '{combined_input}'")
+                
+                # Update the context with the new task
+                reminder_ctx["collected_task"] = input_text
+                reminder_ctx["pending_clarification_type"] = None
+                reminder_ctx["status"] = "ready_for_processing"
+                
+                return {
+                    "current_intent": "intent_create_reminder",
+                    "extracted_parameters": {"task": input_text, "date": collected_date_str, "time": collected_time_str},
+                    "current_node_name": "determine_intent_node",
+                    "reminder_creation_context": reminder_ctx,
+                    "input_text": combined_input
+                }
 
     # --- Priority 1: Exact Callbacks ---
     if message_type == "callback_query":
@@ -647,6 +701,21 @@ async def validate_and_clarify_reminder_node(state: AgentState) -> Dict[str, Any
     #     new_reminder_creation_status = "clarification_needed_am_pm"
     #     # Ensure determine_intent_node handles "clarify_am_pm:am/pm" callbacks and sets "collected_am_pm_choice"
 
+    elif reminder_ctx.get("status") == "ready_for_processing":
+        # This is a follow-up response that has been combined, re-validate
+        logger.info(f"Re-validating combined input for user {user_id}: Task='{collected_task}', Datetime='{collected_parsed_dt_utc}'")
+        if collected_task and collected_parsed_dt_utc:
+            new_reminder_creation_status = "ready_for_confirmation"
+        else:
+            # Still missing something, ask for clarification
+            if not collected_task:
+                pending_clarification_type = "task"
+                clarification_question_text = "What would you like to be reminded of?"
+                new_reminder_creation_status = "clarification_needed_task"
+            elif not collected_parsed_dt_utc:
+                pending_clarification_type = "datetime"
+                clarification_question_text = f"When should I remind you about '{collected_task}'?"
+                new_reminder_creation_status = "clarification_needed_datetime"
     else:
         logger.info(f"Validation successful for user {user_id}: Task='{collected_task}', Datetime='{collected_parsed_dt_utc}'. Ready for confirmation.")
         new_reminder_creation_status = "ready_for_confirmation"
