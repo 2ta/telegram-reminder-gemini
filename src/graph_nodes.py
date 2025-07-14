@@ -20,6 +20,7 @@ from src.models import Reminder, User, SubscriptionTier
 from src.database import get_db
 from sqlalchemy.orm import Session
 from src.payment import DEFAULT_PAYMENT_AMOUNT
+from src.conversation_memory import conversation_memory
 
 # Global cache for pending reminder details before confirmation
 PENDING_REMINDER_CONFIRMATIONS: Dict[str, Dict[str, Any]] = {}
@@ -125,7 +126,48 @@ async def determine_intent_node(state: AgentState) -> Dict[str, Any]:
     message_type = state.get("message_type")
     effective_input = input_text # Assuming callback_data is in input_text for callbacks
     
-    # Check if we have a pending clarification from previous state
+    # Check conversation memory for pending clarifications
+    user_id = state.get("user_id")
+    chat_id = state.get("chat_id")
+    session_id = conversation_memory.get_session_id(user_id, chat_id)
+    conversation_context = conversation_memory.get_conversation_context(session_id)
+    
+    # If we have a pending clarification from conversation memory, treat this input as a response
+    if conversation_context["has_pending_clarification"] and input_text:
+        pending_clarification_type = conversation_context["pending_clarification_type"]
+        logger.info(f"User {user_id} is responding to pending clarification: {pending_clarification_type}")
+        
+        if pending_clarification_type == "datetime":
+            # User is providing date/time for existing task
+            collected_task = conversation_context["collected_task"]
+            if collected_task:
+                # Combine the previous task with the new date/time input
+                combined_input = f"Remind me to {collected_task} {input_text}"
+                logger.info(f"Combined input for datetime clarification: '{combined_input}'")
+                
+                # Create reminder creation context
+                reminder_ctx = {
+                    "collected_task": collected_task,
+                    "collected_date_str": input_text,
+                    "collected_time_str": None,
+                    "pending_clarification_type": None,
+                    "status": "ready_for_processing"
+                }
+                
+                return {
+                    "current_intent": "intent_create_reminder",
+                    "extracted_parameters": {"task": collected_task, "date": input_text, "time": None},
+                    "current_node_name": "determine_intent_node",
+                    "reminder_creation_context": reminder_ctx,
+                    "input_text": combined_input  # Update input_text for downstream processing
+                }
+        
+        elif pending_clarification_type == "task":
+            # User is providing task for existing date/time (less common but possible)
+            # For now, we'll treat this as a new reminder creation
+            logger.info(f"User {user_id} provided task after date/time clarification, treating as new reminder")
+    
+    # Check if we have a pending clarification from previous state (fallback)
     reminder_ctx = state.get("reminder_creation_context", {})
     pending_clarification_type = reminder_ctx.get("pending_clarification_type")
     
@@ -1281,11 +1323,21 @@ async def handle_intent_node(state: AgentState) -> Dict[str, Any]:
             response_keyboard_markup = None
             logger.info(f"handle_intent_node: Asking for datetime clarification for user {user_id}, task: '{task}'")
             
+            # Save to conversation memory
+            chat_id = state.get("chat_id")
+            session_id = conversation_memory.get_session_id(user_id, chat_id)
+            conversation_memory.add_ai_message(session_id, response_text)
+            
         elif clarification_status == "clarification_needed_task":
             # Ask for missing task
             response_text = "What would you like to be reminded of?"
             response_keyboard_markup = None
             logger.info(f"handle_intent_node: Asking for task clarification for user {user_id}")
+            
+            # Save to conversation memory
+            chat_id = state.get("chat_id")
+            session_id = conversation_memory.get_session_id(user_id, chat_id)
+            conversation_memory.add_ai_message(session_id, response_text)
             
         elif clarification_status == "ready_for_confirmation":
             # This should be handled by confirm_reminder_details_node, but fallback here

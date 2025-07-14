@@ -325,6 +325,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     
     logger.info(f"Received text message from user {user_id}: {text[:50]}...")
     
+    # Save user message to conversation memory
+    from src.conversation_memory import conversation_memory
+    session_id = conversation_memory.get_session_id(user_id, chat_id)
+    conversation_memory.add_user_message(session_id, text)
+    
     initial_state = AgentState(
         user_id=user_id,
         chat_id=chat_id,
