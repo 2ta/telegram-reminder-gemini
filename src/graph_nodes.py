@@ -209,7 +209,7 @@ async def determine_intent_node(state: AgentState) -> Dict[str, Any]:
                     "input_text": combined_input  # Update input_text for downstream processing
                 }
         
-        elif pending_clarification_type == "task":
+            if pending_clarification_type == "task":
             # User is providing task for existing date/time (less common but possible)
             collected_date_str = reminder_ctx.get("collected_date_str")
             collected_time_str = reminder_ctx.get("collected_time_str")
