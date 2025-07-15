@@ -51,32 +51,30 @@ jobs:
             echo "    print(f'Database setup: {e}')" >> /tmp/init_db_script.py
             .venv/bin/python /tmp/init_db_script.py
             echo "🔧 Setting up systemd service..."
-            cat > /etc/systemd/system/telegram-reminder-bot.service <<'SERVICEFILE'
-[Unit]
-Description=Telegram Reminder Bot with Gemini AI
-After=network.target
-
-[Service]
-Type=simple
-User=__SSH_USER__
-WorkingDirectory=__DEPLOY_PATH__
-ExecStart=__DEPLOY_PATH__/.venv/bin/python __DEPLOY_PATH__/start_bot.py
-Restart=on-failure
-RestartSec=10
-StartLimitBurst=3
-StartLimitInterval=60
-
-# Memory Management
-MemoryHigh=500M
-MemoryMax=800M
-MemorySwapMax=0
-
-# Environment
-Environment=PYTHONUNBUFFERED=1
-
-[Install]
-WantedBy=multi-user.target
-SERVICEFILE
+            echo "[Unit]" > /etc/systemd/system/telegram-reminder-bot.service
+            echo "Description=Telegram Reminder Bot with Gemini AI" >> /etc/systemd/system/telegram-reminder-bot.service
+            echo "After=network.target" >> /etc/systemd/system/telegram-reminder-bot.service
+            echo "" >> /etc/systemd/system/telegram-reminder-bot.service
+            echo "[Service]" >> /etc/systemd/system/telegram-reminder-bot.service
+            echo "Type=simple" >> /etc/systemd/system/telegram-reminder-bot.service
+            echo "User=__SSH_USER__" >> /etc/systemd/system/telegram-reminder-bot.service
+            echo "WorkingDirectory=__DEPLOY_PATH__" >> /etc/systemd/system/telegram-reminder-bot.service
+            echo "ExecStart=__DEPLOY_PATH__/.venv/bin/python __DEPLOY_PATH__/start_bot.py" >> /etc/systemd/system/telegram-reminder-bot.service
+            echo "Restart=on-failure" >> /etc/systemd/system/telegram-reminder-bot.service
+            echo "RestartSec=10" >> /etc/systemd/system/telegram-reminder-bot.service
+            echo "StartLimitBurst=3" >> /etc/systemd/system/telegram-reminder-bot.service
+            echo "StartLimitInterval=60" >> /etc/systemd/system/telegram-reminder-bot.service
+            echo "" >> /etc/systemd/system/telegram-reminder-bot.service
+            echo "# Memory Management" >> /etc/systemd/system/telegram-reminder-bot.service
+            echo "MemoryHigh=500M" >> /etc/systemd/system/telegram-reminder-bot.service
+            echo "MemoryMax=800M" >> /etc/systemd/system/telegram-reminder-bot.service
+            echo "MemorySwapMax=0" >> /etc/systemd/system/telegram-reminder-bot.service
+            echo "" >> /etc/systemd/system/telegram-reminder-bot.service
+            echo "# Environment" >> /etc/systemd/system/telegram-reminder-bot.service
+            echo "Environment=PYTHONUNBUFFERED=1" >> /etc/systemd/system/telegram-reminder-bot.service
+            echo "" >> /etc/systemd/system/telegram-reminder-bot.service
+            echo "[Install]" >> /etc/systemd/system/telegram-reminder-bot.service
+            echo "WantedBy=multi-user.target" >> /etc/systemd/system/telegram-reminder-bot.service
             sed -i "s|__SSH_USER__|${{ secrets.SSH_USER }}|g" /etc/systemd/system/telegram-reminder-bot.service
             sed -i "s|__DEPLOY_PATH__|${{ secrets.DEPLOY_PATH }}|g" /etc/systemd/system/telegram-reminder-bot.service
             echo "🔍 Final systemd service file:" && cat /etc/systemd/system/telegram-reminder-bot.service
