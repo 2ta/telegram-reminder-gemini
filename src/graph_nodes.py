@@ -423,8 +423,13 @@ async def determine_intent_node(state: AgentState) -> Dict[str, Any]:
 Your task is to determine whether the user intends to create a new reminder or not.
 If they intend to create a reminder, you should extract the following information:
 1.  `task`: The main task that needs to be reminded (e.g., "call my brother", "weekly sales team meeting"). This should not include date and time.
-2.  `date_str`: Date-related phrases (e.g., "tomorrow", "day after tomorrow", "next monday", "weekend", "in 3 days", "march 15"). This field can include relative or specific expressions.
-3.  `time_str`: Time-related phrases (e.g., "2 pm", "3 in the afternoon", "early morning", "around noon"). This field can include relative or specific expressions.
+2.  `date_str`: Date-related phrases (e.g., "tomorrow", "day after tomorrow", "next monday", "weekend", "in 3 days", "march 15", "today"). This field can include relative or specific expressions.
+3.  `time_str`: Time-related phrases (e.g., "2 pm", "3 in the afternoon", "early morning", "around noon", "11 PM"). This field can include relative or specific expressions.
+
+IMPORTANT: When the user provides a combined date-time phrase like "11 PM today" or "tomorrow at 2 PM", you should separate them:
+- For "11 PM today": date_str="today", time_str="11 PM"
+- For "tomorrow at 2 PM": date_str="tomorrow", time_str="2 PM"
+- For "next Monday at 9 AM": date_str="next monday", time_str="9 AM"
 
 Current date and time: {current_english_datetime}
 
