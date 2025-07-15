@@ -50,7 +50,7 @@ jobs:
             echo "    print(f'Database setup: {e}')" >> /tmp/init_db_script.py
             .venv/bin/python /tmp/init_db_script.py
             echo "🔧 Setting up systemd service..."
-cat > /etc/systemd/system/telegram-reminder-bot.service <<'SERVICEFILE'
+            cat > /etc/systemd/system/telegram-reminder-bot.service <<'SERVICEFILE'
 [Unit]
 Description=Telegram Reminder Bot with Gemini AI
 After=network.target
