@@ -42,7 +42,7 @@ jobs:
             .venv/bin/pip freeze
             echo "🗄️ Setting up database..."
             echo "import sys" > /tmp/init_db_script.py
-            echo "sys.path.append('.')\" >> /tmp/init_db_script.py
+            echo "sys.path.append('.')" >> /tmp/init_db_script.py
             echo "try:" >> /tmp/init_db_script.py
             echo "    from src.database import init_db" >> /tmp/init_db_script.py
             echo "    init_db()" >> /tmp/init_db_script.py
@@ -82,7 +82,7 @@ jobs:
             if grep -q '__SSH_USER__\|__DEPLOY_PATH__' /etc/systemd/system/telegram-reminder-bot.service; then
               echo "❌ ERROR: Placeholders remain in the systemd service file! Aborting deployment." >&2
               exit 1
-            fi
+            fi 
             systemctl daemon-reload
             systemctl enable telegram-reminder-bot.service
             echo "🔄 Restarting bot service..."
