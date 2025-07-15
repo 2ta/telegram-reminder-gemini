@@ -115,6 +115,22 @@ class ConversationMemoryManager:
         
         return context
     
+    def clear_conversation_context(self, session_id: str):
+        """Clear the conversation context for a session."""
+        if session_id in self._conversations:
+            # Clear the conversation history
+            self._conversations[session_id] = ChatMessageHistory()
+            # Remove the saved file if it exists
+            file_path = self.storage_path / f"{session_id}.json"
+            if file_path.exists():
+                try:
+                    file_path.unlink()
+                    logger.info(f"Cleared conversation context for session {session_id}")
+                except Exception as e:
+                    logger.error(f"Error clearing conversation context for {session_id}: {e}")
+        else:
+            logger.info(f"No conversation context to clear for session {session_id}")
+    
     def clear_conversation(self, session_id: str):
         """Clear conversation history for a session."""
         if session_id in self._conversations:

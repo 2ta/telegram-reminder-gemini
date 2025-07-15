@@ -135,32 +135,44 @@ async def determine_intent_node(state: AgentState) -> Dict[str, Any]:
     # If we have a pending clarification from conversation memory, treat this input as a response
     if conversation_context["has_pending_clarification"] and input_text:
         pending_clarification_type = conversation_context["pending_clarification_type"]
-        logger.info(f"User {user_id} is responding to pending clarification: {pending_clarification_type}")
         
-        if pending_clarification_type == "datetime":
-            # User is providing date/time for existing task
-            collected_task = conversation_context["collected_task"]
-            if collected_task:
-                # Combine the previous task with the new date/time input
-                combined_input = f"Remind me to {collected_task} {input_text}"
-                logger.info(f"Combined input for datetime clarification: '{combined_input}'")
-                
-                # Create reminder creation context
-                reminder_ctx = {
-                    "collected_task": collected_task,
-                    "collected_date_str": input_text,
-                    "collected_time_str": None,
-                    "pending_clarification_type": None,
-                    "status": "ready_for_processing"
-                }
-                
-                return {
-                    "current_intent": "intent_create_reminder",
-                    "extracted_parameters": {"task": collected_task, "date": input_text, "time": None},
-                    "current_node_name": "determine_intent_node",
-                    "reminder_creation_context": reminder_ctx,
-                    "input_text": combined_input  # Update input_text for downstream processing
-                }
+        # Check if the user is sending a complete reminder request instead of just answering the clarification
+        # Look for patterns like "remind me to X at Y" or "remind me to X on Y"
+        complete_reminder_pattern = re.search(r'remind\s+me\s+to\s+(.+?)\s+(?:at|on|in|by)\s+(.+)', input_text.lower())
+        
+        if complete_reminder_pattern:
+            # User is sending a complete reminder request, ignore the pending clarification
+            logger.info(f"User {user_id} sent a complete reminder request, ignoring pending clarification")
+            # Clear the conversation memory to treat this as a fresh request
+            conversation_memory.clear_conversation_context(session_id)
+        else:
+            # User is responding to the clarification
+            logger.info(f"User {user_id} is responding to pending clarification: {pending_clarification_type}")
+            
+            if pending_clarification_type == "datetime":
+                # User is providing date/time for existing task
+                collected_task = conversation_context["collected_task"]
+                if collected_task:
+                    # Combine the previous task with the new date/time input
+                    combined_input = f"Remind me to {collected_task} {input_text}"
+                    logger.info(f"Combined input for datetime clarification: '{combined_input}'")
+                    
+                    # Create reminder creation context
+                    reminder_ctx = {
+                        "collected_task": collected_task,
+                        "collected_date_str": input_text,
+                        "collected_time_str": None,
+                        "pending_clarification_type": None,
+                        "status": "ready_for_processing"
+                    }
+                    
+                    return {
+                        "current_intent": "intent_create_reminder",
+                        "extracted_parameters": {"task": collected_task, "date": input_text, "time": None},
+                        "current_node_name": "determine_intent_node",
+                        "reminder_creation_context": reminder_ctx,
+                        "input_text": combined_input  # Update input_text for downstream processing
+                    }
         
         elif pending_clarification_type == "task":
             # User is providing task for existing date/time (less common but possible)
