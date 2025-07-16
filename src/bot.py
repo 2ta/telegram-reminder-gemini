@@ -160,41 +160,27 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     
     logger.info(f"Received /start from user {user_id}")
     
-    initial_state = AgentState(
-        user_id=user_id,
-        chat_id=chat_id,
-        input_text="/start",
-        message_type="command",
-        user_telegram_details = {
-            "username": update.effective_user.username,
-            "first_name": update.effective_user.first_name,
-            "last_name": update.effective_user.last_name,
-            "language_code": update.effective_user.language_code
-        },
-        transcribed_text=None, 
-        conversation_history=[], 
-        current_intent=None,
-        extracted_parameters={}, 
-        nlu_direct_output=None, 
-        reminder_creation_context={}, 
-        pending_confirmation=None,
-        reminder_filters={}, 
-        active_reminders_page=0, 
-        payment_context={},
-        user_profile=None, 
-        current_operation_status=None, 
-        response_text=None,
-        response_keyboard_markup=None, 
-        error_message=None, 
-        messages=[]
+    # Create persistent keyboard
+    keyboard = create_persistent_keyboard()
+    
+    # Send welcome message with keyboard
+    welcome_message = (
+        "Hello 👋\n"
+        "Welcome to the Reminder Bot!\n\n"
+        "Just send me a message or voice and tell me what to remind you about and when. For example:\n"
+        "🗓 \"Remind me to call mom tomorrow at 3pm\"\n"
+        "💊 \"Remind me to take my pills every day at 8am\"\n\n"
+        "✨ Bot Features:\n"
+        "- Create reminders by speaking or typing\n"
+        "- Smart detection of date and time from your message\n"
+        "- View and delete active reminders\n"
+        "- Timezone support for accurate scheduling\n"
+        "- Premium features available\n\n"
+        "Use the keyboard below to access bot features:"
     )
     
-    await _handle_graph_invocation(update, context, initial_state, is_start_command=True)
-    
-    # Show persistent keyboard after start
-    keyboard = create_persistent_keyboard()
     await update.message.reply_text(
-        "Use the keyboard below to access bot features:",
+        welcome_message,
         reply_markup=keyboard
     )
     
