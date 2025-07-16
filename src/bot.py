@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Dict, Any, Tuple, Optional, List, Union, Callable
 
 # Updated import for PTB v22+
-from telegram import Update, ReplyKeyboardMarkup, InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
+from telegram import Update, ReplyKeyboardMarkup, InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo, KeyboardButton
 from telegram.ext import (
     Application, CommandHandler, MessageHandler, CallbackQueryHandler, ContextTypes
 )
@@ -141,6 +141,14 @@ async def _handle_graph_invocation(
         elif update_obj and update_obj.callback_query:
             await update_obj.callback_query.edit_message_text(error_msg)
 
+def create_persistent_keyboard() -> ReplyKeyboardMarkup:
+    """Create a persistent reply keyboard with main bot functions."""
+    keyboard = [
+        [KeyboardButton("Settings")],
+        [KeyboardButton("Help"), KeyboardButton("Privacy")]
+    ]
+    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True, persistent=True)
+
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle /start command."""
     if not update.effective_user or not update.effective_chat:
@@ -182,6 +190,14 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     )
     
     await _handle_graph_invocation(update, context, initial_state, is_start_command=True)
+    
+    # Show persistent keyboard after start
+    keyboard = create_persistent_keyboard()
+    await update.message.reply_text(
+        "Use the keyboard below to access bot features:",
+        reply_markup=keyboard
+    )
+    
     log_memory_usage(f"after start_command for user {user_id}")
 
 async def payment_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -325,6 +341,42 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     
     logger.info(f"Received text message from user {user_id}: {text[:50]}...")
     
+    # Handle keyboard button presses
+    if text == "Settings":
+        await handle_settings_button(update, context)
+        return
+    elif text == "Help":
+        await handle_help_button(update, context)
+        return
+    elif text == "Privacy":
+        await handle_privacy_button(update, context)
+        return
+    elif text == "Change Timezone":
+        await handle_change_timezone_button(update, context)
+        return
+    elif text == "Back to Main Menu":
+        await handle_back_to_main_menu(update, context)
+        return
+    elif text == "Back to Settings":
+        await handle_back_to_settings(update, context)
+        return
+    elif text == "Send Location":
+        await handle_send_location_button(update, context)
+        return
+    elif text == "Enter City Name":
+        await handle_enter_city_button(update, context)
+        return
+    elif text == "Back to Timezone Settings":
+        await handle_change_timezone_button(update, context)
+        return
+    
+    # Check if user is in city name input mode (simple heuristic)
+    # If the last message was "Enter City Name", treat the next text as city name
+    if context.user_data.get('waiting_for_city_name'):
+        context.user_data['waiting_for_city_name'] = False
+        await handle_city_name_input(update, context)
+        return
+    
     # Save user message to conversation memory
     from src.conversation_memory import conversation_memory
     session_id = conversation_memory.get_session_id(user_id, chat_id)
@@ -361,6 +413,214 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     
     await _handle_graph_invocation(update, context, initial_state)
     log_memory_usage(f"after handle_message for user {user_id}")
+
+async def handle_settings_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle Settings button press."""
+    user_id = update.effective_user.id
+    chat_id = update.effective_chat.id
+    
+    logger.info(f"Settings button pressed by user {user_id}")
+    
+    # Get user from database
+    db = next(get_db())
+    user = db.query(User).filter(User.telegram_id == user_id).first()
+    
+    if not user:
+        await update.message.reply_text("User not found. Please use /start to register.")
+        return
+    
+    # Create settings keyboard
+    keyboard = [
+        [KeyboardButton("Change Timezone")],
+        [KeyboardButton("Back to Main Menu")]
+    ]
+    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=True)
+    
+    current_timezone = user.timezone or "UTC"
+    settings_text = f"🔧 **Settings**\n\nCurrent timezone: {current_timezone}\n\nSelect an option:"
+    
+    await update.message.reply_text(settings_text, reply_markup=reply_markup, parse_mode='Markdown')
+
+async def handle_help_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle Help button press."""
+    help_text = (
+        "🤖 **Reminder Bot Help**\n\n"
+        "**Commands:**\n"
+        "• Send text or voice messages to create reminders\n"
+        "• Use the keyboard buttons for quick access\n\n"
+        "**Examples:**\n"
+        "• \"Remind me to call mom tomorrow at 3pm\"\n"
+        "• \"Meeting with team on Friday at 10am\"\n"
+        "• \"Take medicine every day at 8am\"\n\n"
+        "**Features:**\n"
+        "• Voice message support\n"
+        "• Recurring reminders\n"
+        "• Timezone support\n"
+        "• Premium features available"
+    )
+    
+    keyboard = create_persistent_keyboard()
+    await update.message.reply_text(help_text, reply_markup=keyboard, parse_mode='Markdown')
+
+async def handle_privacy_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle Privacy button press."""
+    privacy_text = (
+        "🔒 **Privacy Policy**\n\n"
+        "**Data Collection:**\n"
+        "• We only store your reminders and basic profile info\n"
+        "• Voice messages are processed but not stored\n"
+        "• Your data is never shared with third parties\n\n"
+        "**Data Usage:**\n"
+        "• Reminders are used only to send you notifications\n"
+        "• Profile data helps personalize your experience\n\n"
+        "**Data Security:**\n"
+        "• All data is encrypted and securely stored\n"
+        "• You can delete your account anytime\n\n"
+        "For questions, contact our support team."
+    )
+    
+    keyboard = create_persistent_keyboard()
+    await update.message.reply_text(privacy_text, reply_markup=keyboard, parse_mode='Markdown')
+
+async def handle_change_timezone_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle Change Timezone button press."""
+    user_id = update.effective_user.id
+    
+    logger.info(f"Change Timezone button pressed by user {user_id}")
+    
+    # Create timezone selection keyboard
+    keyboard = [
+        [KeyboardButton("Send Location"), KeyboardButton("Enter City Name")],
+        [KeyboardButton("Back to Settings")]
+    ]
+    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=True)
+    
+    timezone_text = (
+        "🌍 **Change Timezone**\n\n"
+        "You can set your timezone in two ways:\n\n"
+        "📍 **Send Location** - Share your location to automatically detect timezone\n"
+        "🏙️ **Enter City Name** - Type a city name (e.g., 'New York', 'London', 'Tehran')\n\n"
+        "Select an option:"
+    )
+    
+    await update.message.reply_text(timezone_text, reply_markup=reply_markup, parse_mode='Markdown')
+
+async def handle_back_to_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle Back to Main Menu button press."""
+    keyboard = create_persistent_keyboard()
+    await update.message.reply_text("Back to main menu:", reply_markup=keyboard)
+
+async def handle_back_to_settings(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle Back to Settings button press."""
+    await handle_settings_button(update, context)
+
+async def handle_send_location_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle Send Location button press."""
+    keyboard = [
+        [KeyboardButton("📍 Share Location", request_location=True)],
+        [KeyboardButton("Back to Timezone Settings")]
+    ]
+    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=True)
+    
+    await update.message.reply_text(
+        "📍 Please share your location to automatically detect your timezone:",
+        reply_markup=reply_markup
+    )
+
+async def handle_enter_city_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle Enter City Name button press."""
+    # Set flag to indicate we're waiting for city name input
+    context.user_data['waiting_for_city_name'] = True
+    
+    keyboard = [
+        [KeyboardButton("Back to Timezone Settings")]
+    ]
+    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=True)
+    
+    await update.message.reply_text(
+        "🏙️ Please type a city name (e.g., 'New York', 'London', 'Tehran', 'Tokyo'):",
+        reply_markup=reply_markup
+    )
+
+async def handle_location(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle location sharing for timezone detection."""
+    user_id = update.effective_user.id
+    
+    if not update.message.location:
+        await update.message.reply_text("No location received. Please try again.")
+        return
+    
+    lat = update.message.location.latitude
+    lon = update.message.location.longitude
+    
+    logger.info(f"Location received from user {user_id}: ({lat}, {lon})")
+    
+    # Get timezone from location
+    from src.timezone_utils import get_timezone_from_location, get_timezone_display_name
+    
+    timezone = get_timezone_from_location(lat, lon)
+    
+    if timezone:
+        # Save timezone to user profile
+        db = next(get_db())
+        user = db.query(User).filter(User.telegram_id == user_id).first()
+        
+        if user:
+            user.timezone = timezone
+            db.commit()
+            
+            display_name = get_timezone_display_name(timezone)
+            success_text = f"✅ Timezone updated successfully!\n\nYour timezone is now: {display_name}"
+            
+            keyboard = create_persistent_keyboard()
+            await update.message.reply_text(success_text, reply_markup=keyboard, parse_mode='Markdown')
+        else:
+            await update.message.reply_text("User not found. Please use /start to register.")
+    else:
+        error_text = "❌ Could not detect timezone from your location. Please try entering a city name instead."
+        keyboard = [
+            [KeyboardButton("Enter City Name")],
+            [KeyboardButton("Back to Settings")]
+        ]
+        reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=True)
+        await update.message.reply_text(error_text, reply_markup=reply_markup)
+
+async def handle_city_name_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle city name input for timezone detection."""
+    user_id = update.effective_user.id
+    city_name = update.message.text.strip()
+    
+    logger.info(f"City name received from user {user_id}: {city_name}")
+    
+    # Get timezone from city name using Gemini
+    from src.timezone_utils import get_timezone_from_city_gemini, get_timezone_display_name
+    
+    timezone = get_timezone_from_city_gemini(city_name)
+    
+    if timezone:
+        # Save timezone to user profile
+        db = next(get_db())
+        user = db.query(User).filter(User.telegram_id == user_id).first()
+        
+        if user:
+            user.timezone = timezone
+            db.commit()
+            
+            display_name = get_timezone_display_name(timezone)
+            success_text = f"✅ Timezone updated successfully!\n\nYour timezone is now: {display_name}"
+            
+            keyboard = create_persistent_keyboard()
+            await update.message.reply_text(success_text, reply_markup=keyboard, parse_mode='Markdown')
+        else:
+            await update.message.reply_text("User not found. Please use /start to register.")
+    else:
+        error_text = f"❌ Could not detect timezone for '{city_name}'. Please try a different city name or share your location."
+        keyboard = [
+            [KeyboardButton("Send Location")],
+            [KeyboardButton("Back to Settings")]
+        ]
+        reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=True)
+        await update.message.reply_text(error_text, reply_markup=reply_markup)
 
 async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle voice messages."""
@@ -901,6 +1161,7 @@ def build_application() -> Application:
     application.add_handler(CommandHandler("ping", ping))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     application.add_handler(MessageHandler(filters.VOICE, handle_voice))
+    application.add_handler(MessageHandler(filters.LOCATION, handle_location))
     application.add_handler(CallbackQueryHandler(button_callback))
     async def log_all_updates(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.info(f"Received update: {update}")

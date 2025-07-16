@@ -160,20 +160,37 @@
     - [ ] Handle Zibal API result codes robustly (consider using official numeric codes from Zibal docs).
 - [ ] Test payment and subscription flows end-to-end (including real webhook if possible with ngrok)
 
-## 9. Internationalization (i18n)
+## 9. Timezone Support
+
+- [x] Add timezone field to User model (`src/models.py`)
+- [x] Create timezone utility functions (`src/timezone_utils.py`):
+    - [x] Gemini integration for city name to timezone detection
+    - [x] Location-based timezone detection using ip-api.com
+    - [x] Timezone validation and display name functions
+    - [x] UTC conversion utilities
+- [x] Implement persistent reply keyboard with Settings button (`src/bot.py`)
+- [x] Add Settings menu with timezone change option
+- [x] Implement location sharing for automatic timezone detection
+- [x] Implement city name input for timezone detection using Gemini
+- [x] Add proper keyboard navigation (back buttons, main menu)
+- [x] Register location handler in application
+- [ ] Test timezone functionality end-to-end
+- [ ] Integrate timezone conversion in reminder creation and display
+
+## 11. Internationalization (i18n)
 
 - [ ] Store all user-facing strings in `config/messages.py` or similar resource files
 - [ ] Refactor `bot.py` and other modules to load strings from resource files
 - [ ] Architect code for potential future language support (e.g., language parameter in string loading functions)
 
-## 10. Logging
+## 12. Logging
 
 - [x] Basic logging setup (`logging.basicConfig` in `bot.py`, configured via `config.settings`)
 - [ ] Log all key events with context (user messages, NLU calls/results, DB operations, reminder notifications, payment attempts/outcomes, errors)
 - [ ] For `ConversationHandler`, log state transitions and key `context.user_data` items for debugging
 - [ ] Test log output, rotation, and verbosity levels
 
-## 11. Testing (`tests/`)
+## 13. Testing (`tests/`)
 
 - [ ] Write/expand unit tests for all modules:
     - [ ] `test_database.py`: Models, CRUD, relationships
@@ -191,7 +208,7 @@
     - [ ] Notification sending and snooze functionality
 - [ ] Ensure good test coverage and maintainability
 
-## 12. Error Handling & Privacy
+## 14. Error Handling & Privacy
 
 - [~] Basic error handling in place (try-except blocks in handlers)
 - [ ] Implement comprehensive user-facing error messages in Persian (from `config/messages.py`)
