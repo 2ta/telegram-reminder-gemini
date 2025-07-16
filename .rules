@@ -20,8 +20,27 @@ description: Documentation update requirements for the project.
 - Document any breaking changes or configuration updates
 - Keep the language specification clear: Bot UI is English-only, voice input supports Persian
 - Update troubleshooting section with any new common issues 
-# Deployment Automation Caveat
-- The GitHub Actions deployment workflow (see .github/workflows/deploy.yml) overwrites the systemd service file on every deploy.
-- Any manual changes to /etc/systemd/system/telegram-reminder-bot.service will be lost on the next deployment.
-- The workflow uses placeholders (__SSH_USER__, __DEPLOY_PATH__) and replaces them with secrets. If secrets are missing or incorrect, the service file will be invalid and the bot will not start.
-- Always check the deployment logs for errors about placeholders or systemd service file issues after deploying. 
+
+---
+alwaysApply: true
+description: Deployment workflow rules and procedures.
+---
+# Deployment Workflow Rules
+## Current Status: GitHub Actions Temporarily Disabled
+- **GitHub Actions deployment workflow is currently DISABLED** (see commit 7fd7978)
+- **Direct SSH deployment is REQUIRED** until GitHub Actions is re-enabled
+- All deployments must be performed manually via SSH until the workflow is restored
+
+## Direct Deployment Procedure (Current Method)
+- Use SSH connection: `ssh root@45.77.155.59 -p61208`
+- Pull latest code from repository
+- Update dependencies if needed
+- Restart the systemd service: `systemctl restart telegram-reminder-bot`
+- Check service status: `systemctl status telegram-reminder-bot`
+
+## GitHub Actions Deployment (When Re-enabled)
+- The GitHub Actions deployment workflow (see .github/workflows/deploy.yml) overwrites the systemd service file on every deploy
+- Any manual changes to /etc/systemd/system/telegram-reminder-bot.service will be lost on the next deployment
+- The workflow uses placeholders (__SSH_USER__, __DEPLOY_PATH__) and replaces them with secrets
+- If secrets are missing or incorrect, the service file will be invalid and the bot will not start
+- Always check the deployment logs for errors about placeholders or systemd service file issues after deploying 

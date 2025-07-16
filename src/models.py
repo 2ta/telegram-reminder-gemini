@@ -28,6 +28,7 @@ class User(BaseModel):
     last_name = Column(String, nullable=True)
     username = Column(String, nullable=True)
     language_code = Column(String, default='en')
+    timezone = Column(String, default='UTC')  # User's timezone (e.g., "Asia/Tehran", "America/New_York")
     subscription_tier = Column(SAEnum(SubscriptionTier), default=SubscriptionTier.FREE)
     subscription_expiry = Column(DateTime(timezone=True), nullable=True)
     reminder_count = Column(Integer, default=0)

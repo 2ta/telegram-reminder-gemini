@@ -173,8 +173,8 @@ async def determine_intent_node(state: AgentState) -> Dict[str, Any]:
                         "reminder_creation_context": reminder_ctx,
                         "input_text": combined_input  # Update input_text for downstream processing
                     }
-        
-        elif pending_clarification_type == "task":
+
+        if pending_clarification_type == "task":
             # User is providing task for existing date/time (less common but possible)
             logger.info(f"User {user_id} provided task after date/time clarification, treating as new reminder")
     
@@ -210,26 +210,26 @@ async def determine_intent_node(state: AgentState) -> Dict[str, Any]:
                 }
         
             if pending_clarification_type == "task":
-            # User is providing task for existing date/time (less common but possible)
-            collected_date_str = reminder_ctx.get("collected_date_str")
-            collected_time_str = reminder_ctx.get("collected_time_str")
-            if collected_date_str or collected_time_str:
-                # Combine the new task with the previous date/time
-                date_time_part = f"{collected_date_str or ''} {collected_time_str or ''}".strip()
-                combined_input = f"Remind me to {input_text} {date_time_part}"
-                logger.info(f"Combined input for task clarification: '{combined_input}'")
-                
+                # User is providing task for existing date/time (less common but possible)
+                collected_date_str = reminder_ctx.get("collected_date_str")
+                collected_time_str = reminder_ctx.get("collected_time_str")
+                if collected_date_str or collected_time_str:
+                    # Combine the new task with the previous date/time
+                    date_time_part = f"{collected_date_str or ''} {collected_time_str or ''}".strip()
+                    combined_input = f"Remind me to {input_text} {date_time_part}"
+                    logger.info(f"Combined input for task clarification: '{combined_input}'")
+
                 # Update the context with the new task
                 reminder_ctx["collected_task"] = input_text
                 reminder_ctx["pending_clarification_type"] = None
                 reminder_ctx["status"] = "ready_for_processing"
-                
+
                 return {
                     "current_intent": "intent_create_reminder",
                     "extracted_parameters": {"task": input_text, "date": collected_date_str, "time": collected_time_str},
                     "current_node_name": "determine_intent_node",
                     "reminder_creation_context": reminder_ctx,
-                    "input_text": combined_input
+                    "input_text": combined_input if (collected_date_str or collected_time_str) else input_text
                 }
 
     # --- Priority 1: Exact Callbacks ---
