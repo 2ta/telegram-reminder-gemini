@@ -144,8 +144,9 @@ async def _handle_graph_invocation(
 def create_persistent_keyboard() -> ReplyKeyboardMarkup:
     """Create a persistent reply keyboard with main bot functions."""
     keyboard = [
-        [KeyboardButton("Settings")],
-        [KeyboardButton("Help"), KeyboardButton("Privacy")]
+        [KeyboardButton("My Reminders")],
+        [KeyboardButton("Unlimited Reminders 👑")],
+        [KeyboardButton("Settings")]
     ]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True, persistent=True)
 
@@ -337,6 +338,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     elif text == "Privacy":
         await handle_privacy_button(update, context)
         return
+    elif text == "My Reminders":
+        # Let this go through the normal message flow to be handled by LangGraph
+        pass
+    elif text == "Unlimited Reminders 👑":
+        # Let this go through the normal message flow to be handled by LangGraph
+        pass
     elif text == "Change Timezone":
         await handle_change_timezone_button(update, context)
         return
