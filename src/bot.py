@@ -148,7 +148,7 @@ def create_persistent_keyboard() -> ReplyKeyboardMarkup:
         [KeyboardButton("Unlimited Reminders 👑")],
         [KeyboardButton("Settings")]
     ]
-    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True, persistent=True)
+    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle /start command."""
