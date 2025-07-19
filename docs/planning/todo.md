@@ -216,6 +216,34 @@
 - [ ] Ensure `/privacy` command is implemented and displays relevant privacy policy text.
 - [ ] Document data handling practices and third-party API usage in `README.md` or a separate `PRIVACY.md`.
 
+## 15. Data Retention & Privacy Compliance
+
+- [ ] Implement automatic data retention policy for completed reminders:
+    - [ ] Create background job to run daily/weekly for data cleanup
+    - [ ] Delete completed reminders (`is_active = False` and `is_notified = True`) after 30 days
+    - [ ] Delete manually deleted reminders (`is_active = False` and `is_notified = False`) after 30 days
+    - [ ] Add configuration options for retention period (default: 30 days)
+    - [ ] Log cleanup operations for audit purposes
+- [ ] Implement anonymous data collection for model fine-tuning:
+    - [ ] Create anonymized copy of reminder data before deletion (remove user_id, telegram_id, personal info)
+    - [ ] Store anonymized data in separate table/collection for training purposes
+    - [ ] Add user consent mechanism for data collection (opt-in during /start or settings)
+    - [ ] Implement data export functionality for training datasets
+    - [ ] Ensure GDPR compliance with right to be forgotten
+- [ ] Update privacy policy to reflect data retention practices:
+    - [ ] Specify 30-day retention period for completed reminders
+    - [ ] Explain anonymous data collection for model improvement
+    - [ ] Add user consent language for data usage
+    - [ ] Include data deletion request procedures
+- [ ] Add data management commands for users:
+    - [ ] `/export_data` - Export user's reminder data
+    - [ ] `/delete_account` - Delete all user data (with confirmation)
+    - [ ] `/privacy_settings` - Manage data collection preferences
+- [ ] Test data retention and cleanup functionality:
+    - [ ] Unit tests for cleanup logic
+    - [ ] Integration tests for anonymization process
+    - [ ] Verify data deletion compliance
+
 ---
 
 

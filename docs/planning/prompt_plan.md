@@ -6,7 +6,7 @@
 ```
 # Project Initialization for Telegram Reminder Bot
 
-We're starting development of a Persian language Reminder bot for Telegram. Create the initial project setup including:
+We're starting development of a English language Reminder bot for Telegram. Create the initial project setup including:
 
 1. Project directory structure:
    - src/ (main source code)
@@ -59,15 +59,15 @@ Now let's implement the database models for our Telegram bot using SQLAlchemy. W
 2. Implement User model:
    - telegram_id (unique)
    - first_name, last_name, username
-   - language_code (default 'fa')
-   - subscription_tier (FREE, STANDARD, PREMIUM)
+   - language_code (default 'en')
+   - subscription_tier (FREE, PREMIUM)
    - subscription_expiry (nullable datetime)
    - reminder_count (for quick limit checking)
 
 3. Implement Reminder model:
    - user_id (foreign key to User)
    - task (text description)
-   - jalali_date (stored in a queryable format)
+   - date (stored as a standard date, e.g., datetime.date)
    - time (time of day)
    - is_active (boolean)
    - is_notified (boolean)

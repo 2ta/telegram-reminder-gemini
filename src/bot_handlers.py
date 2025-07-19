@@ -113,7 +113,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         "Available commands:\n"
         "/start - Start using the bot and register\n"
         "/help - Show this help message\n"
-        "/privacy - View privacy policy\n"
+
         "\n"
         "You can send your reminders as text or voice messages.\n"
         "Example to create a reminder:\n"
@@ -121,15 +121,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     )
     await update.message.reply_text(help_text)
 
-async def privacy_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handles the /privacy command."""
-    logger.info(f"/privacy command received from user_id: {update.effective_user.id}")
-    privacy_text = (
-        "Reminder Bot Privacy Policy:\n"
-        "We respect your privacy. Your information is only used to provide reminder services and is never shared with third parties.\n"
-        "For more information, please see the full privacy policy link."
-    )
-    await update.message.reply_text(privacy_text)
+
 
 
 # --- Message Handlers ---
@@ -186,6 +178,5 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> N
 # def register_handlers(application):
 #     application.add_handler(CommandHandler("start", start_command))
 #     application.add_handler(CommandHandler("help", help_command))
-#     application.add_handler(CommandHandler("privacy", privacy_command))
 #     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_message_handler))
 #     application.add_error_handler(error_handler) 

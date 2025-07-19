@@ -64,26 +64,7 @@ MSG_WELCOME: str = (
     "In the free version, you can have up to 5 active reminders."
 )
 
-MSG_PRIVACY_POLICY: str = (
-    "Reminder Bot Privacy Policy:\n\n"
-    "We respect your privacy.\n"
-    "1. Information collected:\n"
-    "   - Telegram user ID and chat ID: for service delivery and sending reminders.\n"
-    "   - Username and name (optional): for personalizing your experience.\n"
-    "   - Reminder content: for storing and sending your reminders.\n"
-    "   - Voice files (if sent): for converting to text and creating reminders.\n"
-    "2. Use of information:\n"
-    "   - Your information is used solely for proper bot operation and reminder services.\n"
-    "   - We do not share your information with any third parties, except when required by law.\n"
-    "3. Information storage:\n"
-    "   - Reminder information and voice files are temporarily stored until processing and sending reminders.\n"
-    "   - Voice files are deleted as soon as possible after processing and converting to text.\n"
-    "4. Security:\n"
-    "   - We strive to protect your information using appropriate security methods.\n"
-    "5. Changes to privacy policy:\n"
-    "   - Any changes to this policy will be notified to you through this bot.\n\n"
-    "By using this bot, you agree to this policy."
-)
+
 
 MSG_PAYMENT_PROMPT: str = "To access special features and more reminders, you can upgrade your subscription. Subscription cost: {amount} USD."
 
@@ -92,7 +73,7 @@ if __name__ == "__main__":
     print(settings.model_dump_json(indent=2))
     print("\nModule-level messages:")
     print(f"MSG_WELCOME: {MSG_WELCOME}")
-    print(f"MSG_PRIVACY_POLICY: {MSG_PRIVACY_POLICY}")
+
     print(f"MSG_PAYMENT_PROMPT: {MSG_PAYMENT_PROMPT}")
 
 # Message Constants

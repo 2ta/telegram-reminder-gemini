@@ -21,7 +21,7 @@ from sqlalchemy import func, and_, or_
 # Assuming config.py defines necessary constants like MSG_HELP, etc.
 # and settings are imported from config.config
 from config.config import settings # For settings like API keys, PAYMENT_AMOUNT
-from config.config import MSG_ERROR_GENERIC, MSG_WELCOME, MSG_PRIVACY_POLICY # Import all needed messages
+from config.config import MSG_ERROR_GENERIC, MSG_WELCOME # Import all needed messages
 # It's recommended to move message constants to a dedicated config/messages.py or include them in config.config.py
 
 from src.database import init_db, get_db
@@ -309,47 +309,8 @@ async def payment_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     log_memory_usage(f"after payment_command for user {user_id}")
 
 async def privacy_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handle /privacy command."""
-    if not update.effective_user or not update.effective_chat:
-        logger.warning("privacy_command received an update without user or chat.")
-        return
-
-    user_id = update.effective_user.id
-    chat_id = update.effective_chat.id
-    
-    logger.info(f"Received /privacy from user {user_id}")
-    
-    initial_state = AgentState(
-        user_id=user_id,
-        chat_id=chat_id,
-        input_text="/privacy",
-        message_type="command",
-        user_telegram_details = {
-            "username": update.effective_user.username,
-            "first_name": update.effective_user.first_name,
-            "last_name": update.effective_user.last_name,
-            "language_code": update.effective_user.language_code
-        },
-        transcribed_text=None, 
-        conversation_history=[], 
-        current_intent=None,
-        extracted_parameters={}, 
-        nlu_direct_output=None, 
-        reminder_creation_context={}, 
-        pending_confirmation=None,
-        reminder_filters={}, 
-        active_reminders_page=0, 
-        payment_context={},
-        user_profile=None, 
-        current_operation_status=None, 
-        response_text=None,
-        response_keyboard_markup=None, 
-        error_message=None, 
-        messages=[]
-    )
-    
-    await _handle_graph_invocation(update, context, initial_state)
-    log_memory_usage(f"after privacy_command for user {user_id}")
+    """Handle /privacy command - redirects to settings privacy policy."""
+    await handle_settings_privacy_policy_callback(update, context)
 
 async def handle_stripe_webhook(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle /stripe_webhook command (simulated webhook for testing)."""
@@ -413,9 +374,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     elif text == "Help":
         await handle_help_button(update, context)
         return
-    elif text == "Privacy":
-        await handle_privacy_button(update, context)
-        return
+
     elif text == "My Reminders":
         # Let this go through the normal message flow to be handled by LangGraph
         pass
@@ -495,6 +454,9 @@ async def handle_settings_button(update: Update, context: ContextTypes.DEFAULT_T
     # Create settings inline keyboard
     keyboard = [
         [InlineKeyboardButton("Change Timezone", callback_data="settings_change_timezone")],
+        [InlineKeyboardButton("Privacy Policy", callback_data="settings_privacy_policy")],
+        [InlineKeyboardButton("Terms of Service", callback_data="settings_terms_of_service")],
+        [InlineKeyboardButton("Contact Me", callback_data="settings_contact_me")],
         [InlineKeyboardButton("Back to Main Menu", callback_data="settings_back_main")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -529,25 +491,7 @@ async def handle_help_button(update: Update, context: ContextTypes.DEFAULT_TYPE)
     keyboard = create_persistent_keyboard()
     await update.message.reply_text(help_text, reply_markup=keyboard)
 
-async def handle_privacy_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handle Privacy button press."""
-    privacy_text = (
-        "🔒 **Privacy Policy**\n\n"
-        "**Data Collection:**\n"
-        "• We only store your reminders and basic profile info\n"
-        "• Voice messages are processed but not stored\n"
-        "• Your data is never shared with third parties\n\n"
-        "**Data Usage:**\n"
-        "• Reminders are used only to send you notifications\n"
-        "• Profile data helps personalize your experience\n\n"
-        "**Data Security:**\n"
-        "• All data is encrypted and securely stored\n"
-        "• You can delete your account anytime\n\n"
-        "For questions, contact our support team."
-    )
-    
-    keyboard = create_persistent_keyboard()
-    await update.message.reply_text(privacy_text, reply_markup=keyboard)
+
 
 async def handle_change_timezone_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle Change Timezone button press."""
@@ -1191,6 +1135,9 @@ async def handle_timezone_back_settings_callback(update: Update, context: Contex
     # Create settings inline keyboard
     keyboard = [
         [InlineKeyboardButton("Change Timezone", callback_data="settings_change_timezone")],
+        [InlineKeyboardButton("Privacy Policy", callback_data="settings_privacy_policy")],
+        [InlineKeyboardButton("Terms of Service", callback_data="settings_terms_of_service")],
+        [InlineKeyboardButton("Contact Me", callback_data="settings_contact_me")],
         [InlineKeyboardButton("Back to Main Menu", callback_data="settings_back_main")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -1199,6 +1146,79 @@ async def handle_timezone_back_settings_callback(update: Update, context: Contex
     settings_text = f"🔧 **Settings**\n\nCurrent timezone: {current_timezone}\n\nSelect an option:"
     
     await query.edit_message_text(settings_text, reply_markup=reply_markup, )
+
+async def handle_settings_privacy_policy_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle Privacy Policy button from settings."""
+    query = update.callback_query
+    
+    privacy_text = (
+        "🔒 **Privacy Policy**\n\n"
+        "Our complete Privacy Policy is available online.\n\n"
+        "**Key Points:**\n"
+        "• We only store your reminders and basic profile info\n"
+        "• Voice messages are processed but not stored\n"
+        "• Your data is never shared with third parties\n"
+        "• You can delete your account anytime\n\n"
+        "📖 **Read Full Policy:**\n"
+        "https://your-domain.com/privacy\n\n"
+        "For questions, contact us at ai_reminder@gmail.com"
+    )
+    
+    keyboard = [
+        [InlineKeyboardButton("Back to Settings", callback_data="timezone_back_settings")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await query.edit_message_text(privacy_text, reply_markup=reply_markup)
+
+async def handle_settings_terms_of_service_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle Terms of Service button from settings."""
+    query = update.callback_query
+    
+    terms_text = (
+        "📋 **Terms of Service**\n\n"
+        "Our complete Terms of Service are available online.\n\n"
+        "**Key Points:**\n"
+        "• Free tier: 5 active reminders\n"
+        "• Premium tier: Unlimited reminders ($9.99/month)\n"
+        "• Use the service for lawful purposes only\n"
+        "• We may update terms with notice\n\n"
+        "📖 **Read Full Terms:**\n"
+        "https://your-domain.com/terms\n\n"
+        "For questions, contact us at ai_reminder@gmail.com"
+    )
+    
+    keyboard = [
+        [InlineKeyboardButton("Back to Settings", callback_data="timezone_back_settings")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await query.edit_message_text(terms_text, reply_markup=reply_markup)
+
+async def handle_settings_contact_me_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle Contact Me button from settings."""
+    query = update.callback_query
+    
+    contact_text = (
+        "📧 **Contact Us**\n\n"
+        "We're here to help! Contact us for:\n\n"
+        "• Technical support\n"
+        "• Privacy questions\n"
+        "• Payment issues\n"
+        "• Bug reports\n"
+        "• Feature requests\n\n"
+        "**Email:** ai_reminder@gmail.com\n"
+        "**Response Time:** Within 24 hours\n\n"
+        "📖 **Visit Contact Page:**\n"
+        "https://your-domain.com/contact"
+    )
+    
+    keyboard = [
+        [InlineKeyboardButton("Back to Settings", callback_data="timezone_back_settings")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await query.edit_message_text(contact_text, reply_markup=reply_markup)
 
 # Conversation Handlers
 async def handle_initial_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int: 
@@ -1252,6 +1272,15 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     # Handle settings and timezone callbacks
     if callback_data == "settings_change_timezone":
         await handle_settings_change_timezone_callback(update, context)
+        return
+    elif callback_data == "settings_privacy_policy":
+        await handle_settings_privacy_policy_callback(update, context)
+        return
+    elif callback_data == "settings_terms_of_service":
+        await handle_settings_terms_of_service_callback(update, context)
+        return
+    elif callback_data == "settings_contact_me":
+        await handle_settings_contact_me_callback(update, context)
         return
     elif callback_data == "settings_back_main":
         await handle_settings_back_main_callback(update, context)
