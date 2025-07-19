@@ -319,13 +319,26 @@ def resolve_english_date_phrase_to_range(phrase: Optional[str]) -> Optional[Tupl
     
     return (start_dt, end_dt)
 
-def format_datetime_for_display(dt: Optional[datetime]) -> str:
-    """Format datetime for display in English, with robust error handling and debug logging."""
+def format_datetime_for_display(dt: Optional[datetime], user_timezone: str = 'UTC') -> str:
+    """Format datetime for display in English, converting from UTC to user's timezone."""
     if dt is None:
         logger.warning("format_datetime_for_display called with None.")
         return "[Date/time unavailable]"
     try:
-        return dt.strftime("%A, %B %d, %Y at %I:%M %p")
+        # Convert UTC datetime to user's timezone for display
+        if user_timezone and user_timezone != 'UTC':
+            try:
+                tz_obj = pytz.timezone(user_timezone)
+                local_dt = dt.astimezone(tz_obj)
+                logger.info(f"Converted {dt} UTC to {local_dt} {user_timezone} for display")
+                return local_dt.strftime("%A, %B %d, %Y at %I:%M %p")
+            except Exception as e:
+                logger.error(f"Error converting timezone for display from {user_timezone}: {e}")
+                # Fallback to UTC display
+                return dt.strftime("%A, %B %d, %Y at %I:%M %p")
+        else:
+            # User timezone is UTC or not specified, display as UTC
+            return dt.strftime("%A, %B %d, %Y at %I:%M %p")
     except Exception as e:
         logger.error(f"Error formatting datetime for display: {dt} ({type(dt)}): {e}", exc_info=True)
         return "[Invalid date/time]"

@@ -849,8 +849,11 @@ async def confirm_reminder_details_node(state: AgentState) -> Dict[str, Any]:
             "pending_confirmation": None
         }
 
-    # Format datetime for display in English
-    formatted_date_time = format_datetime_for_display(parsed_dt_utc)
+    # Format datetime for display in English (convert from UTC to user's timezone)
+    user_timezone = 'UTC'  # Default fallback
+    if state.get("user_profile"):
+        user_timezone = state.get("user_profile").get("timezone", 'UTC')
+    formatted_date_time = format_datetime_for_display(parsed_dt_utc, user_timezone)
 
     confirmation_id = secrets.token_hex(4)  # 8 hex chars, 32 bits of entropy
     
@@ -1035,8 +1038,11 @@ async def create_reminder_node(state: AgentState) -> Dict[str, Any]:
         if user_profile and "current_reminder_count" in user_profile:
             user_profile["current_reminder_count"] += 1
         
-        # Format success message in English
-        formatted_datetime = format_datetime_for_display(parsed_dt_utc)
+        # Format success message in English (convert from UTC to user's timezone)
+        user_timezone = 'UTC'  # Default fallback
+        if user_profile:
+            user_timezone = user_profile.get("timezone", 'UTC')
+        formatted_datetime = format_datetime_for_display(parsed_dt_utc, user_timezone)
         response_message = (
             "Done! 🎉\n"
             "Your reminder has been set successfully and I'll notify you on time 🔔"
