@@ -101,6 +101,7 @@ async def load_user_profile_node(state: AgentState) -> Dict[str, Any]:
             "is_premium": is_premium,  # Derived from subscription_tier
             "premium_until": premium_until,
             "language_code": user_db_obj.language_code,
+            "timezone": user_db_obj.timezone,  # Add timezone to profile
             "reminder_limit": max_reminders,
             "current_reminder_count": active_reminder_count
         }
@@ -634,7 +635,12 @@ async def process_datetime_node(state: AgentState) -> Dict[str, Any]:
         if date_str or time_str:
             logger.info(f"Attempting to parse date='{date_str}', time='{time_str}' for intent '{current_intent}'") # Removed am_pm from log
             try:
-                parsed_dt_utc = parse_english_datetime_to_utc(date_str, time_str)
+                # Get user's timezone from profile
+                user_timezone = 'UTC'  # Default fallback
+                if state.get("user_profile"):
+                    user_timezone = state.get("user_profile").get("timezone", 'UTC')
+                
+                parsed_dt_utc = parse_english_datetime_to_utc(date_str, time_str, user_timezone)
                 if parsed_dt_utc:
                     logger.info(f"Successfully parsed datetime to UTC: {parsed_dt_utc}")
                     # Store in context for subsequent nodes
