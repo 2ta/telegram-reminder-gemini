@@ -367,6 +367,54 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     
     logger.info(f"Received text message from user {user_id}: {text[:50]}...")
     
+    # Handle account deletion confirmation
+    if context.user_data.get('waiting_for_delete_confirmation'):
+        expected_message = context.user_data.get('delete_confirmation_message', '')
+        if text == expected_message:
+            # User confirmed deletion
+            db = next(get_db())
+            success = await delete_user_account(user_id, db)
+            if success:
+                # Clear the deletion flags
+                context.user_data.pop('waiting_for_delete_confirmation', None)
+                context.user_data.pop('delete_confirmation_message', None)
+                
+                deletion_success_text = (
+                    "✅ **Account Deleted Successfully**\n\n"
+                    "Your account and all associated data have been permanently deleted.\n\n"
+                    "• All reminders have been removed\n"
+                    "• Your profile has been deleted\n"
+                    "• Your subscription has been cancelled\n\n"
+                    "Thank you for using our service. You can start fresh anytime by using /start again."
+                )
+                
+                keyboard = create_persistent_keyboard()
+                await update.message.reply_text(deletion_success_text, reply_markup=keyboard)
+            else:
+                error_text = (
+                    "❌ **Deletion Failed**\n\n"
+                    "There was an error deleting your account. Please try again or contact support."
+                )
+                keyboard = [
+                    [InlineKeyboardButton("Back to Settings", callback_data="timezone_back_settings")]
+                ]
+                reply_markup = InlineKeyboardMarkup(keyboard)
+                await update.message.reply_text(error_text, reply_markup=reply_markup)
+        else:
+            # User typed something else, cancel deletion
+            context.user_data.pop('waiting_for_delete_confirmation', None)
+            context.user_data.pop('delete_confirmation_message', None)
+            
+            cancel_text = (
+                "✅ **Deletion Cancelled**\n\n"
+                "Your account has not been deleted. All your data remains safe.\n\n"
+                "You can continue using the bot normally."
+            )
+            
+            keyboard = create_persistent_keyboard()
+            await update.message.reply_text(cancel_text, reply_markup=keyboard)
+        return
+    
     # Handle keyboard button presses
     if text == "Settings":
         await handle_settings_button(update, context)
@@ -457,6 +505,7 @@ async def handle_settings_button(update: Update, context: ContextTypes.DEFAULT_T
         [InlineKeyboardButton("Privacy Policy", callback_data="settings_privacy_policy")],
         [InlineKeyboardButton("Terms of Service", callback_data="settings_terms_of_service")],
         [InlineKeyboardButton("Contact Me", callback_data="settings_contact_me")],
+        [InlineKeyboardButton("🗑️ Delete Account", callback_data="settings_delete_account")],
         [InlineKeyboardButton("Back to Main Menu", callback_data="settings_back_main")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -1137,6 +1186,7 @@ async def handle_timezone_back_settings_callback(update: Update, context: Contex
         [InlineKeyboardButton("Privacy Policy", callback_data="settings_privacy_policy")],
         [InlineKeyboardButton("Terms of Service", callback_data="settings_terms_of_service")],
         [InlineKeyboardButton("Contact Me", callback_data="settings_contact_me")],
+        [InlineKeyboardButton("🗑️ Delete Account", callback_data="settings_delete_account")],
         [InlineKeyboardButton("Back to Main Menu", callback_data="settings_back_main")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -1217,6 +1267,114 @@ async def handle_settings_contact_me_callback(update: Update, context: ContextTy
     
     await query.edit_message_text(contact_text, reply_markup=reply_markup)
 
+async def handle_settings_delete_account_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle Delete Account button from settings - First confirmation."""
+    query = update.callback_query
+    user_id = update.effective_user.id
+    
+    delete_warning_text = (
+        "⚠️ **Delete Account - First Confirmation**\n\n"
+        "**This action will permanently delete your account and all associated data:**\n\n"
+        "🗑️ **What will be deleted:**\n"
+        "• All your reminders (active and completed)\n"
+        "• Your user profile and settings\n"
+        "• Your timezone preferences\n"
+        "• Your subscription information\n"
+        "• All conversation history\n\n"
+        "💾 **What will be preserved:**\n"
+        "• Purchase records (for legal compliance)\n"
+        "• Payment transaction history\n\n"
+        "⚠️ **This action is irreversible!**\n\n"
+        "If you're sure you want to proceed, click the button below for the final confirmation."
+    )
+    
+    keyboard = [
+        [InlineKeyboardButton("🗑️ I want to delete my account", callback_data="delete_account_confirm")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await query.edit_message_text(delete_warning_text, reply_markup=reply_markup)
+
+async def handle_delete_account_confirm_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle Delete Account confirmation - Second confirmation."""
+    query = update.callback_query
+    user_id = update.effective_user.id
+    
+    final_warning_text = (
+        "🚨 **Final Confirmation Required**\n\n"
+        "**You are about to permanently delete your account!**\n\n"
+        "This is your last chance to cancel. Once confirmed:\n"
+        "• All your data will be permanently deleted\n"
+        "• You will lose access to all your reminders\n"
+        "• Your subscription will be cancelled\n"
+        "• This action cannot be undone\n\n"
+        "**To finalize the deletion, please type the following message in the chat:**\n"
+        "`I confirm I want to delete my account permanently`\n\n"
+        "**To cancel, simply ignore this message or type anything else.**"
+    )
+    
+    # Set flag in context to indicate we're waiting for final confirmation
+    context.user_data['waiting_for_delete_confirmation'] = True
+    context.user_data['delete_confirmation_message'] = "I confirm I want to delete my account permanently"
+    
+    keyboard = [
+        [InlineKeyboardButton("❌ Cancel Deletion", callback_data="delete_account_cancel")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await query.edit_message_text(final_warning_text, reply_markup=reply_markup)
+
+async def handle_delete_account_cancel_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle Delete Account cancellation."""
+    query = update.callback_query
+    
+    # Clear the deletion flag
+    context.user_data.pop('waiting_for_delete_confirmation', None)
+    context.user_data.pop('delete_confirmation_message', None)
+    
+    cancel_text = (
+        "✅ **Deletion Cancelled**\n\n"
+        "Your account has not been deleted. All your data remains safe.\n\n"
+        "You can continue using the bot normally."
+    )
+    
+    keyboard = [
+        [InlineKeyboardButton("Back to Settings", callback_data="timezone_back_settings")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await query.edit_message_text(cancel_text, reply_markup=reply_markup)
+
+async def delete_user_account(user_id: int, db: Session) -> bool:
+    """Delete user account and all associated data, preserving purchase records."""
+    try:
+        # Get user
+        user = db.query(User).filter(User.telegram_id == user_id).first()
+        if not user:
+            logger.warning(f"Attempted to delete non-existent user: {user_id}")
+            return False
+        
+        logger.info(f"Starting account deletion for user {user_id}")
+        
+        # Delete all reminders for this user
+        reminders_deleted = db.query(Reminder).filter(Reminder.user_id == user.id).delete()
+        logger.info(f"Deleted {reminders_deleted} reminders for user {user_id}")
+        
+        # Delete the user record (this will cascade to other user-related data)
+        # Note: We preserve purchase records by not deleting them
+        db.delete(user)
+        
+        # Commit the changes
+        db.commit()
+        
+        logger.info(f"Successfully deleted account for user {user_id}")
+        return True
+        
+    except Exception as e:
+        logger.error(f"Error deleting account for user {user_id}: {e}")
+        db.rollback()
+        return False
+
 # Conversation Handlers
 async def handle_initial_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int: 
     logger.warning("Legacy ConversationHandler state: handle_initial_message called. Should be handled by LangGraph.")
@@ -1278,6 +1436,15 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         return
     elif callback_data == "settings_contact_me":
         await handle_settings_contact_me_callback(update, context)
+        return
+    elif callback_data == "settings_delete_account":
+        await handle_settings_delete_account_callback(update, context)
+        return
+    elif callback_data == "delete_account_confirm":
+        await handle_delete_account_confirm_callback(update, context)
+        return
+    elif callback_data == "delete_account_cancel":
+        await handle_delete_account_cancel_callback(update, context)
         return
     elif callback_data == "settings_back_main":
         await handle_settings_back_main_callback(update, context)
