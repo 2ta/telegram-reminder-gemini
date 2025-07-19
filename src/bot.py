@@ -1555,7 +1555,16 @@ async def ping(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 def build_application() -> Application:
     global _application_instance
     init_db()
-    application = Application.builder().token(settings.TELEGRAM_BOT_TOKEN).build()
+    # Build application with increased timeout settings to handle network delays
+    application = (
+        Application.builder()
+        .token(settings.TELEGRAM_BOT_TOKEN)
+        .read_timeout(30)  # Increase read timeout to 30 seconds
+        .write_timeout(30)  # Increase write timeout to 30 seconds
+        .connect_timeout(30)  # Increase connect timeout to 30 seconds
+        .pool_timeout(30)  # Increase pool timeout to 30 seconds
+        .build()
+    )
     _application_instance = application
     application.add_handler(CommandHandler("start", start_command))
     application.add_handler(CommandHandler("pay", payment_command))
