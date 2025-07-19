@@ -28,7 +28,7 @@ def get_timezone_from_city_gemini(city_name: str) -> Optional[str]:
         1. Return only the timezone identifier, nothing else
         2. Use standard IANA timezone names
         3. If the city name is ambiguous, choose the most common/popular city
-        4. If you can't determine the timezone, return "UTC"
+        4. If you can't determine the timezone or the city name is invalid/gibberish, return "INVALID"
         
         Examples:
         - "New York" → "America/New_York"
@@ -36,12 +36,19 @@ def get_timezone_from_city_gemini(city_name: str) -> Optional[str]:
         - "Tehran" → "Asia/Tehran"
         - "Tokyo" → "Asia/Tokyo"
         - "Sydney" → "Australia/Sydney"
+        - "lksakd" → "INVALID"
+        - "xyz123" → "INVALID"
         
         City: {city_name}
         Timezone:"""
         
         response = model.generate_content(prompt)
         timezone = response.text.strip()
+        
+        # Check if Gemini returned INVALID
+        if timezone == "INVALID" or timezone == "":
+            logger.info(f"Gemini could not determine timezone for invalid city '{city_name}'")
+            return None
         
         # Validate the timezone
         if is_valid_timezone(timezone):
