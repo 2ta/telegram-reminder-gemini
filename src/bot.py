@@ -447,10 +447,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         await handle_city_name_input(update, context)
         return
     
-    # Save user message to conversation memory
+    # Get session ID for conversation memory
     from src.conversation_memory import conversation_memory
     session_id = conversation_memory.get_session_id(user_id, chat_id)
-    conversation_memory.add_user_message(session_id, text)
     
     initial_state = AgentState(
         user_id=user_id,
@@ -482,6 +481,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     )
     
     await _handle_graph_invocation(update, context, initial_state)
+    
+    # Save user message to conversation memory after graph processing
+    # This allows the graph to clear the memory if needed (e.g., for clarifications)
+    conversation_memory.add_user_message(session_id, text)
+    
     log_memory_usage(f"after handle_message for user {user_id}")
 
 async def handle_settings_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
