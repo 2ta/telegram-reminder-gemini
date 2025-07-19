@@ -344,24 +344,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     elif text == "Unlimited Reminders 👑":
         # Let this go through the normal message flow to be handled by LangGraph
         pass
-    elif text == "Change Timezone":
-        await handle_change_timezone_button(update, context)
-        return
-    elif text == "Back to Main Menu":
-        await handle_back_to_main_menu(update, context)
-        return
-    elif text == "Back to Settings":
-        await handle_back_to_settings(update, context)
-        return
-    elif text == "Send Location":
-        await handle_send_location_button(update, context)
-        return
-    elif text == "Enter City Name":
-        await handle_enter_city_button(update, context)
-        return
-    elif text == "Back to Timezone Settings":
-        await handle_change_timezone_button(update, context)
-        return
     
     # Check if user is in city name input mode (simple heuristic)
     # If the last message was "Enter City Name", treat the next text as city name
@@ -422,12 +404,12 @@ async def handle_settings_button(update: Update, context: ContextTypes.DEFAULT_T
         await update.message.reply_text("User not found. Please use /start to register.")
         return
     
-    # Create settings keyboard
+    # Create settings inline keyboard
     keyboard = [
-        [KeyboardButton("Change Timezone")],
-        [KeyboardButton("Back to Main Menu")]
+        [InlineKeyboardButton("Change Timezone", callback_data="settings_change_timezone")],
+        [InlineKeyboardButton("Back to Main Menu", callback_data="settings_back_main")]
     ]
-    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=True)
+    reply_markup = InlineKeyboardMarkup(keyboard)
     
     current_timezone = user.timezone or "UTC"
     settings_text = f"🔧 **Settings**\n\nCurrent timezone: {current_timezone}\n\nSelect an option:"
@@ -481,12 +463,13 @@ async def handle_change_timezone_button(update: Update, context: ContextTypes.DE
     
     logger.info(f"Change Timezone button pressed by user {user_id}")
     
-    # Create timezone selection keyboard
+    # Create timezone selection inline keyboard
     keyboard = [
-        [KeyboardButton("Send Location"), KeyboardButton("Enter City Name")],
-        [KeyboardButton("Back to Settings")]
+        [InlineKeyboardButton("📍 Send Location", callback_data="timezone_send_location")],
+        [InlineKeyboardButton("🏙️ Enter City Name", callback_data="timezone_enter_city")],
+        [InlineKeyboardButton("Back to Settings", callback_data="timezone_back_settings")]
     ]
-    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=True)
+    reply_markup = InlineKeyboardMarkup(keyboard)
     
     timezone_text = (
         "🌍 **Change Timezone**\n\n"
@@ -1004,6 +987,84 @@ async def handle_done_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         logger.error(f"Error handling done callback: {e}", exc_info=True)
         await query.answer("Error marking reminder as done")
 
+# Settings and Timezone Callback Handlers
+async def handle_settings_change_timezone_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle Change Timezone button from settings."""
+    query = update.callback_query
+    user_id = update.effective_user.id
+    
+    logger.info(f"Settings Change Timezone callback from user {user_id}")
+    
+    # Create timezone selection inline keyboard
+    keyboard = [
+        [InlineKeyboardButton("📍 Send Location", callback_data="timezone_send_location")],
+        [InlineKeyboardButton("🏙️ Enter City Name", callback_data="timezone_enter_city")],
+        [InlineKeyboardButton("Back to Settings", callback_data="timezone_back_settings")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    timezone_text = (
+        "🌍 **Change Timezone**\n\n"
+        "You can set your timezone in two ways:\n\n"
+        "📍 **Send Location** - Share your location to automatically detect timezone\n"
+        "🏙️ **Enter City Name** - Type a city name (e.g., 'New York', 'London', 'Tehran')\n\n"
+        "Select an option:"
+    )
+    
+    await query.edit_message_text(timezone_text, reply_markup=reply_markup, parse_mode='Markdown')
+
+async def handle_settings_back_main_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle Back to Main Menu button from settings."""
+    query = update.callback_query
+    
+    await query.edit_message_text("Back to main menu. Use the keyboard buttons below to access bot features.")
+
+async def handle_timezone_send_location_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle Send Location button from timezone settings."""
+    query = update.callback_query
+    
+    await query.edit_message_text(
+        "📍 Please share your location to automatically detect your timezone.\n\n"
+        "Use the paperclip button to share your location."
+    )
+
+async def handle_timezone_enter_city_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle Enter City Name button from timezone settings."""
+    query = update.callback_query
+    user_id = update.effective_user.id
+    
+    # Set flag to indicate we're waiting for city name input
+    context.user_data['waiting_for_city_name'] = True
+    
+    await query.edit_message_text(
+        "🏙️ Please type a city name (e.g., 'New York', 'London', 'Tehran', 'Tokyo'):"
+    )
+
+async def handle_timezone_back_settings_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle Back to Settings button from timezone settings."""
+    query = update.callback_query
+    user_id = update.effective_user.id
+    
+    # Get user from database
+    db = next(get_db())
+    user = db.query(User).filter(User.telegram_id == user_id).first()
+    
+    if not user:
+        await query.edit_message_text("User not found. Please use /start to register.")
+        return
+    
+    # Create settings inline keyboard
+    keyboard = [
+        [InlineKeyboardButton("Change Timezone", callback_data="settings_change_timezone")],
+        [InlineKeyboardButton("Back to Main Menu", callback_data="settings_back_main")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    current_timezone = user.timezone or "UTC"
+    settings_text = f"🔧 **Settings**\n\nCurrent timezone: {current_timezone}\n\nSelect an option:"
+    
+    await query.edit_message_text(settings_text, reply_markup=reply_markup, parse_mode='Markdown')
+
 # Conversation Handlers
 async def handle_initial_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int: 
     logger.warning("Legacy ConversationHandler state: handle_initial_message called. Should be handled by LangGraph.")
@@ -1051,6 +1112,23 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         return
     elif callback_data.startswith("done:"):
         await handle_done_callback(update, context)
+        return
+    
+    # Handle settings and timezone callbacks
+    if callback_data == "settings_change_timezone":
+        await handle_settings_change_timezone_callback(update, context)
+        return
+    elif callback_data == "settings_back_main":
+        await handle_settings_back_main_callback(update, context)
+        return
+    elif callback_data == "timezone_send_location":
+        await handle_timezone_send_location_callback(update, context)
+        return
+    elif callback_data == "timezone_enter_city":
+        await handle_timezone_enter_city_callback(update, context)
+        return
+    elif callback_data == "timezone_back_settings":
+        await handle_timezone_back_settings_callback(update, context)
         return
     
     # Acknowledge the button press by sending an empty response
