@@ -180,6 +180,9 @@ async def determine_intent_node(state: AgentState) -> Dict[str, Any]:
                             "status": "ready_for_processing"
                         }
                         
+                        # Clear the conversation memory since we're processing this now
+                        conversation_memory.clear_conversation_context(session_id)
+                        
                         return {
                             "current_intent": "intent_create_reminder",
                             "extracted_parameters": {"task": collected_task, "date": "tomorrow", "time": input_text},
@@ -247,6 +250,9 @@ async def determine_intent_node(state: AgentState) -> Dict[str, Any]:
                     reminder_ctx["collected_time_str"] = input_text
                     reminder_ctx["pending_clarification_type"] = None
                     reminder_ctx["status"] = "ready_for_processing"
+                    
+                    # Clear the conversation memory since we're processing this now
+                    conversation_memory.clear_conversation_context(session_id)
                     
                     return {
                         "current_intent": "intent_create_reminder",
