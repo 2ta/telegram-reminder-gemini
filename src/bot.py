@@ -781,16 +781,13 @@ async def check_and_send_reminders(context: ContextTypes.DEFAULT_TYPE) -> None:
         # Get current time in UTC
         now_utc = datetime.datetime.now(pytz.utc)
         
-        # Find all active reminders that are due (within the last 5 minutes to catch any missed ones)
-        due_time = now_utc - datetime.timedelta(minutes=5)
-        
+        # Find all active reminders that are due (past due time)
         # Query for due reminders
         due_reminders = db.query(Reminder).join(User).filter(
             and_(
                 Reminder.is_active == True,
                 Reminder.is_notified == False,
-                Reminder.due_datetime_utc <= now_utc,
-                Reminder.due_datetime_utc >= due_time
+                Reminder.due_datetime_utc <= now_utc
             )
         ).all()
         
