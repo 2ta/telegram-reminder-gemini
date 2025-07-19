@@ -345,9 +345,19 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         # Let this go through the normal message flow to be handled by LangGraph
         pass
     
-    # Check if user is in city name input mode (simple heuristic)
-    # If the last message was "Enter City Name", treat the next text as city name
+    # Check if user is in city name input mode
     if context.user_data.get('waiting_for_city_name'):
+        # If user types "Back to Settings", clear the flag and go back to settings
+        if text == "Back to Settings":
+            context.user_data['waiting_for_city_name'] = False
+            await handle_settings_button(update, context)
+            return
+        # If user types "Back to Timezone Settings", clear the flag and go back to timezone options
+        elif text == "Back to Timezone Settings":
+            context.user_data['waiting_for_city_name'] = False
+            await handle_change_timezone_button(update, context)
+            return
+        # Otherwise, treat the text as a city name
         context.user_data['waiting_for_city_name'] = False
         await handle_city_name_input(update, context)
         return
@@ -518,7 +528,7 @@ async def handle_enter_city_button(update: Update, context: ContextTypes.DEFAULT
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=True)
     
     await update.message.reply_text(
-        "🏙️ Please type a city name (e.g., 'New York', 'London', 'Tehran', 'Tokyo'):",
+        "🏙️ Please type a city name (e.g., 'New York', 'London', 'Tehran', 'Tokyo'):\n\nYou can also share your location instead by clicking the button below.",
         reply_markup=reply_markup
     )
 
@@ -594,9 +604,13 @@ async def handle_city_name_input(update: Update, context: ContextTypes.DEFAULT_T
         else:
             await update.message.reply_text("User not found. Please use /start to register.")
     else:
-        error_text = f"❌ Could not detect timezone for '{city_name}'. Please try a different city name or share your location."
+        error_text = f"❌ Could not find the city '{city_name}'.\n\nPlease try typing a different city name (e.g., 'New York', 'London', 'Tehran', 'Tokyo', 'Paris').\n\nOr you can share your location instead."
+        
+        # Set flag to indicate we're still waiting for city name input
+        context.user_data['waiting_for_city_name'] = True
+        
         keyboard = [
-            [KeyboardButton("Send Location")],
+            [KeyboardButton("📍 Share Location", request_location=True)],
             [KeyboardButton("Back to Settings")]
         ]
         reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=True)
