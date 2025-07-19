@@ -161,29 +161,80 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     
     logger.info(f"Received /start from user {user_id}")
     
-    # Create persistent keyboard
-    keyboard = create_persistent_keyboard()
-    
-    # Send welcome message with keyboard
-    welcome_message = (
-        "Hello 👋\n"
-        "Welcome to the Reminder Bot!\n\n"
-        "Just send me a message or voice and tell me what to remind you about and when. For example:\n"
-        "🗓 \"Remind me to call mom tomorrow at 3pm\"\n"
-        "💊 \"Remind me to take my pills every day at 8am\"\n\n"
-        "✨ Bot Features:\n"
-        "- Create reminders by speaking or typing\n"
-        "- Smart detection of date and time from your message\n"
-        "- View and delete active reminders\n"
-        "- Timezone support for accurate scheduling\n"
-        "- Premium features available\n\n"
-        "Use the keyboard below to access bot features:"
-    )
-    
-    await update.message.reply_text(
-        welcome_message,
-        reply_markup=keyboard
-    )
+    # Check if user has timezone set
+    db: Session = next(get_db())
+    try:
+        user = db.query(User).filter(User.telegram_id == user_id).first()
+        
+        if user and user.timezone and user.timezone != 'UTC':
+            # User has timezone set, send normal welcome
+            keyboard = create_persistent_keyboard()
+            welcome_message = (
+                "Hello 👋\n"
+                "Welcome to the Reminder Bot!\n\n"
+                "Just send me a message or voice and tell me what to remind you about and when. For example:\n"
+                "🗓 \"Remind me to call mom tomorrow at 3pm\"\n"
+                "💊 \"Remind me to take my pills every day at 8am\"\n\n"
+                "✨ Bot Features:\n"
+                "- Create reminders by speaking or typing\n"
+                "- Smart detection of date and time from your message\n"
+                "- View and delete active reminders\n"
+                "- Timezone support for accurate scheduling\n"
+                "- Premium features available\n\n"
+                "Use the keyboard below to access bot features:"
+            )
+            
+            await update.message.reply_text(
+                welcome_message,
+                reply_markup=keyboard
+            )
+        else:
+            # User needs to set timezone first
+            timezone_message = (
+                "🌍 **Welcome to the Reminder Bot!** 👋\n\n"
+                "To ensure your reminders are set at the correct time, I need to know your timezone.\n\n"
+                "Please set your timezone first:"
+            )
+            
+            keyboard = [
+                [InlineKeyboardButton("📍 Send Location", callback_data="timezone_send_location")],
+                [InlineKeyboardButton("🏙️ Enter City Name", callback_data="timezone_enter_city")]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            await update.message.reply_text(
+                timezone_message,
+                reply_markup=reply_markup
+            )
+            
+            # Set flag to indicate user needs to set timezone
+            context.user_data['needs_timezone_setup'] = True
+            
+    except Exception as e:
+        logger.error(f"Error checking user timezone in start command: {e}")
+        # Fallback to normal welcome
+        keyboard = create_persistent_keyboard()
+        welcome_message = (
+            "Hello 👋\n"
+            "Welcome to the Reminder Bot!\n\n"
+            "Just send me a message or voice and tell me what to remind you about and when. For example:\n"
+            "🗓 \"Remind me to call mom tomorrow at 3pm\"\n"
+            "💊 \"Remind me to take my pills every day at 8am\"\n\n"
+            "✨ Bot Features:\n"
+            "- Create reminders by speaking or typing\n"
+            "- Smart detection of date and time from your message\n"
+            "- View and delete active reminders\n"
+            "- Timezone support for accurate scheduling\n"
+            "- Premium features available\n\n"
+            "Use the keyboard below to access bot features:"
+        )
+        
+        await update.message.reply_text(
+            welcome_message,
+            reply_markup=keyboard
+        )
+    finally:
+        db.close()
     
     log_memory_usage(f"after start_command for user {user_id}")
 
@@ -560,10 +611,36 @@ async def handle_location(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             db.commit()
             
             display_name = get_timezone_display_name(timezone)
-            success_text = f"✅ Timezone updated successfully!\n\nYour timezone is now: {display_name}"
             
-            keyboard = create_persistent_keyboard()
-            await update.message.reply_text(success_text, reply_markup=keyboard, )
+            # Check if this was the initial timezone setup
+            if context.user_data.get('needs_timezone_setup'):
+                # Clear the flag
+                context.user_data['needs_timezone_setup'] = False
+                
+                # Show welcome message after timezone setup
+                welcome_message = (
+                    f"✅ Timezone set successfully!\n\n"
+                    f"Your timezone is now: {display_name}\n\n"
+                    f"🎉 **Welcome to the Reminder Bot!**\n\n"
+                    f"Just send me a message or voice and tell me what to remind you about and when. For example:\n"
+                    f"🗓 \"Remind me to call mom tomorrow at 3pm\"\n"
+                    f"💊 \"Remind me to take my pills every day at 8am\"\n\n"
+                    f"✨ Bot Features:\n"
+                    f"- Create reminders by speaking or typing\n"
+                    f"- Smart detection of date and time from your message\n"
+                    f"- View and delete active reminders\n"
+                    f"- Timezone support for accurate scheduling\n"
+                    f"- Premium features available\n\n"
+                    f"Use the keyboard below to access bot features:"
+                )
+                
+                keyboard = create_persistent_keyboard()
+                await update.message.reply_text(welcome_message, reply_markup=keyboard)
+            else:
+                # Normal timezone update
+                success_text = f"✅ Timezone updated successfully!\n\nYour timezone is now: {display_name}"
+                keyboard = create_persistent_keyboard()
+                await update.message.reply_text(success_text, reply_markup=keyboard)
         else:
             await update.message.reply_text("User not found. Please use /start to register.")
     else:
@@ -597,10 +674,36 @@ async def handle_city_name_input(update: Update, context: ContextTypes.DEFAULT_T
             db.commit()
             
             display_name = get_timezone_display_name(timezone)
-            success_text = f"✅ Timezone updated successfully!\n\nYour timezone is now: {display_name}"
             
-            keyboard = create_persistent_keyboard()
-            await update.message.reply_text(success_text, reply_markup=keyboard, )
+            # Check if this was the initial timezone setup
+            if context.user_data.get('needs_timezone_setup'):
+                # Clear the flag
+                context.user_data['needs_timezone_setup'] = False
+                
+                # Show welcome message after timezone setup
+                welcome_message = (
+                    f"✅ Timezone set successfully!\n\n"
+                    f"Your timezone is now: {display_name}\n\n"
+                    f"🎉 **Welcome to the Reminder Bot!**\n\n"
+                    f"Just send me a message or voice and tell me what to remind you about and when. For example:\n"
+                    f"🗓 \"Remind me to call mom tomorrow at 3pm\"\n"
+                    f"💊 \"Remind me to take my pills every day at 8am\"\n\n"
+                    f"✨ Bot Features:\n"
+                    f"- Create reminders by speaking or typing\n"
+                    f"- Smart detection of date and time from your message\n"
+                    f"- View and delete active reminders\n"
+                    f"- Timezone support for accurate scheduling\n"
+                    f"- Premium features available\n\n"
+                    f"Use the keyboard below to access bot features:"
+                )
+                
+                keyboard = create_persistent_keyboard()
+                await update.message.reply_text(welcome_message, reply_markup=keyboard)
+            else:
+                # Normal timezone update
+                success_text = f"✅ Timezone updated successfully!\n\nYour timezone is now: {display_name}"
+                keyboard = create_persistent_keyboard()
+                await update.message.reply_text(success_text, reply_markup=keyboard)
         else:
             await update.message.reply_text("User not found. Please use /start to register.")
     else:

@@ -545,7 +545,8 @@ async def execute_start_command_node(state: AgentState) -> Dict[str, Any]:
                 username=user_telegram_details.get("username"),
                 first_name=user_telegram_details.get("first_name"),
                 last_name=user_telegram_details.get("last_name"),
-                language_code=user_telegram_details.get("language_code")
+                language_code=user_telegram_details.get("language_code"),
+                timezone='UTC'  # Default timezone, user will be prompted to change it
             )
             db.add(user_obj)
             db.commit()
