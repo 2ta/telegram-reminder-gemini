@@ -795,7 +795,6 @@ async def save_or_update_reminder_in_db(
             limit_msg_key = "MSG_REMINDER_LIMIT_REACHED_PREMIUM" if is_premium else "MSG_REMINDER_LIMIT_REACHED_FREE"
             # Fetch the actual message string from settings or config, assuming it's defined there.
             # For now, returning a generic key. This part needs to align with actual message definitions.
-            # This should ideally be handled by the graph before attempting to save.
             limit_message = getattr(settings, limit_msg_key, "Reminder limit reached.")
             if hasattr(settings, limit_msg_key):
                  limit_message = limit_message.format(limit=max_reminders) # if messages have placeholders
@@ -1154,13 +1153,12 @@ async def handle_settings_privacy_policy_callback(update: Update, context: Conte
     privacy_text = (
         "🔒 **Privacy Policy**\n\n"
         "Our complete Privacy Policy is available online.\n\n"
-        "**Key Points:**\n"
         "• We only store your reminders and basic profile info\n"
         "• Voice messages are processed but not stored\n"
         "• Your data is never shared with third parties\n"
         "• You can delete your account anytime\n\n"
         "📖 **Read Full Policy:**\n"
-        "http://45.77.155.59:8080/privacy\n\n"
+        f"{settings.LEGAL_PAGES_BASE_URL}/privacy\n\n"
         "For questions, contact us at ai_reminder@gmail.com"
     )
     
@@ -1178,13 +1176,12 @@ async def handle_settings_terms_of_service_callback(update: Update, context: Con
     terms_text = (
         "📋 **Terms of Service**\n\n"
         "Our complete Terms of Service are available online.\n\n"
-        "**Key Points:**\n"
         "• Free tier: 5 active reminders\n"
         "• Premium tier: Unlimited reminders ($9.99/month)\n"
         "• Use the service for lawful purposes only\n"
         "• We may update terms with notice\n\n"
         "📖 **Read Full Terms:**\n"
-        "http://45.77.155.59:8080/terms\n\n"
+        f"{settings.LEGAL_PAGES_BASE_URL}/terms\n\n"
         "For questions, contact us at ai_reminder@gmail.com"
     )
     
@@ -1210,7 +1207,7 @@ async def handle_settings_contact_me_callback(update: Update, context: ContextTy
         "**Email:** ai_reminder@gmail.com\n"
         "**Response Time:** Within 24 hours\n\n"
         "📖 **Visit Contact Page:**\n"
-        "http://45.77.155.59:8080/contact"
+        f"{settings.LEGAL_PAGES_BASE_URL}/contact"
     )
     
     keyboard = [

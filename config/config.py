@@ -46,6 +46,9 @@ class Settings(BaseSettings):
     # Environment setting (dev, test, prod)
     APP_ENV: Literal["development", "testing", "production"] = "development"
 
+    # Web Server Configuration for Legal Pages
+    LEGAL_PAGES_BASE_URL: str = "http://45.77.155.59:8080"
+
 settings = Settings()
 
 # --- English Messages (Module-level constants) ---
