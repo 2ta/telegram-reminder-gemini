@@ -36,6 +36,73 @@ def get_current_english_datetime_for_prompt() -> str:
         logger.error(f"Error generating current English datetime for prompt: {e}", exc_info=True)
         return "Current date and time unavailable"
 
+def split_datetime_input(input_text: str) -> tuple[Optional[str], Optional[str]]:
+    """
+    Split a combined date+time input into separate date and time components.
+    
+    Args:
+        input_text: Combined input like "Today 10 AM", "tomorrow 3:30 PM", etc.
+        
+    Returns:
+        Tuple of (date_str, time_str) where either can be None if not found
+    """
+    input_lower = input_text.lower().strip()
+    
+    # Common date patterns
+    date_patterns = [
+        r'^(today|tomorrow|day after tomorrow)',
+        r'^(next week|next month)',
+        r'^(monday|tuesday|wednesday|thursday|friday|saturday|sunday)',
+        r'^(next monday|next tuesday|next wednesday|next thursday|next friday|next saturday|next sunday)',
+        r'^\d{1,2}\s+(january|february|march|april|may|june|july|august|september|october|november|december)',
+        r'^\d{1,2}\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)',
+        r'^\d{1,2}/\d{1,2}',
+        r'^\d{4}-\d{1,2}-\d{1,2}'
+    ]
+    
+    # Common time patterns
+    time_patterns = [
+        r'(\d{1,2}(?::\d{1,2})?\s*(a\.?m\.?|p\.?m\.?))$',
+        r'(\d{1,2}:\d{1,2})$',
+        r'(morning|noon|afternoon|evening|night|midnight)$'
+    ]
+    
+    # Try to find date at the beginning
+    date_str = None
+    time_str = None
+    
+    for pattern in date_patterns:
+        match = re.match(pattern, input_lower)
+        if match:
+            date_str = match.group(0)
+            break
+    
+    # Try to find time at the end
+    for pattern in time_patterns:
+        match = re.search(pattern, input_lower)
+        if match:
+            time_str = match.group(1)
+            break
+    
+    # If we found both, clean up the input
+    if date_str and time_str:
+        # Remove the found parts from the input to see if there's anything left
+        remaining = input_lower.replace(date_str, '').replace(time_str, '').strip()
+        if remaining:
+            # If there's remaining text, it might be part of the date or time
+            # Try to include it with the date
+            date_str = input_lower[:input_lower.find(time_str)].strip()
+    
+    # If we only found one component, the whole input might be that component
+    if not date_str and not time_str:
+        # Check if the whole input looks like a date or time
+        if any(re.match(pattern, input_lower) for pattern in date_patterns):
+            date_str = input_text
+        elif any(re.search(pattern, input_lower) for pattern in time_patterns):
+            time_str = input_text
+    
+    return date_str, time_str
+
 async def entry_node(state: AgentState) -> Dict[str, Any]:
     """Node that processes the initial input and determines message type."""
     logger.info(f"Graph: Entered entry_node for user {state.get('user_id')}")
@@ -354,10 +421,13 @@ async def determine_intent_node(state: AgentState) -> Dict[str, Any]:
                 elif has_date_time:
                     # Input appears to have both date and time - try to process it
                     logger.info(f"Date+time input detected: '{input_text}', attempting to process")
-                    combined_input = f"Remind me to {collected_task} {input_text}"
                     
-                    reminder_ctx["collected_date_str"] = input_text
-                    reminder_ctx["collected_time_str"] = None
+                    # Split the combined input into date and time components
+                    date_str, time_str = split_datetime_input(input_text)
+                    logger.info(f"Split '{input_text}' into date='{date_str}', time='{time_str}'")
+                    
+                    reminder_ctx["collected_date_str"] = date_str
+                    reminder_ctx["collected_time_str"] = time_str
                     reminder_ctx["pending_clarification_type"] = None
                     reminder_ctx["status"] = "ready_for_processing"
                     
@@ -366,10 +436,10 @@ async def determine_intent_node(state: AgentState) -> Dict[str, Any]:
                     
                     return {
                         "current_intent": "intent_create_reminder",
-                        "extracted_parameters": {"task": collected_task, "date": input_text, "time": None},
+                        "extracted_parameters": {"task": collected_task, "date": date_str, "time": time_str},
                         "current_node_name": "determine_intent_node",
                         "reminder_creation_context": reminder_ctx,
-                        "input_text": combined_input
+                        "input_text": input_text
                     }
                 
                 else:
