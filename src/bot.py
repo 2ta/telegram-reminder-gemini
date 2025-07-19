@@ -567,7 +567,7 @@ async def handle_change_timezone_button(update: Update, context: ContextTypes.DE
         "🌍 Change Timezone\n\n"
         "You can set your timezone in two ways:\n\n"
         "📍 Send Location - Share your location to automatically detect timezone\n"
-        "🏙️ Enter City Name - Type a city name (e.g., 'New York', 'London', 'Tehran')\n\n"
+        "🏙️ Enter City Name - Type a city name (e.g., 'New York', 'London', 'Tokyo')\n\n"
         "Select an option:"
     )
     
@@ -606,7 +606,7 @@ async def handle_enter_city_button(update: Update, context: ContextTypes.DEFAULT
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=True)
     
     await update.message.reply_text(
-        "🏙️ Please type a city name (e.g., 'New York', 'London', 'Tehran', 'Tokyo'):\n\nYou can also share your location instead by clicking the button below.",
+        "🏙️ Please type a city name (e.g., 'New York', 'London', 'Tokyo'):\n\nYou can also share your location instead by clicking the button below.",
         reply_markup=reply_markup
     )
 
@@ -724,7 +724,7 @@ async def handle_city_name_input(update: Update, context: ContextTypes.DEFAULT_T
         else:
             await update.message.reply_text("User not found. Please use /start to register.")
     else:
-        error_text = f"❌ Could not find the city '{city_name}'.\n\nPlease try typing a different city name (e.g., 'New York', 'London', 'Tehran', 'Tokyo', 'Paris').\n\nOr you can share your location instead."
+        error_text = f"❌ Could not find the city '{city_name}'.\n\nPlease try typing a different city name (e.g., 'New York', 'London', 'Tokyo', 'Paris').\n\nOr you can share your location instead."
         
         # Set flag to indicate we're still waiting for city name input
         context.user_data['waiting_for_city_name'] = True
@@ -1142,7 +1142,7 @@ async def handle_settings_change_timezone_callback(update: Update, context: Cont
         "🌍 **Change Timezone**\n\n"
         "You can set your timezone in two ways:\n\n"
         "📍 **Send Location** - Share your location to automatically detect timezone\n"
-        "🏙️ **Enter City Name** - Type a city name (e.g., 'New York', 'London', 'Tehran')\n\n"
+        "🏙️ **Enter City Name** - Type a city name (e.g., 'New York', 'London', 'Tokyo')\n\n"
         "Select an option:"
     )
     
@@ -1172,7 +1172,7 @@ async def handle_timezone_enter_city_callback(update: Update, context: ContextTy
     context.user_data['waiting_for_city_name'] = True
     
     await query.edit_message_text(
-        "🏙️ Please type a city name (e.g., 'New York', 'London', 'Tehran', 'Tokyo'):"
+        "🏙️ Please type a city name (e.g., 'New York', 'London', 'Tokyo'):"
     )
 
 async def handle_timezone_back_settings_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
