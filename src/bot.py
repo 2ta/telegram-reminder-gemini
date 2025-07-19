@@ -1159,7 +1159,7 @@ async def handle_settings_privacy_policy_callback(update: Update, context: Conte
         "• You can delete your account anytime\n\n"
         "📖 **Read Full Policy:**\n"
         f"{settings.LEGAL_PAGES_BASE_URL}/privacy\n\n"
-        "For questions, contact us at ai_reminder@gmail.com"
+        f"For questions, contact us at {settings.SUPPORT_EMAIL}"
     )
     
     keyboard = [
@@ -1183,7 +1183,7 @@ async def handle_settings_terms_of_service_callback(update: Update, context: Con
         "• Use for lawful purposes only\n\n"
         "📖 **Read Full Terms:**\n"
         f"{settings.LEGAL_PAGES_BASE_URL}/terms\n\n"
-        "For questions, contact us at ai_reminder@gmail.com"
+        f"For questions, contact us at {settings.SUPPORT_EMAIL}"
     )
     
     keyboard = [
@@ -1205,10 +1205,9 @@ async def handle_settings_contact_me_callback(update: Update, context: ContextTy
         "• Payment issues\n"
         "• Bug reports\n"
         "• Feature requests\n\n"
-        "**Email:** ai_reminder@gmail.com\n"
-        "**Response Time:** Within 24 hours\n\n"
-        "📖 **Visit Contact Page:**\n"
-        f"{settings.LEGAL_PAGES_BASE_URL}/contact"
+        f"**Email:** {settings.SUPPORT_EMAIL}\n"
+        f"**Telegram:** {settings.SUPPORT_TELEGRAM_ID}\n"
+        "**Response Time:** Within 24 hours"
     )
     
     keyboard = [

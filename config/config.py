@@ -49,6 +49,10 @@ class Settings(BaseSettings):
     # Web Server Configuration for Legal Pages
     LEGAL_PAGES_BASE_URL: str = "http://45.77.155.59:8080"
 
+    # Contact Information
+    SUPPORT_EMAIL: str = "ai_reminder@gmail.com"
+    SUPPORT_TELEGRAM_ID: str = "@ai_reminder_builder"
+
 settings = Settings()
 
 # --- English Messages (Module-level constants) ---

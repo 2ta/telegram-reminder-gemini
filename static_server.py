@@ -3,8 +3,13 @@ import os
 
 app = Flask(__name__)
 
+# Get contact information from environment variables
+SUPPORT_EMAIL = os.environ.get('SUPPORT_EMAIL', 'ai_reminder@gmail.com')
+SUPPORT_TELEGRAM_ID = os.environ.get('SUPPORT_TELEGRAM_ID', '@ai_reminder_builder')
+
 # Privacy Policy HTML template
-PRIVACY_POLICY_HTML = """
+def get_privacy_policy_html():
+    return f"""
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -12,7 +17,7 @@ PRIVACY_POLICY_HTML = """
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Privacy Policy - AI Reminder Bot</title>
     <style>
-        body {
+        body {{
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             line-height: 1.6;
             max-width: 800px;
@@ -20,43 +25,43 @@ PRIVACY_POLICY_HTML = """
             padding: 20px;
             color: #333;
             background-color: #f9f9f9;
-        }
-        .container {
+        }}
+        .container {{
             background: white;
             padding: 40px;
             border-radius: 10px;
             box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-        }
-        h1 {
+        }}
+        h1 {{
             color: #2c3e50;
             border-bottom: 3px solid #3498db;
             padding-bottom: 10px;
-        }
-        h2 {
+        }}
+        h2 {{
             color: #34495e;
             margin-top: 30px;
-        }
-        h3 {
+        }}
+        h3 {{
             color: #7f8c8d;
-        }
-        .highlight {
+        }}
+        .highlight {{
             background-color: #ecf0f1;
             padding: 15px;
             border-left: 4px solid #3498db;
             margin: 20px 0;
-        }
-        .contact-info {
+        }}
+        .contact-info {{
             background-color: #e8f5e8;
             padding: 15px;
             border-radius: 5px;
             margin: 20px 0;
-        }
-        .last-updated {
+        }}
+        .last-updated {{
             font-style: italic;
             color: #7f8c8d;
             text-align: center;
             margin-top: 30px;
-        }
+        }}
     </style>
 </head>
 <body>
@@ -117,7 +122,7 @@ PRIVACY_POLICY_HTML = """
         <p>When you delete a reminder or it is marked as complete, it is "soft-deleted" (marked as inactive). After one (1) month of being soft-deleted, this data is permanently and automatically erased from our database.</p>
 
         <h3>Account Deletion</h3>
-        <p>You have the right to request the complete deletion of all your data. To do so, please contact me at ai_reminder@gmail.com.</p>
+        <p>You have the right to request the complete deletion of all your data. To do so, please contact me at {SUPPORT_EMAIL}.</p>
 
         <h2>6. Your Data Protection Rights (GDPR)</h2>
         <p>If you are a resident of the European Economic Area (EEA), you have certain data protection rights, including:</p>
@@ -129,14 +134,14 @@ PRIVACY_POLICY_HTML = """
             <li><strong>The right to object to processing:</strong> You have the right to object to my processing of your personal data.</li>
             <li><strong>The right to data portability:</strong> You have the right to request that I transfer the data that I have collected to another organization, or directly to you.</li>
         </ul>
-        <p>To exercise any of these rights, please contact me at ai_reminder@gmail.com.</p>
+        <p>To exercise any of these rights, please contact me at {SUPPORT_EMAIL}.</p>
 
         <h2>7. Changes to This Privacy Policy</h2>
         <p>I may update this Privacy Policy from time to time. I will notify you of any changes by posting the new policy and updating the "Last Updated" date.</p>
 
         <h2>8. Contact Me</h2>
         <div class="contact-info">
-            <p>For any questions about this Privacy Policy or to exercise your rights, please contact me at <strong>ai_reminder@gmail.com</strong>.</p>
+            <p>For any questions about this Privacy Policy or to exercise your rights, please contact me at <strong>{SUPPORT_EMAIL}</strong>.</p>
         </div>
     </div>
 </body>
@@ -144,7 +149,8 @@ PRIVACY_POLICY_HTML = """
 """
 
 # Terms of Service HTML template
-TERMS_OF_SERVICE_HTML = """
+def get_terms_of_service_html():
+    return f"""
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -152,7 +158,7 @@ TERMS_OF_SERVICE_HTML = """
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Terms of Service - AI Reminder Bot</title>
     <style>
-        body {
+        body {{
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             line-height: 1.6;
             max-width: 800px;
@@ -160,51 +166,51 @@ TERMS_OF_SERVICE_HTML = """
             padding: 20px;
             color: #333;
             background-color: #f9f9f9;
-        }
-        .container {
+        }}
+        .container {{
             background: white;
             padding: 40px;
             border-radius: 10px;
             box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-        }
-        h1 {
+        }}
+        h1 {{
             color: #2c3e50;
             border-bottom: 3px solid #3498db;
             padding-bottom: 10px;
-        }
-        h2 {
+        }}
+        h2 {{
             color: #34495e;
             margin-top: 30px;
-        }
-        h3 {
+        }}
+        h3 {{
             color: #7f8c8d;
             margin-top: 20px;
-        }
-        .highlight {
+        }}
+        .highlight {{
             background-color: #ecf0f1;
             padding: 15px;
             border-left: 4px solid #3498db;
             margin: 20px 0;
-        }
-        .last-updated {
+        }}
+        .last-updated {{
             font-style: italic;
             color: #7f8c8d;
             text-align: center;
             margin-top: 30px;
-        }
-        .contact-info {
+        }}
+        .contact-info {{
             background-color: #e8f5e8;
             padding: 15px;
             border-radius: 5px;
             margin: 20px 0;
-        }
-        ul {
+        }}
+        ul {{
             margin: 10px 0;
             padding-left: 20px;
-        }
-        li {
+        }}
+        li {{
             margin: 5px 0;
-        }
+        }}
     </style>
 </head>
 <body>
@@ -227,11 +233,11 @@ TERMS_OF_SERVICE_HTML = """
         <p>The premium subscription is billed at €4.99 per month. Payments are processed by our third-party payment processor, Stripe, and will automatically renew each month unless canceled.</p>
 
         <h3>Cancellation Policy</h3>
-        <p>You may cancel your subscription at any time. To cancel, you must contact support directly by sending an email to ai_reminder@gmail.com or by messaging the support account on Telegram (@ai_reminder_builder). Please provide your Telegram User ID to facilitate the cancellation. Your access to premium features will continue until the end of your current billing period.</p>
+        <p>You may cancel your subscription at any time. To cancel, you must contact support directly by sending an email to {SUPPORT_EMAIL} or by messaging the support account on Telegram ({SUPPORT_TELEGRAM_ID}). Please provide your Telegram User ID to facilitate the cancellation. Your access to premium features will continue until the end of your current billing period.</p>
 
         <h3>Refund Policy</h3>
         <div class="highlight">
-            <p><strong>Full Money-Back Guarantee:</strong> I offer a full money-back guarantee. If you are unsatisfied with the premium service for any reason, you may request a full refund of your most recent monthly payment. To request a refund, please contact support at ai_reminder@gmail.com or @ai_reminder_builder on Telegram. Refunds will be processed through the original payment method via Stripe.</p>
+            <p><strong>Full Money-Back Guarantee:</strong> I offer a full money-back guarantee. If you are unsatisfied with the premium service for any reason, you may request a full refund of your most recent monthly payment. To request a refund, please contact support at {SUPPORT_EMAIL} or {SUPPORT_TELEGRAM_ID} on Telegram. Refunds will be processed through the original payment method via Stripe.</p>
         </div>
 
         <h2>3. User Responsibilities</h2>
@@ -261,118 +267,8 @@ TERMS_OF_SERVICE_HTML = """
 
         <h2>8. Contact Us</h2>
         <div class="contact-info">
-            <p>If you have any questions about these Terms, please contact me at <strong>ai_reminder@gmail.com</strong> or on Telegram at <strong>@ai_reminder_builder</strong>.</p>
+            <p>If you have any questions about these Terms, please contact me at <strong>{SUPPORT_EMAIL}</strong> or on Telegram at <strong>{SUPPORT_TELEGRAM_ID}</strong>.</p>
         </div>
-    </div>
-</body>
-</html>
-"""
-
-# Contact page HTML template
-CONTACT_HTML = """
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Contact Us - AI Reminder Bot</title>
-    <style>
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            line-height: 1.6;
-            max-width: 800px;
-            margin: 0 auto;
-            padding: 20px;
-            color: #333;
-            background-color: #f9f9f9;
-        }
-        .container {
-            background: white;
-            padding: 40px;
-            border-radius: 10px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-        }
-        h1 {
-            color: #2c3e50;
-            border-bottom: 3px solid #3498db;
-            padding-bottom: 10px;
-        }
-        .contact-method {
-            background-color: #ecf0f1;
-            padding: 20px;
-            border-radius: 8px;
-            margin: 20px 0;
-            border-left: 4px solid #3498db;
-        }
-        .contact-method h3 {
-            color: #2c3e50;
-            margin-top: 0;
-        }
-        .email-link {
-            color: #3498db;
-            text-decoration: none;
-            font-weight: bold;
-        }
-        .email-link:hover {
-            text-decoration: underline;
-        }
-        .response-time {
-            font-style: italic;
-            color: #7f8c8d;
-            margin-top: 10px;
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>Contact Us</h1>
-        <p>We're here to help! If you have any questions, concerns, or need support with the AI Reminder Bot, please don't hesitate to reach out.</p>
-
-        <div class="contact-method">
-            <h3>📧 Email Support</h3>
-            <p>For general inquiries, technical support, or privacy concerns:</p>
-            <p><a href="mailto:ai_reminder@gmail.com" class="email-link">ai_reminder@gmail.com</a></p>
-            <p class="response-time">We typically respond within 24 hours.</p>
-        </div>
-
-        <div class="contact-method">
-            <h3>🔒 Privacy & Data Requests</h3>
-            <p>For privacy-related questions, data deletion requests, or GDPR rights:</p>
-            <p><a href="mailto:ai_reminder@gmail.com" class="email-link">ai_reminder@gmail.com</a></p>
-            <p class="response-time">Privacy requests are processed within 48 hours.</p>
-        </div>
-
-        <div class="contact-method">
-            <h3>💳 Payment & Subscription Support</h3>
-            <p>For billing questions, subscription management, or payment issues:</p>
-            <p><a href="mailto:ai_reminder@gmail.com" class="email-link">ai_reminder@gmail.com</a></p>
-            <p class="response-time">Payment support available within 12 hours.</p>
-        </div>
-
-        <div class="contact-method">
-            <h3>🐛 Bug Reports & Feature Requests</h3>
-            <p>Found a bug or have a feature suggestion? Let us know:</p>
-            <p><a href="mailto:ai_reminder@gmail.com" class="email-link">ai_reminder@gmail.com</a></p>
-            <p class="response-time">We review all feedback and respond to confirmed bugs within 24 hours.</p>
-        </div>
-
-        <h2>What to Include in Your Message</h2>
-        <p>To help us assist you better, please include:</p>
-        <ul>
-            <li>Your Telegram username (if applicable)</li>
-            <li>A clear description of your issue or question</li>
-            <li>Steps to reproduce the problem (for bug reports)</li>
-            <li>Screenshots if relevant</li>
-        </ul>
-
-        <h2>Response Times</h2>
-        <p>We strive to respond to all inquiries promptly:</p>
-        <ul>
-            <li><strong>Urgent issues:</strong> Within 12 hours</li>
-            <li><strong>General support:</strong> Within 24 hours</li>
-            <li><strong>Privacy requests:</strong> Within 48 hours</li>
-            <li><strong>Feature requests:</strong> Within 72 hours</li>
-        </ul>
     </div>
 </body>
 </html>
@@ -384,15 +280,11 @@ def index():
 
 @app.route('/privacy')
 def privacy():
-    return PRIVACY_POLICY_HTML
+    return get_privacy_policy_html()
 
 @app.route('/terms')
 def terms():
-    return TERMS_OF_SERVICE_HTML
-
-@app.route('/contact')
-def contact():
-    return CONTACT_HTML
+    return get_terms_of_service_html()
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))
