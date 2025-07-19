@@ -154,26 +154,60 @@ async def determine_intent_node(state: AgentState) -> Dict[str, Any]:
                 # User is providing date/time for existing task
                 collected_task = conversation_context["collected_task"]
                 if collected_task:
-                    # Combine the previous task with the new date/time input
-                    combined_input = f"Remind me to {collected_task} {input_text}"
-                    logger.info(f"Combined input for datetime clarification: '{combined_input}'")
+                    # Try to determine if the input is a time, date, or both
+                    from src.datetime_utils import parse_english_datetime_to_utc
                     
-                    # Create reminder creation context
-                    reminder_ctx = {
-                        "collected_task": collected_task,
-                        "collected_date_str": input_text,
-                        "collected_time_str": None,
-                        "pending_clarification_type": None,
-                        "status": "ready_for_processing"
-                    }
+                    # Test if input is a time-only format
+                    time_only_patterns = [
+                        r'^\d{1,2}(?::\d{1,2})?\s*(a\.?m\.?|p\.?m\.?)$',  # 10 AM, 3:30 PM, etc.
+                        r'^\d{1,2}:\d{1,2}$',  # 10:30, 15:45, etc.
+                        r'^(morning|noon|afternoon|evening|night|midnight)$'  # time periods
+                    ]
                     
-                    return {
-                        "current_intent": "intent_create_reminder",
-                        "extracted_parameters": {"task": collected_task, "date": input_text, "time": None},
-                        "current_node_name": "determine_intent_node",
-                        "reminder_creation_context": reminder_ctx,
-                        "input_text": combined_input  # Update input_text for downstream processing
-                    }
+                    is_time_only = any(re.match(pattern, input_text.lower()) for pattern in time_only_patterns)
+                    
+                    if is_time_only:
+                        # Input is a time, use today/tomorrow as default date
+                        combined_input = f"Remind me to {collected_task} tomorrow {input_text}"
+                        logger.info(f"Combined input for time clarification: '{combined_input}'")
+                        
+                        # Update the context with the new time
+                        reminder_ctx = {
+                            "collected_task": collected_task,
+                            "collected_date_str": "tomorrow",
+                            "collected_time_str": input_text,
+                            "pending_clarification_type": None,
+                            "status": "ready_for_processing"
+                        }
+                        
+                        return {
+                            "current_intent": "intent_create_reminder",
+                            "extracted_parameters": {"task": collected_task, "date": "tomorrow", "time": input_text},
+                            "current_node_name": "determine_intent_node",
+                            "reminder_creation_context": reminder_ctx,
+                            "input_text": combined_input
+                        }
+                    else:
+                        # Input might be a date or date+time, treat as date for now
+                        combined_input = f"Remind me to {collected_task} {input_text}"
+                        logger.info(f"Combined input for date clarification: '{combined_input}'")
+                        
+                        # Update the context with the new date/time
+                        reminder_ctx = {
+                            "collected_task": collected_task,
+                            "collected_date_str": input_text,
+                            "collected_time_str": None,
+                            "pending_clarification_type": None,
+                            "status": "ready_for_processing"
+                        }
+                        
+                        return {
+                            "current_intent": "intent_create_reminder",
+                            "extracted_parameters": {"task": collected_task, "date": input_text, "time": None},
+                            "current_node_name": "determine_intent_node",
+                            "reminder_creation_context": reminder_ctx,
+                            "input_text": combined_input
+                        }
 
         if pending_clarification_type == "task":
             # User is providing task for existing date/time (less common but possible)
@@ -191,24 +225,53 @@ async def determine_intent_node(state: AgentState) -> Dict[str, Any]:
             # User is providing date/time for existing task
             collected_task = reminder_ctx.get("collected_task")
             if collected_task:
-                # Combine the previous task with the new date/time input
-                combined_input = f"Remind me to {collected_task} {input_text}"
-                logger.info(f"Combined input for datetime clarification: '{combined_input}'")
+                # Try to determine if the input is a time, date, or both
+                from src.datetime_utils import parse_english_datetime_to_utc
                 
-                # Update the context with the new date/time
-                reminder_ctx["collected_date_str"] = input_text
-                reminder_ctx["pending_clarification_type"] = None
-                reminder_ctx["status"] = "ready_for_processing"
+                # Test if input is a time-only format
+                time_only_patterns = [
+                    r'^\d{1,2}(?::\d{1,2})?\s*(a\.?m\.?|p\.?m\.?)$',  # 10 AM, 3:30 PM, etc.
+                    r'^\d{1,2}:\d{1,2}$',  # 10:30, 15:45, etc.
+                    r'^(morning|noon|afternoon|evening|night|midnight)$'  # time periods
+                ]
                 
-                # Re-run intent determination on the combined input
-                # For now, we'll set the intent directly since we know it's a reminder creation
-                return {
-                    "current_intent": "intent_create_reminder",
-                    "extracted_parameters": {"task": collected_task, "date": input_text, "time": None},
-                    "current_node_name": "determine_intent_node",
-                    "reminder_creation_context": reminder_ctx,
-                    "input_text": combined_input  # Update input_text for downstream processing
-                }
+                is_time_only = any(re.match(pattern, input_text.lower()) for pattern in time_only_patterns)
+                
+                if is_time_only:
+                    # Input is a time, use today/tomorrow as default date
+                    combined_input = f"Remind me to {collected_task} tomorrow {input_text}"
+                    logger.info(f"Combined input for time clarification: '{combined_input}'")
+                    
+                    # Update the context with the new time
+                    reminder_ctx["collected_date_str"] = "tomorrow"
+                    reminder_ctx["collected_time_str"] = input_text
+                    reminder_ctx["pending_clarification_type"] = None
+                    reminder_ctx["status"] = "ready_for_processing"
+                    
+                    return {
+                        "current_intent": "intent_create_reminder",
+                        "extracted_parameters": {"task": collected_task, "date": "tomorrow", "time": input_text},
+                        "current_node_name": "determine_intent_node",
+                        "reminder_creation_context": reminder_ctx,
+                        "input_text": combined_input
+                    }
+                else:
+                    # Input might be a date or date+time, treat as date for now
+                    combined_input = f"Remind me to {collected_task} {input_text}"
+                    logger.info(f"Combined input for date clarification: '{combined_input}'")
+                    
+                    # Update the context with the new date/time
+                    reminder_ctx["collected_date_str"] = input_text
+                    reminder_ctx["pending_clarification_type"] = None
+                    reminder_ctx["status"] = "ready_for_processing"
+                    
+                    return {
+                        "current_intent": "intent_create_reminder",
+                        "extracted_parameters": {"task": collected_task, "date": input_text, "time": None},
+                        "current_node_name": "determine_intent_node",
+                        "reminder_creation_context": reminder_ctx,
+                        "input_text": combined_input
+                    }
         
             if pending_clarification_type == "task":
                 # User is providing task for existing date/time (less common but possible)
