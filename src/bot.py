@@ -412,9 +412,13 @@ async def handle_settings_button(update: Update, context: ContextTypes.DEFAULT_T
     reply_markup = InlineKeyboardMarkup(keyboard)
     
     current_timezone = user.timezone or "UTC"
-    settings_text = f"🔧 **Settings**\n\nCurrent timezone: {current_timezone}\n\nSelect an option:"
+    # Get display name for timezone
+    from src.timezone_utils import get_timezone_display_name
+    timezone_display = get_timezone_display_name(current_timezone)
     
-    await update.message.reply_text(settings_text, reply_markup=reply_markup, parse_mode='Markdown')
+    settings_text = f"🔧 Settings\n\nCurrent timezone: {timezone_display}\n\nSelect an option:"
+    
+    await update.message.reply_text(settings_text, reply_markup=reply_markup)
 
 async def handle_help_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle Help button press."""
@@ -435,7 +439,7 @@ async def handle_help_button(update: Update, context: ContextTypes.DEFAULT_TYPE)
     )
     
     keyboard = create_persistent_keyboard()
-    await update.message.reply_text(help_text, reply_markup=keyboard, parse_mode='Markdown')
+    await update.message.reply_text(help_text, reply_markup=keyboard)
 
 async def handle_privacy_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle Privacy button press."""
@@ -455,7 +459,7 @@ async def handle_privacy_button(update: Update, context: ContextTypes.DEFAULT_TY
     )
     
     keyboard = create_persistent_keyboard()
-    await update.message.reply_text(privacy_text, reply_markup=keyboard, parse_mode='Markdown')
+    await update.message.reply_text(privacy_text, reply_markup=keyboard)
 
 async def handle_change_timezone_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle Change Timezone button press."""
@@ -472,14 +476,14 @@ async def handle_change_timezone_button(update: Update, context: ContextTypes.DE
     reply_markup = InlineKeyboardMarkup(keyboard)
     
     timezone_text = (
-        "🌍 **Change Timezone**\n\n"
+        "🌍 Change Timezone\n\n"
         "You can set your timezone in two ways:\n\n"
-        "📍 **Send Location** - Share your location to automatically detect timezone\n"
-        "🏙️ **Enter City Name** - Type a city name (e.g., 'New York', 'London', 'Tehran')\n\n"
+        "📍 Send Location - Share your location to automatically detect timezone\n"
+        "🏙️ Enter City Name - Type a city name (e.g., 'New York', 'London', 'Tehran')\n\n"
         "Select an option:"
     )
     
-    await update.message.reply_text(timezone_text, reply_markup=reply_markup, parse_mode='Markdown')
+    await update.message.reply_text(timezone_text, reply_markup=reply_markup)
 
 async def handle_back_to_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle Back to Main Menu button press."""
@@ -549,7 +553,7 @@ async def handle_location(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             success_text = f"✅ Timezone updated successfully!\n\nYour timezone is now: {display_name}"
             
             keyboard = create_persistent_keyboard()
-            await update.message.reply_text(success_text, reply_markup=keyboard, parse_mode='Markdown')
+            await update.message.reply_text(success_text, reply_markup=keyboard, )
         else:
             await update.message.reply_text("User not found. Please use /start to register.")
     else:
@@ -586,7 +590,7 @@ async def handle_city_name_input(update: Update, context: ContextTypes.DEFAULT_T
             success_text = f"✅ Timezone updated successfully!\n\nYour timezone is now: {display_name}"
             
             keyboard = create_persistent_keyboard()
-            await update.message.reply_text(success_text, reply_markup=keyboard, parse_mode='Markdown')
+            await update.message.reply_text(success_text, reply_markup=keyboard, )
         else:
             await update.message.reply_text("User not found. Please use /start to register.")
     else:
@@ -1011,7 +1015,7 @@ async def handle_settings_change_timezone_callback(update: Update, context: Cont
         "Select an option:"
     )
     
-    await query.edit_message_text(timezone_text, reply_markup=reply_markup, parse_mode='Markdown')
+    await query.edit_message_text(timezone_text, reply_markup=reply_markup, )
 
 async def handle_settings_back_main_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle Back to Main Menu button from settings."""
@@ -1063,7 +1067,7 @@ async def handle_timezone_back_settings_callback(update: Update, context: Contex
     current_timezone = user.timezone or "UTC"
     settings_text = f"🔧 **Settings**\n\nCurrent timezone: {current_timezone}\n\nSelect an option:"
     
-    await query.edit_message_text(settings_text, reply_markup=reply_markup, parse_mode='Markdown')
+    await query.edit_message_text(settings_text, reply_markup=reply_markup, )
 
 # Conversation Handlers
 async def handle_initial_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int: 
