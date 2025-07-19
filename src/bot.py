@@ -1160,7 +1160,7 @@ async def handle_settings_privacy_policy_callback(update: Update, context: Conte
         "• Your data is never shared with third parties\n"
         "• You can delete your account anytime\n\n"
         "📖 **Read Full Policy:**\n"
-        "https://your-domain.com/privacy\n\n"
+        "http://45.77.155.59:8080/privacy\n\n"
         "For questions, contact us at ai_reminder@gmail.com"
     )
     
@@ -1184,7 +1184,7 @@ async def handle_settings_terms_of_service_callback(update: Update, context: Con
         "• Use the service for lawful purposes only\n"
         "• We may update terms with notice\n\n"
         "📖 **Read Full Terms:**\n"
-        "https://your-domain.com/terms\n\n"
+        "http://45.77.155.59:8080/terms\n\n"
         "For questions, contact us at ai_reminder@gmail.com"
     )
     
@@ -1210,7 +1210,7 @@ async def handle_settings_contact_me_callback(update: Update, context: ContextTy
         "**Email:** ai_reminder@gmail.com\n"
         "**Response Time:** Within 24 hours\n\n"
         "📖 **Visit Contact Page:**\n"
-        "https://your-domain.com/contact"
+        "http://45.77.155.59:8080/contact"
     )
     
     keyboard = [
