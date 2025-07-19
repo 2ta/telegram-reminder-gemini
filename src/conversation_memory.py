@@ -95,6 +95,24 @@ class ConversationMemoryManager:
         # Look for recent clarification patterns
         recent_messages = history.messages[-4:] if len(history.messages) >= 4 else history.messages
         
+        # Check if the most recent user message is a complete reminder request
+        if recent_messages and isinstance(recent_messages[-1], HumanMessage):
+            latest_user_message = recent_messages[-1].content.lower()
+            # Check if this looks like a complete reminder request
+            complete_reminder_patterns = [
+                r'remind\s+me\s+to\s+.+\s+(?:tomorrow|today|next|on|at|in|by)\s+.+',
+                r'remind\s+me\s+to\s+.+\s+\d{1,2}(?::\d{1,2})?\s*(a\.?m\.?|p\.?m\.?)',
+                r'remind\s+me\s+to\s+.+\s+(morning|noon|afternoon|evening|night)'
+            ]
+            
+            import re
+            is_complete_request = any(re.search(pattern, latest_user_message) for pattern in complete_reminder_patterns)
+            
+            if is_complete_request:
+                # User is sending a complete reminder request, clear any pending clarification
+                logger.info(f"Detected complete reminder request in latest message, clearing pending clarification")
+                return context
+        
         for i, msg in enumerate(recent_messages):
             if isinstance(msg, AIMessage):
                 content = msg.content.lower()
