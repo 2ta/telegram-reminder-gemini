@@ -176,6 +176,10 @@ TERMS_OF_SERVICE_HTML = """
             color: #34495e;
             margin-top: 30px;
         }
+        h3 {
+            color: #7f8c8d;
+            margin-top: 20px;
+        }
         .highlight {
             background-color: #ecf0f1;
             padding: 15px;
@@ -188,6 +192,19 @@ TERMS_OF_SERVICE_HTML = """
             text-align: center;
             margin-top: 30px;
         }
+        .contact-info {
+            background-color: #e8f5e8;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 20px 0;
+        }
+        ul {
+            margin: 10px 0;
+            padding-left: 20px;
+        }
+        li {
+            margin: 5px 0;
+        }
     </style>
 </head>
 <body>
@@ -195,48 +212,57 @@ TERMS_OF_SERVICE_HTML = """
         <h1>Terms of Service for AI Reminder Bot</h1>
         <p class="last-updated">Last Updated: July 19, 2025</p>
 
-        <h2>1. Acceptance of Terms</h2>
-        <p>By using the AI Reminder Bot ("the Bot"), you agree to be bound by these Terms of Service. If you do not agree to these terms, please do not use the Bot.</p>
+        <p>These Terms of Service ("Terms") govern your use of the AI Reminder Bot Telegram bot (the "Service") operated by [Your Full Name] ("I," "me," or "my"). Your access to and use of the Service is conditioned on your acceptance of and compliance with these Terms.</p>
 
-        <h2>2. Description of Service</h2>
-        <p>The Bot is a Telegram-based reminder service that allows users to create, manage, and receive notifications for personal reminders. The service includes:</p>
+        <h2>1. The Service</h2>
+        <p>AI Reminder Bot is a Telegram bot that allows users to set reminders. The Service is available in two tiers:</p>
         <ul>
-            <li>Creating reminders via text or voice messages</li>
-            <li>Automatic timezone detection and conversion</li>
-            <li>Reminder notifications with snooze functionality</li>
-            <li>Premium features for unlimited reminders</li>
+            <li><strong>Free Tier:</strong> Users may set up to five (5) active reminders at no cost.</li>
+            <li><strong>Premium Tier:</strong> For a recurring monthly fee, users can set an unlimited number of reminders.</li>
         </ul>
 
-        <h2>3. User Responsibilities</h2>
-        <p>You agree to:</p>
-        <ul>
-            <li>Use the Bot only for lawful purposes</li>
-            <li>Not attempt to reverse engineer or hack the Bot</li>
-            <li>Not use the Bot to send spam or inappropriate content</li>
-            <li>Maintain the security of your Telegram account</li>
-        </ul>
+        <h2>2. Premium Subscriptions</h2>
+        
+        <h3>Billing</h3>
+        <p>The premium subscription is billed at €4.99 per month. Payments are processed by our third-party payment processor, Stripe, and will automatically renew each month unless canceled.</p>
 
-        <h2>4. Premium Subscription</h2>
+        <h3>Cancellation Policy</h3>
+        <p>You may cancel your subscription at any time. To cancel, you must contact support directly by sending an email to ai_reminder@gmail.com or by messaging the support account on Telegram (@ai_reminder_builder). Please provide your Telegram User ID to facilitate the cancellation. Your access to premium features will continue until the end of your current billing period.</p>
+
+        <h3>Refund Policy</h3>
         <div class="highlight">
-            <p><strong>Free Tier:</strong> Limited to 5 active reminders</p>
-            <p><strong>Premium Tier:</strong> Unlimited reminders for $9.99/month</p>
-            <p>Premium subscriptions are processed through Stripe and are billed monthly. You may cancel your subscription at any time.</p>
+            <p><strong>Full Money-Back Guarantee:</strong> I offer a full money-back guarantee. If you are unsatisfied with the premium service for any reason, you may request a full refund of your most recent monthly payment. To request a refund, please contact support at ai_reminder@gmail.com or @ai_reminder_builder on Telegram. Refunds will be processed through the original payment method via Stripe.</p>
         </div>
 
-        <h2>5. Service Availability</h2>
-        <p>While I strive to maintain high availability, the Bot may experience downtime due to maintenance, updates, or technical issues. I am not liable for any damages resulting from service interruptions.</p>
+        <h2>3. User Responsibilities</h2>
+        <ul>
+            <li>You are solely responsible for the content of the reminders you set. You agree not to use the Service for any unlawful purpose or to set reminders that contain illegal, harassing, defamatory, or otherwise malicious content.</li>
+            <li>You are responsible for providing accurate timezone information to ensure the timely delivery of reminders.</li>
+            <li>You must be at least 13 years old to use the Service, or of the legal age required in your country to consent to use online services.</li>
+        </ul>
 
-        <h2>6. Data and Privacy</h2>
-        <p>Your privacy is important. Please review our Privacy Policy for details on how we handle your data. By using the Bot, you consent to our data practices as described in the Privacy Policy.</p>
+        <h2>4. Limitation of Liability</h2>
+        <p>The Service is provided on an "AS IS" and "AS AVAILABLE" basis. While I strive to ensure the highest level of reliability, I do not guarantee that reminders will be delivered successfully 100% of the time. Factors outside of my control, such as outages from Telegram, Google, or Supabase, or network issues, may cause delays or failures in reminder delivery.</p>
+        
+        <p>To the fullest extent permitted by law, [Your Full Name] shall not be liable for any indirect, incidental, special, consequential, or punitive damages, or any loss of profits or revenues, whether incurred directly or indirectly, or any loss of data, use, goodwill, or other intangible losses, resulting from:</p>
+        <ul>
+            <li>Your use of the Service</li>
+            <li>Any failure or delay in the delivery of a reminder</li>
+        </ul>
 
-        <h2>7. Limitation of Liability</h2>
-        <p>The Bot is provided "as is" without warranties of any kind. I shall not be liable for any indirect, incidental, special, or consequential damages arising from your use of the Bot.</p>
+        <h2>5. Termination</h2>
+        <p>I reserve the right to terminate or suspend your access to the Service without prior notice or liability for any reason, including, but not limited to, a breach of these Terms.</p>
 
-        <h2>8. Changes to Terms</h2>
-        <p>I reserve the right to modify these terms at any time. Changes will be effective immediately upon posting. Your continued use of the Bot constitutes acceptance of the modified terms.</p>
+        <h2>6. Governing Law</h2>
+        <p>These Terms shall be governed and construed in accordance with the laws of Germany, without regard to its conflict of law provisions.</p>
 
-        <h2>9. Contact Information</h2>
-        <p>For questions about these Terms of Service, please contact me at ai_reminder@gmail.com.</p>
+        <h2>7. Changes to These Terms</h2>
+        <p>I reserve the right to modify these Terms at any time. If a revision is material, I will provide at least 30 days' notice prior to any new terms taking effect. What constitutes a material change will be determined at my sole discretion.</p>
+
+        <h2>8. Contact Us</h2>
+        <div class="contact-info">
+            <p>If you have any questions about these Terms, please contact me at <strong>ai_reminder@gmail.com</strong> or on Telegram at <strong>@ai_reminder_builder</strong>.</p>
+        </div>
     </div>
 </body>
 </html>
