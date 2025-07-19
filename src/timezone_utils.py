@@ -2,6 +2,7 @@ import requests
 import google.generativeai as genai
 from typing import Optional
 import logging
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -76,7 +77,6 @@ def is_valid_timezone(tz: str) -> bool:
 def get_timezone_display_name(tz: str) -> str:
     """Get a user-friendly display name for a timezone."""
     import pytz
-    from datetime import datetime
     
     try:
         tz_obj = pytz.timezone(tz)
@@ -94,7 +94,6 @@ def get_timezone_display_name(tz: str) -> str:
 def convert_utc_to_user_timezone(utc_datetime, user_timezone: str) -> Optional[datetime]:
     """Convert UTC datetime to user's timezone."""
     import pytz
-    from datetime import datetime
     
     try:
         if not user_timezone or user_timezone == 'UTC':
@@ -112,7 +111,6 @@ def convert_utc_to_user_timezone(utc_datetime, user_timezone: str) -> Optional[d
 def convert_user_timezone_to_utc(local_datetime, user_timezone: str) -> Optional[datetime]:
     """Convert user's local datetime to UTC."""
     import pytz
-    from datetime import datetime
     
     try:
         if not user_timezone or user_timezone == 'UTC':
