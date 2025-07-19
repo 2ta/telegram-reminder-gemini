@@ -165,8 +165,8 @@ def parse_english_datetime_to_utc(date_str: Optional[str], time_str: Optional[st
             target_time = combined_dt.time()
         
         if not target_time:  # If not parsed by relative logic above
-            # Specific times like "9 am", "10:30 pm"
-            m_specific_time = re.match(r"^(\d{1,2})(?::(\d{1,2}))?\s*(am|pm)?$", time_str_cleaned)
+            # Specific times like "9 am", "10:30 pm", "10 a.m.", "3:30 p.m."
+            m_specific_time = re.match(r"^(\d{1,2})(?::(\d{1,2}))?\s*(a\.?m\.?|p\.?m\.?)?$", time_str_cleaned)
             if m_specific_time:
                 hour_str = m_specific_time.group(1)
                 minute_str = m_specific_time.group(2)
@@ -176,9 +176,11 @@ def parse_english_datetime_to_utc(date_str: Optional[str], time_str: Optional[st
                     minute = int(minute_str) if minute_str else 0
 
                     if period_str:
-                        if period_str == "am" and hour == 12:
+                        # Normalize period string (remove dots and convert to lowercase)
+                        period_normalized = period_str.lower().replace('.', '')
+                        if period_normalized == "am" and hour == 12:
                             hour = 0  # 12 AM
-                        elif period_str == "pm" and 1 <= hour < 12:
+                        elif period_normalized == "pm" and 1 <= hour < 12:
                             hour += 12
                     
                     if 0 <= hour <= 23 and 0 <= minute <= 59:
