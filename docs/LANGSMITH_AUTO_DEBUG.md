@@ -10,7 +10,7 @@ This system allows AI assistants to automatically debug the Telegram bot using L
 
 ### 1. **Main Debugging Tool** (`tools/langsmith_debugger.py`)
 - **Purpose**: Automatic debugging tool designed for AI assistants
-- **API Key**: Pre-configured with `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`
+- **API Key**: Read from environment variable (LANGSMITH_API_KEY)
 - **Project**: `telegram-reminder-bot`
 - **Status**: ✅ Active and working
 
@@ -146,7 +146,7 @@ From recent metrics:
 ## 🎯 **Integration Details**
 
 ### **LangSmith Configuration**
-- **API Key**: `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`
+- **API Key**: Set in environment variables (LANGSMITH_API_KEY)
 - **Project**: `telegram-reminder-bot`
 - **Tracing**: Enabled for all LangGraph nodes
 - **Status**: ✅ Active on server

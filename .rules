@@ -56,7 +56,7 @@ description: LangSmith debugging capabilities and tools.
 - **LangSmith Debug Tool**: `scripts/langsmith_debug_tool.py` - Full-featured debugging tool
 
 ## LangSmith Configuration
-- **API Key**: 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
+- **API Key**: Set in environment variables (LANGSMITH_API_KEY)
 - **Project**: telegram-reminder-bot
 - **Status**: ✅ Active and working on server
 

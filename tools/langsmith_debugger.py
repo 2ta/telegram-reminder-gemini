@@ -7,12 +7,17 @@ It's designed to be automatically discoverable and usable by AI assistants.
 
 import json
 import sys
+import os
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 
 # Add the project root to the Python path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
+
+# Load environment variables from .env file
+from dotenv import load_dotenv
+load_dotenv(project_root / '.env')
 
 try:
     from scripts.langsmith_debug_tool import LangSmithDebugTool
@@ -23,9 +28,14 @@ class LangSmithDebugger:
     """Automatic LangSmith debugger for AI assistants."""
     
     def __init__(self):
-        # Default API key from the project configuration
-        self.api_key = "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"
-        self.project_name = "telegram-reminder-bot"
+        # Get API key from environment variable
+        import os
+        self.api_key = os.getenv('LANGSMITH_API_KEY')
+        self.project_name = os.getenv('LANGSMITH_PROJECT', 'telegram-reminder-bot')
+        
+        if not self.api_key:
+            raise ValueError("LANGSMITH_API_KEY not found in environment variables")
+        
         self.tool = LangSmithDebugTool(self.api_key, self.project_name)
     
     def get_recent_traces(self, limit: int = 5) -> Dict[str, Any]:

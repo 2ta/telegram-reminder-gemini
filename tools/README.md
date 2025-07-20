@@ -54,7 +54,7 @@ python3 scripts/langsmith_mcp_tool.py <api_key> metrics 24
 
 ## 🔧 Configuration
 
-**API Key**: `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`
+**API Key**: Set in environment variables (LANGSMITH_API_KEY)
 **Project**: `telegram-reminder-bot`
 **Status**: ✅ Active and working
 
