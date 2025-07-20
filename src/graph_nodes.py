@@ -115,7 +115,15 @@ Only respond with valid JSON, no other text.
         
         # Parse the JSON response
         try:
-            parsed_result = json.loads(result.strip())
+            # Handle markdown-wrapped JSON responses
+            json_str = result.strip()
+            if json_str.startswith("```json"):
+                json_str = json_str[7:]  # Remove ```json
+            if json_str.endswith("```"):
+                json_str = json_str[:-3]  # Remove ```
+            json_str = json_str.strip()
+            
+            parsed_result = json.loads(json_str)
             date_str = parsed_result.get("date_str")
             time_str = parsed_result.get("time_str")
             input_type = parsed_result.get("input_type", "unclear")
