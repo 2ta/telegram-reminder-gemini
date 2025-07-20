@@ -926,15 +926,15 @@ async def process_datetime_node(state: AgentState) -> Dict[str, Any]:
                                     else:
                                         target_date = datetime.date(current_year, current_month + 1, day)
                                 
-                                local_dt = datetime.datetime.combine(target_date, target_time)
-                                
-                                # Convert to UTC
+                                # Create datetime in user's timezone
                                 if user_timezone and user_timezone != 'UTC':
                                     import pytz
                                     tz_obj = pytz.timezone(user_timezone)
+                                    local_dt = datetime.datetime.combine(target_date, target_time)
                                     local_dt_with_tz = tz_obj.localize(local_dt)
                                     parsed_dt_utc = local_dt_with_tz.astimezone(pytz.utc)
                                 else:
+                                    local_dt = datetime.datetime.combine(target_date, target_time)
                                     parsed_dt_utc = local_dt.replace(tzinfo=datetime.timezone.utc)
                                 
                                 logger.info(f"Created monthly recurring reminder for day {day} at {target_time} -> {parsed_dt_utc}")
