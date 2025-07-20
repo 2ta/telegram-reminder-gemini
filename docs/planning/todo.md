@@ -244,6 +244,12 @@
     - [ ] Integration tests for anonymization process
     - [ ] Verify data deletion compliance
 
+## 16. Conversation State Management Issues (To Fix Later)
+
+- [ ] **Fix conversation context loss in multi-turn reminder creation**: The bot currently loses context when users provide date and time in separate messages. The `determine_intent_node` needs to properly merge partial date/time inputs from conversation memory instead of starting with empty context on each turn.
+- [ ] **Improve state merging logic**: Ensure that when a user provides only date or time in a follow-up message, the bot correctly combines it with previously collected information instead of asking for the missing part again.
+- [ ] **Test conversation flow robustness**: Create comprehensive tests for multi-turn conversations to ensure context is maintained throughout the reminder creation process.
+
 ---
 
 

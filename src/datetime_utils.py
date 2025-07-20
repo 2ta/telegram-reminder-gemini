@@ -95,39 +95,43 @@ def parse_english_datetime_to_utc(date_str: Optional[str], time_str: Optional[st
                         break
             
             if not target_date:
-                # Dates like "14 July", "July 14", "15th january", "january 15th"
-                # First try: "14 July" format
-                m_day_month = re.match(r"(\d{1,2})(?:st|nd|rd|th)?\s+(\w+)", date_str_cleaned)
-                if m_day_month:
-                    day_str = m_day_month.group(1)
-                    month_name_str = m_day_month.group(2)
+                # Dates like "14 July", "July 14", "15th january", "january 15th", "22 July 2025"
+                # Updated regex to handle optional year
+                m_day_month_year = re.match(r"(\d{1,2})(?:st|nd|rd|th)?\s+(\w+)(?:\s+(\d{4}))?", date_str_cleaned)
+                if m_day_month_year:
+                    day_str = m_day_month_year.group(1)
+                    month_name_str = m_day_month_year.group(2)
+                    year_str = m_day_month_year.group(3)
                     try:
                         day = int(day_str)
                         month = ENGLISH_MONTHS.get(month_name_str.lower())
+                        year = int(year_str) if year_str else now_utc.year
                         if month and 1 <= day <= 31:
-                            target_date = datetime.date(now_utc.year, month, day)
-                            # If this date is in the past for the current year, assume next year
-                            if target_date < now_utc.date():
+                            target_date = datetime.date(year, month, day)
+                            # If no year was provided and the date is in the past, assume next year
+                            if not year_str and target_date < now_utc.date():
                                 target_date = datetime.date(now_utc.year + 1, month, day)
                     except (ValueError, TypeError) as e:
-                        logger.warning(f"Could not parse day/month from '{date_str_cleaned}': {e}")
+                        logger.warning(f"Could not parse day/month/year from '{date_str_cleaned}': {e}")
                 
-                # Second try: "July 14" format
+                # Second try: "July 14 2025" format
                 if not target_date:
-                    m_month_day = re.match(r"(\w+)\s+(\d{1,2})(?:st|nd|rd|th)?", date_str_cleaned)
-                    if m_month_day:
-                        month_name_str = m_month_day.group(1)
-                        day_str = m_month_day.group(2)
+                    m_month_day_year = re.match(r"(\w+)\s+(\d{1,2})(?:st|nd|rd|th)?(?:\s+(\d{4}))?", date_str_cleaned)
+                    if m_month_day_year:
+                        month_name_str = m_month_day_year.group(1)
+                        day_str = m_month_day_year.group(2)
+                        year_str = m_month_day_year.group(3)
                         try:
                             day = int(day_str)
                             month = ENGLISH_MONTHS.get(month_name_str.lower())
+                            year = int(year_str) if year_str else now_utc.year
                             if month and 1 <= day <= 31:
-                                target_date = datetime.date(now_utc.year, month, day)
-                                # If this date is in the past for the current year, assume next year
-                                if target_date < now_utc.date():
+                                target_date = datetime.date(year, month, day)
+                                # If no year was provided and the date is in the past, assume next year
+                                if not year_str and target_date < now_utc.date():
                                     target_date = datetime.date(now_utc.year + 1, month, day)
                         except (ValueError, TypeError) as e:
-                            logger.warning(f"Could not parse month/day from '{date_str_cleaned}': {e}")
+                            logger.warning(f"Could not parse month/day/year from '{date_str_cleaned}': {e}")
 
     # 2. Parse Time String
     if time_str:
