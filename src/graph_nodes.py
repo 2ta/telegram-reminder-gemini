@@ -644,12 +644,16 @@ RECURRING PATTERNS: Look for patterns like:
 - "daily reminder" → recurrence_rule="daily", date_str="today"
 - "weekly meeting" → recurrence_rule="weekly", date_str="today"
 - "monthly check" → recurrence_rule="monthly", date_str="today"
+- "every month on the 15th" → recurrence_rule="monthly", time_str="15th", date_str="today"
+- "every month at 22nd" → recurrence_rule="monthly", time_str="22nd", date_str="today"
+- "every month at 22th" → recurrence_rule="monthly", time_str="22th", date_str="today"
 - "every morning" → recurrence_rule="daily", time_str="morning", date_str="today"
 - "every evening" → recurrence_rule="daily", time_str="evening", date_str="today"
 - "every night" → recurrence_rule="daily", time_str="night", date_str="today"
 - "every afternoon" → recurrence_rule="daily", time_str="afternoon", date_str="today"
 
 IMPORTANT: For recurring reminders, if no specific date is mentioned, use "today" as the date_str to establish the first occurrence.
+For monthly reminders, if a day is specified (like "22th", "15th"), extract it as time_str.
 
 Current date and time: {current_english_datetime}
 
@@ -857,7 +861,58 @@ async def process_datetime_node(state: AgentState) -> Dict[str, Any]:
                 if state.get("user_profile"):
                     user_timezone = state.get("user_profile").get("timezone", 'UTC')
                 
-                parsed_dt_utc = parse_english_datetime_to_utc(date_str, time_str, user_timezone)
+                # Special handling for monthly recurring reminders with day specifications
+                if recurrence_rule and recurrence_rule.lower() == "monthly" and time_str:
+                    # Check if time_str is a day of the month (like "22th", "15th")
+                    import re
+                    day_match = re.match(r"(\d{1,2})(?:st|nd|rd|th)?", time_str.strip())
+                    if day_match:
+                        day = int(day_match.group(1))
+                        if 1 <= day <= 31:
+                            # Create a datetime for the current month with the specified day
+                            import datetime
+                            now_utc = datetime.datetime.now(datetime.timezone.utc)
+                            current_month = now_utc.month
+                            current_year = now_utc.year
+                            
+                            # Try to create the date, handle invalid dates (like 31st in February)
+                            try:
+                                target_date = datetime.date(current_year, current_month, day)
+                                # If the date is in the past, move to next month
+                                if target_date < now_utc.date():
+                                    if current_month == 12:
+                                        target_date = datetime.date(current_year + 1, 1, day)
+                                    else:
+                                        target_date = datetime.date(current_year, current_month + 1, day)
+                                
+                                # Use current time for the reminder
+                                target_time = now_utc.time()
+                                local_dt = datetime.datetime.combine(target_date, target_time)
+                                
+                                # Convert to UTC
+                                if user_timezone and user_timezone != 'UTC':
+                                    import pytz
+                                    tz_obj = pytz.timezone(user_timezone)
+                                    local_dt_with_tz = tz_obj.localize(local_dt)
+                                    parsed_dt_utc = local_dt_with_tz.astimezone(pytz.utc)
+                                else:
+                                    parsed_dt_utc = local_dt.replace(tzinfo=datetime.timezone.utc)
+                                
+                                logger.info(f"Created monthly recurring reminder for day {day} at {parsed_dt_utc}")
+                            except ValueError:
+                                # Invalid date (like 31st in February), fall back to regular parsing
+                                logger.warning(f"Invalid day {day} for current month, falling back to regular parsing")
+                                parsed_dt_utc = parse_english_datetime_to_utc(date_str, time_str, user_timezone)
+                        else:
+                            # Invalid day number, fall back to regular parsing
+                            parsed_dt_utc = parse_english_datetime_to_utc(date_str, time_str, user_timezone)
+                    else:
+                        # Not a day specification, use regular parsing
+                        parsed_dt_utc = parse_english_datetime_to_utc(date_str, time_str, user_timezone)
+                else:
+                    # Regular parsing for non-monthly or non-day-specification cases
+                    parsed_dt_utc = parse_english_datetime_to_utc(date_str, time_str, user_timezone)
+                
                 if parsed_dt_utc:
                     logger.info(f"Successfully parsed datetime to UTC: {parsed_dt_utc}")
                     # Store in context for subsequent nodes
