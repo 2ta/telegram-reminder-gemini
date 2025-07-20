@@ -442,6 +442,7 @@ async def determine_intent_node(state: AgentState) -> Dict[str, Any]:
                 task = retrieved_data.get("task")
                 parsed_dt_utc = retrieved_data.get("parsed_dt_utc")
                 chat_id_from_cache = retrieved_data.get("chat_id")
+                recurrence_rule = retrieved_data.get("recurrence_rule")
                 if not (task and parsed_dt_utc and chat_id_from_cache):
                     logger.error(f"Incomplete data from cache for ID {confirmation_id}. Retrieved: {retrieved_data}")
                     return {
@@ -452,7 +453,8 @@ async def determine_intent_node(state: AgentState) -> Dict[str, Any]:
                 populated_context = {
                     "collected_task": task,
                     "collected_parsed_datetime_utc": parsed_dt_utc,
-                    "chat_id_for_creation": chat_id_from_cache
+                    "chat_id_for_creation": chat_id_from_cache,
+                    "collected_recurrence_rule": recurrence_rule
                 }
                 logger.info(f"Restored context from cache ID {confirmation_id}: {populated_context}")
                 return {
@@ -1109,7 +1111,8 @@ async def confirm_reminder_details_node(state: AgentState) -> Dict[str, Any]:
     PENDING_REMINDER_CONFIRMATIONS[confirmation_id] = {
         "task": task,
         "parsed_dt_utc": parsed_dt_utc_val, # Store as string, will be parsed again
-        "chat_id": chat_id # Store chat_id
+        "chat_id": chat_id, # Store chat_id
+        "recurrence_rule": recurrence_rule # Store recurrence rule if present
     }
     logger.info(f"DEBUG: Stored pending confirmation for ID {confirmation_id} with task='{task}', dt='{parsed_dt_utc_val}', chat_id='{chat_id}'. Cache size: {len(PENDING_REMINDER_CONFIRMATIONS)}")
 
