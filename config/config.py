@@ -67,13 +67,14 @@ MSG_WELCOME: str = (
     "Welcome to the Reminder Bot!\n\n"
     "Just send me a message or voice and tell me what to remind you about and when. For example:\n"
     "🗓 \"Remind me to message Ali tomorrow at 10 AM\"\n"
-    "💊 \"Remind me to take my pills every day at 8 AM\"\n\n"
+    "💊 \"Remind me to take my pills every day at 8 AM\"\n"
+    "🔄 \"Remind me every Monday at 9 AM for the team meeting\"\n\n"
     "✨ Bot Features:\n"
     "- Create reminders by speaking or typing\n"
     "- Smart detection of date and time from your message\n"
+    "- Support for recurring reminders (daily, weekly, monthly)\n"
     "- View and delete active reminders\n"
-    "- (Coming soon) Set recurring reminders\n"
-    "- (Coming soon) Payment and activation of 'Unlimited Reminders' subscription for more features\n\n"
+    "- Payment and activation of 'Unlimited Reminders' subscription for more features\n\n"
     "In the free version, you can have up to 5 active reminders."
 )
 

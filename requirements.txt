@@ -18,6 +18,5 @@ stripe>=7.0.0
 flask>=2.0.0
 psycopg2-binary>=2.9.0
 requests
-timezonefinder>=6.6.0
 langsmith>=0.2.0
 langchain>=0.2.0

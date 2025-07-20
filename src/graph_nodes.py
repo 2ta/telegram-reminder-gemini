@@ -630,11 +630,22 @@ If they intend to create a reminder, you should extract the following informatio
 1.  `task`: The main task that needs to be reminded (e.g., "call my brother", "weekly sales team meeting"). This should not include date and time.
 2.  `date_str`: Date-related phrases (e.g., "tomorrow", "day after tomorrow", "next monday", "weekend", "in 3 days", "march 15", "today"). This field can include relative or specific expressions.
 3.  `time_str`: Time-related phrases (e.g., "2 pm", "3 in the afternoon", "early morning", "around noon", "11 PM"). This field can include relative or specific expressions.
+4.  `recurrence_rule`: Recurring patterns (e.g., "every day", "daily", "weekly", "monthly", "every monday", "every morning"). This should be null for one-time reminders.
 
 IMPORTANT: When the user provides a combined date-time phrase like "11 PM today" or "tomorrow at 2 PM", you should separate them:
 - For "11 PM today": date_str="today", time_str="11 PM"
 - For "tomorrow at 2 PM": date_str="tomorrow", time_str="2 PM"
 - For "next Monday at 9 AM": date_str="next monday", time_str="9 AM"
+
+RECURRING PATTERNS: Look for patterns like:
+- "every day at 8 AM" → recurrence_rule="daily", time_str="8 AM"
+- "daily reminder" → recurrence_rule="daily"
+- "weekly meeting" → recurrence_rule="weekly"
+- "monthly check" → recurrence_rule="monthly"
+- "every morning" → recurrence_rule="daily", time_str="morning"
+- "every evening" → recurrence_rule="daily", time_str="evening"
+- "every night" → recurrence_rule="daily", time_str="night"
+- "every afternoon" → recurrence_rule="daily", time_str="afternoon"
 
 Current date and time: {current_english_datetime}
 
@@ -645,7 +656,8 @@ Please provide your response only and only in the format of a JSON object with t
   "is_reminder_creation_intent": boolean,
   "task": "string or null",
   "date_str": "string or null",
-  "time_str": "string or null"
+  "time_str": "string or null",
+  "recurrence_rule": "string or null"
 }}
 
 The user may provide only the task. If so, `is_reminder_creation_intent` should be true and the `task` field should be populated.
@@ -664,17 +676,19 @@ The user may provide only the task. If so, `is_reminder_creation_intent` should 
                         task = parsed_llm_response.get("task")
                         date_str = parsed_llm_response.get("date_str")
                         time_str = parsed_llm_response.get("time_str")
+                        recurrence_rule = parsed_llm_response.get("recurrence_rule")
                         # Allow reminder intent if at least a task is present.
                         if task:
-                            logger.info(f"LLM determined 'intent_create_reminder'. Task: '{task}', Date: '{date_str}', Time: '{time_str}'")
+                            logger.info(f"LLM determined 'intent_create_reminder'. Task: '{task}', Date: '{date_str}', Time: '{time_str}', Recurrence: '{recurrence_rule}'")
                             return {
                                 "current_intent": "intent_create_reminder",
-                                "extracted_parameters": {"date": date_str, "time": time_str, "task": task},
+                                "extracted_parameters": {"date": date_str, "time": time_str, "task": task, "recurrence_rule": recurrence_rule},
                                 "current_node_name": "determine_intent_node",
                                 "reminder_creation_context": {
                                     "collected_task": task,
                                     "collected_date_str": date_str,
                                     "collected_time_str": time_str,
+                                    "collected_recurrence_rule": recurrence_rule,
                                     "pending_clarification_type": None
                                 }
                             }
@@ -825,6 +839,12 @@ async def process_datetime_node(state: AgentState) -> Dict[str, Any]:
     
     # Only attempt parsing if intent is reminder-related and parameters are present
     if current_intent == "intent_create_reminder": # Or if it's an edit flow later
+        # Store recurrence rule if present
+        recurrence_rule = reminder_ctx.get("collected_recurrence_rule")
+        if recurrence_rule:
+            reminder_ctx["collected_recurrence_rule"] = recurrence_rule
+            logger.info(f"Recurrence rule detected: '{recurrence_rule}'")
+        
         if date_str or time_str:
             logger.info(f"Attempting to parse date='{date_str}', time='{time_str}' for intent '{current_intent}'") # Removed am_pm from log
             try:
@@ -1037,6 +1057,7 @@ async def confirm_reminder_details_node(state: AgentState) -> Dict[str, Any]:
 
     task = reminder_context["collected_task"]
     parsed_dt_utc_val = reminder_context["collected_parsed_datetime_utc"]
+    recurrence_rule = reminder_context.get("collected_recurrence_rule")
 
     # Fix: handle both str and datetime types, use only top-level import
     if isinstance(parsed_dt_utc_val, str):
@@ -1102,10 +1123,49 @@ async def confirm_reminder_details_node(state: AgentState) -> Dict[str, Any]:
         return task
 
     task = clean_task_text(reminder_context.get("collected_task", ""))
+    
+    # Format time display based on whether it's recurring
+    if recurrence_rule:
+        # For recurring reminders, show the pattern instead of specific date
+        if recurrence_rule.lower() == "daily":
+            time_display = f"Every day at {formatted_date_time.split(' at ')[1] if ' at ' in formatted_date_time else formatted_date_time}"
+        elif recurrence_rule.lower() == "weekly":
+            time_display = f"Every week on {formatted_date_time.split(',')[0] if ',' in formatted_date_time else 'the same day'} at {formatted_date_time.split(' at ')[1] if ' at ' in formatted_date_time else formatted_date_time}"
+        elif recurrence_rule.lower() == "monthly":
+            # Extract day with proper ordinal suffix
+            if ',' in formatted_date_time and len(formatted_date_time.split(',')) > 1:
+                day_part = formatted_date_time.split(',')[1].strip().split()[1]
+                # Add ordinal suffix if not already present
+                if not day_part.endswith(('st', 'nd', 'rd', 'th')):
+                    day_num = int(day_part)
+                    if day_num == 1:
+                        day_part = f"{day_num}st"
+                    elif day_num == 2:
+                        day_part = f"{day_num}nd"
+                    elif day_num == 3:
+                        day_part = f"{day_num}rd"
+                    elif day_num in [11, 12, 13]:
+                        day_part = f"{day_num}th"
+                    elif day_num % 10 == 1:
+                        day_part = f"{day_num}st"
+                    elif day_num % 10 == 2:
+                        day_part = f"{day_num}nd"
+                    elif day_num % 10 == 3:
+                        day_part = f"{day_num}rd"
+                    else:
+                        day_part = f"{day_num}th"
+                time_display = f"Every month on the {day_part} at {formatted_date_time.split(' at ')[1] if ' at ' in formatted_date_time else formatted_date_time}"
+            else:
+                time_display = f"Every month on the same day at {formatted_date_time.split(' at ')[1] if ' at ' in formatted_date_time else formatted_date_time}"
+        else:
+            time_display = f"Recurring ({recurrence_rule}) at {formatted_date_time.split(' at ')[1] if ' at ' in formatted_date_time else formatted_date_time}"
+    else:
+        time_display = formatted_date_time
+    
     response_text = (
         "Should I set this reminder? 👇\n\n"
         f"📝 Task: {task}\n"
-        f"⏰ Time: {formatted_date_time}\n\n"
+        f"⏰ Time: {time_display}\n\n"
         "If it's correct, click 'Set'\n"
         "If it needs changes, click 'Cancel' and send the new reminder again 🙂"
     )
@@ -1232,12 +1292,15 @@ async def create_reminder_node(state: AgentState) -> Dict[str, Any]:
             return task
 
         task = clean_task_text(reminder_ctx.get("collected_task", ""))
+        recurrence_rule = reminder_ctx.get("collected_recurrence_rule")
+        
         new_reminder = Reminder(
             user_id=user_db_id,  # Use the user's actual DB ID
             task=task,
             date_str=date_str,  # Store as regular date string
             time_str=time_str,
             due_datetime_utc=parsed_dt_utc,  # Store the UTC datetime for notifications
+            recurrence_rule=recurrence_rule,  # Store recurrence rule if present
             is_active=True
         )
         db.add(new_reminder)
@@ -1253,10 +1316,51 @@ async def create_reminder_node(state: AgentState) -> Dict[str, Any]:
         if user_profile:
             user_timezone = user_profile.get("timezone", 'UTC')
         formatted_datetime = format_datetime_for_display(parsed_dt_utc, user_timezone)
-        response_message = (
-            "Done! 🎉\n"
-            "Your reminder has been set successfully and I'll notify you on time 🔔"
-        )
+        
+        # Format message based on whether it's recurring
+        if recurrence_rule:
+            if recurrence_rule.lower() == "daily":
+                time_display = f"every day at {formatted_datetime.split(' at ')[1] if ' at ' in formatted_datetime else formatted_datetime}"
+            elif recurrence_rule.lower() == "weekly":
+                time_display = f"every week on {formatted_datetime.split(',')[0] if ',' in formatted_datetime else 'the same day'} at {formatted_datetime.split(' at ')[1] if ' at ' in formatted_datetime else formatted_datetime}"
+            elif recurrence_rule.lower() == "monthly":
+                # Extract day with proper ordinal suffix
+                if ',' in formatted_datetime and len(formatted_datetime.split(',')) > 1:
+                    day_part = formatted_datetime.split(',')[1].strip().split()[1]
+                    # Add ordinal suffix if not already present
+                    if not day_part.endswith(('st', 'nd', 'rd', 'th')):
+                        day_num = int(day_part)
+                        if day_num == 1:
+                            day_part = f"{day_num}st"
+                        elif day_num == 2:
+                            day_part = f"{day_num}nd"
+                        elif day_num == 3:
+                            day_part = f"{day_num}rd"
+                        elif day_num in [11, 12, 13]:
+                            day_part = f"{day_num}th"
+                        elif day_num % 10 == 1:
+                            day_part = f"{day_num}st"
+                        elif day_num % 10 == 2:
+                            day_part = f"{day_num}nd"
+                        elif day_num % 10 == 3:
+                            day_part = f"{day_num}rd"
+                        else:
+                            day_part = f"{day_num}th"
+                    time_display = f"every month on the {day_part} at {formatted_datetime.split(' at ')[1] if ' at ' in formatted_datetime else formatted_datetime}"
+                else:
+                    time_display = f"every month on the same day at {formatted_datetime.split(' at ')[1] if ' at ' in formatted_datetime else formatted_datetime}"
+            else:
+                time_display = f"recurring ({recurrence_rule}) at {formatted_datetime.split(' at ')[1] if ' at ' in formatted_datetime else formatted_datetime}"
+            
+            response_message = (
+                "Done! 🎉\n"
+                f"Your recurring reminder has been set for {time_display} and I'll notify you on time 🔔"
+            )
+        else:
+            response_message = (
+                "Done! 🎉\n"
+                "Your reminder has been set successfully and I'll notify you on time 🔔"
+            )
         
         logger.info(f"Reminder successfully set. Task: {task}, Time: {formatted_datetime}")
         return {
@@ -1459,9 +1563,39 @@ async def handle_intent_node(state: AgentState) -> Dict[str, Any]:
                                 continue
                             formatted_datetime = format_datetime_for_display(gregorian_dt)
                             task_preview = reminder.task[:40] + "..." if len(reminder.task) > 40 else reminder.task
+                            
+                            # Format display based on whether it's recurring
+                            if reminder.recurrence_rule:
+                                if reminder.recurrence_rule.lower() == "daily":
+                                    time_display = f"🔄 Every day at {formatted_datetime.split(' at ')[1] if ' at ' in formatted_datetime else formatted_datetime}"
+                                elif reminder.recurrence_rule.lower() == "weekly":
+                                    time_display = f"🔄 Every week on {formatted_datetime.split(',')[0] if ',' in formatted_datetime else 'the same day'} at {formatted_datetime.split(' at ')[1] if ' at ' in formatted_datetime else formatted_datetime}"
+                                elif reminder.recurrence_rule.lower() == "monthly":
+                                    # Extract day with proper ordinal suffix
+                                    if ',' in formatted_datetime and len(formatted_datetime.split(',')) > 1:
+                                        day_part = formatted_datetime.split(',')[1].strip().split()[1]
+                                        # Add ordinal suffix if not already present
+                                        if not day_part.endswith(('st', 'nd', 'rd', 'th')):
+                                            day_num = int(day_part)
+                                            if day_num == 1:
+                                                day_part = f"{day_num}st"
+                                            elif day_num == 2:
+                                                day_part = f"{day_num}nd"
+                                            elif day_num == 3:
+                                                day_part = f"{day_num}rd"
+                                            else:
+                                                day_part = f"{day_num}th"
+                                        time_display = f"🔄 Every month on the {day_part} at {formatted_datetime.split(' at ')[1] if ' at ' in formatted_datetime else formatted_datetime}"
+                                    else:
+                                        time_display = f"🔄 Every month on the same day at {formatted_datetime.split(' at ')[1] if ' at ' in formatted_datetime else formatted_datetime}"
+                                else:
+                                    time_display = f"🔄 Recurring ({reminder.recurrence_rule}) at {formatted_datetime.split(' at ')[1] if ' at ' in formatted_datetime else formatted_datetime}"
+                            else:
+                                time_display = f"⏰ {formatted_datetime}"
+                            
                             reminder_item_text = (
                                 f"📝 **{reminder.task}**\n"
-                                f"⏰ {formatted_datetime}"
+                                f"{time_display}"
                             )
                             reminder_list_items_text.append(reminder_item_text)
                             # Add a delete button for each reminder

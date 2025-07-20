@@ -966,20 +966,22 @@ async def send_reminder_notification(
         # Create notification message
         message_text = f"🔔 Reminder:\n{reminder.task}"
         
-        # Add snooze buttons for non-recurring reminders
-        if not reminder.recurrence_rule:
-            keyboard = [
-                [
-                    InlineKeyboardButton("⏰ Snooze 15 min", callback_data=f"snooze:{reminder.id}:15"),
-                    InlineKeyboardButton("⏰ Snooze 1 hour", callback_data=f"snooze:{reminder.id}:60")
-                ],
-                [
-                    InlineKeyboardButton("✅ Mark as done", callback_data=f"done:{reminder.id}")
-                ]
+        # Add buttons for all reminders (both recurring and one-time)
+        keyboard = [
+            [
+                InlineKeyboardButton("⏰ Snooze 15 min", callback_data=f"snooze:{reminder.id}:15"),
+                InlineKeyboardButton("⏰ Snooze 1 hour", callback_data=f"snooze:{reminder.id}:60")
+            ],
+            [
+                InlineKeyboardButton("✅ Mark as done", callback_data=f"done:{reminder.id}")
             ]
-            reply_markup = InlineKeyboardMarkup(keyboard)
-        else:
-            reply_markup = None
+        ]
+        
+        # Add special note for recurring reminders
+        if reminder.recurrence_rule:
+            message_text += f"\n\n🔄 This is a recurring reminder"
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
         
         # Send the notification
         await context.bot.send_message(
@@ -1062,8 +1064,13 @@ async def handle_snooze_callback(update: Update, context: ContextTypes.DEFAULT_T
                 reminder.notification_sent_at = None
                 db.commit()
                 
-                await query.answer(f"Reminder snoozed for {snooze_minutes} minutes")
-                await query.edit_message_text(f"⏰ Reminder snoozed for {snooze_minutes} minutes")
+                # Different message for recurring vs one-time reminders
+                if reminder.recurrence_rule:
+                    await query.answer(f"Recurring reminder snoozed for {snooze_minutes} minutes")
+                    await query.edit_message_text(f"⏰ Recurring reminder snoozed for {snooze_minutes} minutes\n\n🔄 This reminder will continue to repeat as scheduled.")
+                else:
+                    await query.answer(f"Reminder snoozed for {snooze_minutes} minutes")
+                    await query.edit_message_text(f"⏰ Reminder snoozed for {snooze_minutes} minutes")
                 
                 logger.info(f"Reminder {reminder_id} snoozed for {snooze_minutes} minutes")
             else:
@@ -1101,14 +1108,26 @@ async def handle_done_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         try:
             reminder = db.query(Reminder).filter(Reminder.id == reminder_id).first()
             if reminder:
-                reminder.is_active = False
-                reminder.is_notified = True
-                db.commit()
-                
-                await query.answer("Reminder marked as done")
-                await query.edit_message_text("✅ Reminder completed")
-                
-                logger.info(f"Reminder {reminder_id} marked as done")
+                if reminder.recurrence_rule:
+                    # For recurring reminders, just mark this occurrence as notified but keep it active
+                    reminder.is_notified = True
+                    reminder.notification_sent_at = datetime.datetime.now(pytz.utc)
+                    db.commit()
+                    
+                    await query.answer("Recurring reminder marked as done for this occurrence")
+                    await query.edit_message_text("✅ Recurring reminder marked as done for this occurrence\n\n🔄 This reminder will continue to repeat as scheduled.")
+                    
+                    logger.info(f"Recurring reminder {reminder_id} marked as done for current occurrence")
+                else:
+                    # For one-time reminders, mark as inactive
+                    reminder.is_active = False
+                    reminder.is_notified = True
+                    db.commit()
+                    
+                    await query.answer("Reminder marked as done")
+                    await query.edit_message_text("✅ Reminder completed")
+                    
+                    logger.info(f"Reminder {reminder_id} marked as done")
             else:
                 await query.answer("Reminder not found")
         finally:
