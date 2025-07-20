@@ -77,10 +77,10 @@ def get_timezone_from_location(lat: float, lon: float) -> Optional[str]:
             logger.warning("TimezoneFinder not available, using manual mapping")
         
         # Fallback: Manual mapping for common regions
-        # Tehran, Iran coordinates: ~35.6892, 51.3890
-        if 35.0 <= lat <= 36.0 and 51.0 <= lon <= 52.0:
+        # Iran coordinates: ~32.0-39.0 lat, 44.0-63.0 lon
+        if 32.0 <= lat <= 39.0 and 44.0 <= lon <= 63.0:
             timezone = "Asia/Tehran"
-            logger.info(f"Manual mapping detected Tehran timezone for coordinates ({lat}, {lon})")
+            logger.info(f"Manual mapping detected Iran timezone for coordinates ({lat}, {lon})")
             return timezone
         
         # New York coordinates: ~40.7128, -74.0060
