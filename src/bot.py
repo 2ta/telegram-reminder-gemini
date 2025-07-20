@@ -977,9 +977,22 @@ async def send_reminder_notification(
             ]
         ]
         
-        # Add special note for recurring reminders
+        # Add special note for recurring reminders with next due date
         if reminder.recurrence_rule:
-            message_text += f"\n\n🔄 This is a recurring reminder"
+            # Calculate next due date for display
+            next_due = calculate_next_recurrence(reminder.due_datetime_utc, reminder.recurrence_rule)
+            next_due_str = format_datetime_for_display(next_due, 'UTC')
+            
+            if reminder.recurrence_rule.lower() == "daily":
+                recurrence_text = "daily"
+            elif reminder.recurrence_rule.lower() == "weekly":
+                recurrence_text = "weekly"
+            elif reminder.recurrence_rule.lower() == "monthly":
+                recurrence_text = "monthly"
+            else:
+                recurrence_text = reminder.recurrence_rule
+            
+            message_text += f"\n\n🔄 **Recurring Reminder** ({recurrence_text})\n⏰ Next reminder: {next_due_str}"
         
         reply_markup = InlineKeyboardMarkup(keyboard)
         
@@ -997,27 +1010,35 @@ async def send_reminder_notification(
         logger.error(f"Error sending reminder notification to user {user_id}: {e}", exc_info=True)
         return False
 
+def calculate_next_recurrence(current_due: datetime.datetime, recurrence_rule: str) -> datetime.datetime:
+    """
+    Calculate the next due date for a recurring reminder.
+    """
+    try:
+        recurrence = recurrence_rule.lower()
+        
+        if recurrence == "daily":
+            return current_due + datetime.timedelta(days=1)
+        elif recurrence == "weekly":
+            return current_due + datetime.timedelta(weeks=1)
+        elif recurrence == "monthly":
+            # Simple monthly calculation (30 days)
+            return current_due + datetime.timedelta(days=30)
+        else:
+            # Unknown recurrence, return current due date
+            return current_due
+            
+    except Exception as e:
+        logger.error(f"Error calculating next recurrence: {e}", exc_info=True)
+        return current_due
+
 async def handle_recurring_reminder(reminder: Reminder, db: Session) -> None:
     """
     Handle recurring reminders by calculating the next due date.
     """
     try:
-        # Parse recurrence rule (simple implementation for now)
-        # Expected format: "daily", "weekly", "monthly"
-        recurrence = reminder.recurrence_rule.lower()
-        current_due = reminder.due_datetime_utc
-        
-        if recurrence == "daily":
-            next_due = current_due + datetime.timedelta(days=1)
-        elif recurrence == "weekly":
-            next_due = current_due + datetime.timedelta(weeks=1)
-        elif recurrence == "monthly":
-            # Simple monthly calculation (30 days)
-            next_due = current_due + datetime.timedelta(days=30)
-        else:
-            # Unknown recurrence, mark as inactive
-            reminder.is_active = False
-            return
+        # Calculate next due date
+        next_due = calculate_next_recurrence(reminder.due_datetime_utc, reminder.recurrence_rule)
         
         # Update the reminder with new due date
         reminder.due_datetime_utc = next_due
@@ -1109,15 +1130,20 @@ async def handle_done_callback(update: Update, context: ContextTypes.DEFAULT_TYP
             reminder = db.query(Reminder).filter(Reminder.id == reminder_id).first()
             if reminder:
                 if reminder.recurrence_rule:
-                    # For recurring reminders, just mark this occurrence as notified but keep it active
-                    reminder.is_notified = True
-                    reminder.notification_sent_at = datetime.datetime.now(pytz.utc)
+                    # For recurring reminders, calculate next due date and keep it active
+                    next_due = calculate_next_recurrence(reminder.due_datetime_utc, reminder.recurrence_rule)
+                    reminder.due_datetime_utc = next_due
+                    reminder.is_notified = False
+                    reminder.notification_sent_at = None
                     db.commit()
                     
-                    await query.answer("Recurring reminder marked as done for this occurrence")
-                    await query.edit_message_text("✅ Recurring reminder marked as done for this occurrence\n\n🔄 This reminder will continue to repeat as scheduled.")
+                    # Format next due date for display
+                    next_due_str = format_datetime_for_display(next_due, 'UTC')
                     
-                    logger.info(f"Recurring reminder {reminder_id} marked as done for current occurrence")
+                    await query.answer("Recurring reminder marked as done for this occurrence")
+                    await query.edit_message_text(f"✅ Recurring reminder marked as done for this occurrence\n\n🔄 Next reminder: {next_due_str}")
+                    
+                    logger.info(f"Recurring reminder {reminder_id} marked as done and rescheduled to {next_due}")
                 else:
                     # For one-time reminders, mark as inactive
                     reminder.is_active = False

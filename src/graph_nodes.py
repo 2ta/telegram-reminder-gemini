@@ -1533,7 +1533,7 @@ async def handle_intent_node(state: AgentState) -> Dict[str, Any]:
                 reminders_query = db.query(Reminder).filter(
                     Reminder.user_id == user_db_id,
                     Reminder.is_active == True
-                ).order_by(Reminder.date_str.asc(), Reminder.time_str.asc())
+                ).order_by(Reminder.due_datetime_utc.asc())
                 logger.info(f"User {user_id}: reminders_query object created.")
                 total_reminders_count = reminders_query.count()
                 logger.info(f"User {user_id}: Total reminders count = {total_reminders_count}")
@@ -1593,10 +1593,17 @@ async def handle_intent_node(state: AgentState) -> Dict[str, Any]:
                             else:
                                 time_display = f"⏰ {formatted_datetime}"
                             
-                            reminder_item_text = (
-                                f"📝 **{reminder.task}**\n"
-                                f"{time_display}"
-                            )
+                            # Add special formatting for recurring reminders
+                            if reminder.recurrence_rule:
+                                reminder_item_text = (
+                                    f"🔄 **{reminder.task}** *(Recurring)*\n"
+                                    f"{time_display}"
+                                )
+                            else:
+                                reminder_item_text = (
+                                    f"📝 **{reminder.task}**\n"
+                                    f"{time_display}"
+                                )
                             reminder_list_items_text.append(reminder_item_text)
                             # Add a delete button for each reminder
                             action_buttons.append([
