@@ -263,7 +263,7 @@ async def determine_intent_node(state: AgentState) -> Dict[str, Any]:
             # User is sending a complete reminder request, ignore the pending clarification
             logger.info(f"User {user_id} sent a complete reminder request, ignoring pending clarification")
             # Clear the conversation memory to treat this as a fresh request
-            conversation_memory.clear_conversation_context(session_id)
+            # conversation_memory.clear_conversation_context(session_id)  # TEMPORARILY DISABLED
         else:
             # User is responding to the clarification
             logger.info(f"User {user_id} is responding to pending clarification: {pending_clarification_type}")
