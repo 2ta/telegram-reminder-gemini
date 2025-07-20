@@ -48,6 +48,7 @@ A smart Telegram bot that helps users set reminders using natural language proce
 - **Bot Framework**: python-telegram-bot v20+
 - **AI/LLM**: Google Gemini 2.0 Flash
 - **Agent Framework**: LangGraph for conversation flows
+- **Monitoring**: LangSmith for tracing and debugging
 - **Database**: SQLAlchemy with SQLite
 - **Speech Recognition**: Google Speech-to-Text API
 - **Payments**: Stripe Payment Gateway
@@ -122,6 +123,7 @@ sudo systemctl start telegram-reminder-bot
 ## 📖 Documentation
 
 - **[Management Guide](docs/MANAGEMENT.md)** - Production deployment and management
+- **[LangSmith Integration](docs/LANGSMITH_INTEGRATION.md)** - Monitoring and debugging guide
 - **[Technical Specifications](docs/specs/spec.md)** - Detailed technical requirements
 - **[Test Scenarios](docs/testing/test_scenarios.md)** - Testing documentation
 - **[Development Planning](docs/planning/todo.md)** - Current development status
@@ -136,6 +138,10 @@ TELEGRAM_BOT_TOKEN=your_telegram_bot_token
 
 # Google APIs
 GOOGLE_API_KEY=your_google_api_key
+
+# LangSmith (Optional - for monitoring and debugging)
+LANGSMITH_API_KEY=your_langsmith_api_key
+LANGSMITH_PROJECT=telegram-reminder-bot
 
 # Payment (Optional)
 STRIPE_SECRET_KEY=your_stripe_secret_key
@@ -159,6 +165,9 @@ pip install pytest pytest-asyncio
 
 # Run tests
 pytest tests/
+
+# Test LangSmith integration
+python scripts/test_langsmith.py
 ```
 
 ## 🔍 Monitoring

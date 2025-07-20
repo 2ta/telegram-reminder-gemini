@@ -21,6 +21,7 @@ from src.database import get_db
 from sqlalchemy.orm import Session
 from src.payment import DEFAULT_PAYMENT_AMOUNT
 from src.conversation_memory import conversation_memory
+from src.langsmith_config import log_graph_execution, create_run_name
 
 # Global cache for pending reminder details before confirmation
 PENDING_REMINDER_CONFIRMATIONS: Dict[str, Dict[str, Any]] = {}
@@ -105,10 +106,18 @@ def split_datetime_input(input_text: str) -> tuple[Optional[str], Optional[str]]
 
 async def entry_node(state: AgentState) -> Dict[str, Any]:
     """Node that processes the initial input and determines message type."""
-    logger.info(f"Graph: Entered entry_node for user {state.get('user_id')}")
+    user_id = state.get('user_id')
+    logger.info(f"Graph: Entered entry_node for user {user_id}")
     current_input = state.get("input_text", "")
     message_type = state.get("message_type", "unknown")
     logger.info(f"Input: '{current_input}', Type: {message_type}")
+    
+    # Log to LangSmith
+    log_graph_execution(user_id, "entry_node", {
+        "input_text": current_input,
+        "message_type": message_type
+    })
+    
     return {"current_node_name": "entry_node", "user_telegram_details": state.get("user_telegram_details")}
 
 async def load_user_profile_node(state: AgentState) -> Dict[str, Any]:
@@ -188,14 +197,20 @@ async def load_user_profile_node(state: AgentState) -> Dict[str, Any]:
         db.close()
 
 async def determine_intent_node(state: AgentState) -> Dict[str, Any]:
-    logger.info(f"Graph: Entered determine_intent_node for user {state.get('user_id')}")
+    user_id = state.get('user_id')
+    logger.info(f"Graph: Entered determine_intent_node for user {user_id}")
     input_text_raw = state.get("input_text")
     input_text = input_text_raw.strip() if input_text_raw else ""
     message_type = state.get("message_type")
     effective_input = input_text # Assuming callback_data is in input_text for callbacks
     
+    # Log to LangSmith
+    log_graph_execution(user_id, "determine_intent_node", {
+        "input_text": input_text,
+        "message_type": message_type
+    })
+    
     # Check conversation memory for pending clarifications
-    user_id = state.get("user_id")
     chat_id = state.get("chat_id")
     session_id = conversation_memory.get_session_id(user_id, chat_id)
     conversation_context = conversation_memory.get_conversation_context(session_id)

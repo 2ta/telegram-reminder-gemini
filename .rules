@@ -43,4 +43,38 @@ description: Deployment workflow rules and procedures.
 - Any manual changes to /etc/systemd/system/telegram-reminder-bot.service will be lost on the next deployment
 - The workflow uses placeholders (__SSH_USER__, __DEPLOY_PATH__) and replaces them with secrets
 - If secrets are missing or incorrect, the service file will be invalid and the bot will not start
-- Always check the deployment logs for errors about placeholders or systemd service file issues after deploying 
+- Always check the deployment logs for errors about placeholders or systemd service file issues after deploying
+
+---
+alwaysApply: true
+description: LangSmith debugging capabilities and tools.
+---
+# LangSmith Debugging Tools
+## Available Tools
+- **LangSmith Debug Tool**: `tools/langsmith_debugger.py` - Automatic debugging tool with API access
+- **LangSmith MCP Tool**: `scripts/langsmith_mcp_tool.py` - Simplified interface for debugging
+- **LangSmith Debug Tool**: `scripts/langsmith_debug_tool.py` - Full-featured debugging tool
+
+## LangSmith Configuration
+- **API Key**: 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
+- **Project**: telegram-reminder-bot
+- **Status**: ✅ Active and working on server
+
+## Automatic Debugging Capabilities
+- **Recent Traces**: Get last 5 traces automatically when debugging issues
+- **Trace Analysis**: Analyze specific traces for performance and error issues
+- **Performance Metrics**: Get 24-hour performance statistics
+- **User Search**: Search traces by specific user ID
+- **Issue Debugging**: Automatic issue detection and analysis
+
+## Usage Instructions
+- **For any bot issue**: Automatically use `tools/langsmith_debugger.py` to analyze traces
+- **For performance issues**: Check metrics using the debugger
+- **For user-specific issues**: Search traces by user ID
+- **For general monitoring**: Get recent traces and analyze patterns
+
+## Integration
+- LangSmith is integrated into the bot's LangGraph workflow
+- All traces are automatically sent to LangSmith
+- Real-time monitoring and debugging available
+- No manual intervention required for trace collection 

@@ -20,6 +20,12 @@ class Settings(BaseSettings):
     GEMINI_MODEL_NAME: str = "gemini-2.0-flash"
     GEMINI_API_KEY: Optional[str] = None
 
+    # LangSmith Configuration
+    LANGSMITH_API_KEY: Optional[str] = None
+    LANGSMITH_PROJECT: Optional[str] = None
+    LANGSMITH_ENDPOINT: Optional[str] = None
+    LANGSMITH_TRACING_V2: bool = Field(default=True, description="Enable LangSmith tracing v2")
+
     # Payment Gateway (Stripe) Configuration
     STRIPE_SECRET_KEY: Optional[str] = None
     STRIPE_PUBLISHABLE_KEY: Optional[str] = None

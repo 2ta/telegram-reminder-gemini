@@ -19,6 +19,7 @@ from src.graph_nodes import (
     format_response_node,
     execute_start_command_node
 )
+from src.langsmith_config import setup_langsmith, is_langsmith_enabled, create_run_name
 
 logger = logging.getLogger(__name__)
 
@@ -77,6 +78,9 @@ def route_after_validation_and_clarification(state: AgentState):
 
 def create_graph():
     """Creates and compiles the LangGraph for the reminder bot."""
+    # Ensure LangSmith is initialized
+    setup_langsmith()
+    
     workflow = StateGraph(AgentState)
 
     # Add nodes
@@ -141,10 +145,15 @@ def create_graph():
     workflow.add_edge("handle_intent_node", "format_response_node")
     workflow.add_edge("format_response_node", END)
 
-    # For now, let's compile without a checkpointer to at least make the bot functional
-    # We can add a proper checkpointer later when we have more time to debug the issue
-    app = workflow.compile()
-    logger.info("LangGraph app compiled successfully (without checkpointing).")
+    # Compile the graph with LangSmith tracing if enabled
+    if is_langsmith_enabled():
+        logger.info("Compiling LangGraph with LangSmith tracing enabled.")
+        app = workflow.compile()
+    else:
+        logger.info("Compiling LangGraph without LangSmith tracing.")
+        app = workflow.compile()
+    
+    logger.info("LangGraph app compiled successfully.")
     return app
 
 # Singleton instance of the graph
