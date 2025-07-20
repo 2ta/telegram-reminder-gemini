@@ -876,15 +876,41 @@ async def process_datetime_node(state: AgentState) -> Dict[str, Any]:
                         logger.info(f"Extracted day {day} and time '{actual_time_str}' from combined string")
                         
                         if 1 <= day <= 31:
-                            # Parse the actual time
-                            parsed_time = parse_english_datetime_to_utc(None, actual_time_str, user_timezone)
-                            if parsed_time:
-                                # Use the parsed time
-                                target_time = parsed_time.time()
-                            else:
-                                # Fall back to current time
+                            # Parse the actual time using a helper function
+                            def parse_time_only(time_str: str, user_tz: str) -> datetime.time:
+                                """Parse time string and return time object in user's timezone"""
+                                import re
+                                # Parse time like "6:10 PM", "3:30 AM", etc.
+                                time_match = re.match(r"(\d{1,2})(?::(\d{1,2}))?\s*(a\.?m\.?|p\.?m\.?)?", time_str.strip().lower())
+                                if time_match:
+                                    hour_str = time_match.group(1)
+                                    minute_str = time_match.group(2)
+                                    period_str = time_match.group(3)
+                                    
+                                    hour = int(hour_str)
+                                    minute = int(minute_str) if minute_str else 0
+                                    
+                                    if period_str:
+                                        period_normalized = period_str.lower().replace('.', '')
+                                        if period_normalized == "am" and hour == 12:
+                                            hour = 0  # 12 AM
+                                        elif period_normalized == "pm" and 1 <= hour < 12:
+                                            hour += 12
+                                    
+                                    if 0 <= hour <= 23 and 0 <= minute <= 59:
+                                        return datetime.time(hour, minute)
+                                
+                                # Fallback to current time
                                 now_utc = datetime.datetime.now(datetime.timezone.utc)
-                                target_time = now_utc.time()
+                                if user_tz and user_tz != 'UTC':
+                                    import pytz
+                                    tz_obj = pytz.timezone(user_tz)
+                                    now_in_user_tz = now_utc.astimezone(tz_obj)
+                                    return now_in_user_tz.time()
+                                else:
+                                    return now_utc.time()
+                            
+                            target_time = parse_time_only(actual_time_str, user_timezone)
                             
                             # Create date for the specified day
                             now_utc = datetime.datetime.now(datetime.timezone.utc)
