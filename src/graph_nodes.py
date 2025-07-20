@@ -647,7 +647,7 @@ RECURRING PATTERNS: Look for patterns like:
 - "every month on the 15th" → recurrence_rule="monthly", time_str="15th", date_str="today"
 - "every month at 22nd" → recurrence_rule="monthly", time_str="22nd", date_str="today"
 - "every month at 22th" → recurrence_rule="monthly", time_str="22th", date_str="today"
-- "every month at 22th at 6:10 PM" → recurrence_rule="monthly", time_str="6:10 PM", date_str="today" (extract only the time, not the day)
+- "every month at 22th at 6:10 PM" → recurrence_rule="monthly", time_str="22th at 6:10 PM", date_str="today" (keep the combined day and time for parsing)
 - "every month on the 15th at 3:30 PM" → recurrence_rule="monthly", time_str="3:30 PM", date_str="today"
 - "every morning" → recurrence_rule="daily", time_str="morning", date_str="today"
 - "every evening" → recurrence_rule="daily", time_str="evening", date_str="today"
