@@ -272,88 +272,22 @@ async def determine_intent_node(state: AgentState) -> Dict[str, Any]:
                 # User is providing date/time for existing task
                 collected_task = conversation_context["collected_task"]
                 if collected_task:
-                    # Analyze the input to determine what type of information it contains
-                    input_lower = input_text.lower().strip()
+                    # Use LLM to intelligently parse the datetime input
+                    user_profile = state.get("user_profile", {})
+                    user_timezone = user_profile.get("timezone", "UTC")
                     
-                    # Define patterns for different input types
-                    time_only_patterns = [
-                        r'^\d{1,2}(?::\d{1,2})?\s*(a\.?m\.?|p\.?m\.?)$',  # 10 AM, 3:30 PM, etc.
-                        r'^\d{1,2}:\d{1,2}$',  # 10:30, 15:45, etc.
-                        r'^(morning|noon|afternoon|evening|night|midnight)$'  # time periods
-                    ]
+                    logger.info(f"Using LLM to parse datetime input: '{input_text}' for task: '{collected_task}'")
+                    date_str, time_str, input_type = await parse_datetime_with_llm(input_text, user_timezone)
                     
-                    date_only_patterns = [
-                        r'^(tomorrow|today|next week|next month)$',
-                        r'^\d{1,2}\s+(january|february|march|april|may|june|july|august|september|october|november|december)$',
-                        r'^\d{1,2}\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)$',
-                        r'^\d{1,2}/\d{1,2}$',  # MM/DD format
-                        r'^\d{4}-\d{1,2}-\d{1,2}$',  # YYYY-MM-DD format
-                        r'^(monday|tuesday|wednesday|thursday|friday|saturday|sunday)$',
-                        r'^(next monday|next tuesday|next wednesday|next thursday|next friday|next saturday|next sunday)$'
-                    ]
-                    
-                    # Check if input contains both date and time
-                    date_time_patterns = [
-                        r'.*\d{1,2}(?::\d{1,2})?\s*(a\.?m\.?|p\.?m\.?).*',  # Contains time
-                        r'.*(tomorrow|today|next week|next month|monday|tuesday|wednesday|thursday|friday|saturday|sunday).*',  # Contains date
-                        r'.*\d{1,2}\s+(january|february|march|april|may|june|july|august|september|october|november|december).*',  # Contains date
-                        r'.*\d{1,2}\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec).*'  # Contains date
-                    ]
-                    
-                    # Determine input type
-                    is_time_only = any(re.match(pattern, input_lower) for pattern in time_only_patterns)
-                    is_date_only = any(re.match(pattern, input_lower) for pattern in date_only_patterns)
-                    has_date_time = any(re.search(pattern, input_lower) for pattern in date_time_patterns)
-                    
-                    logger.info(f"Input analysis for '{input_text}': time_only={is_time_only}, date_only={is_date_only}, has_date_time={has_date_time}")
-                    
-                    if is_time_only:
-                        # Input is time only - ask for date
-                        logger.info(f"Time-only input detected: '{input_text}', asking for date")
-                        reminder_ctx = {
-                            "collected_task": collected_task,
-                            "collected_time_str": input_text,
-                            "collected_date_str": None,
-                            "pending_clarification_type": "date",
-                            "status": "clarification_needed_date"
-                        }
-                        
-                        return {
-                            "current_intent": "intent_create_reminder",
-                            "extracted_parameters": {"task": collected_task, "time": input_text},
-                            "current_node_name": "determine_intent_node",
-                            "reminder_creation_context": reminder_ctx,
-                            "input_text": input_text
-                        }
-                    
-                    elif is_date_only:
-                        # Input is date only - ask for time
-                        logger.info(f"Date-only input detected: '{input_text}', asking for time")
-                        reminder_ctx = {
-                            "collected_task": collected_task,
-                            "collected_date_str": input_text,
-                            "collected_time_str": None,
-                            "pending_clarification_type": "time",
-                            "status": "clarification_needed_time"
-                        }
-                        
-                        return {
-                            "current_intent": "intent_create_reminder",
-                            "extracted_parameters": {"task": collected_task, "date": input_text},
-                            "current_node_name": "determine_intent_node",
-                            "reminder_creation_context": reminder_ctx,
-                            "input_text": input_text
-                        }
-                    
-                    elif has_date_time:
-                        # Input appears to have both date and time - try to process it
-                        logger.info(f"Date+time input detected: '{input_text}', attempting to process")
-                        combined_input = f"Remind me to {collected_task} {input_text}"
+                    if input_type == "date_time" and date_str and time_str:
+                        # Successfully parsed both date and time
+                        logger.info(f"LLM parsed '{input_text}' into date='{date_str}', time='{time_str}'")
+                        combined_input = f"Remind me to {collected_task} {date_str} {time_str}"
                         
                         reminder_ctx = {
                             "collected_task": collected_task,
-                            "collected_date_str": input_text,
-                            "collected_time_str": None,
+                            "collected_date_str": date_str,
+                            "collected_time_str": time_str,
                             "pending_clarification_type": None,
                             "status": "ready_for_processing"
                         }
@@ -363,15 +297,50 @@ async def determine_intent_node(state: AgentState) -> Dict[str, Any]:
                         
                         return {
                             "current_intent": "intent_create_reminder",
-                            "extracted_parameters": {"task": collected_task, "date": input_text, "time": None},
+                            "extracted_parameters": {"task": collected_task, "date": date_str, "time": time_str},
                             "current_node_name": "determine_intent_node",
                             "reminder_creation_context": reminder_ctx,
                             "input_text": combined_input
                         }
-                    
+                    elif input_type == "date_only" and date_str:
+                        # Only date was found - ask for time
+                        logger.info(f"LLM detected date-only input: '{date_str}', asking for time")
+                        reminder_ctx = {
+                            "collected_task": collected_task,
+                            "collected_date_str": date_str,
+                            "collected_time_str": None,
+                            "pending_clarification_type": "time",
+                            "status": "clarification_needed_time"
+                        }
+                        
+                        return {
+                            "current_intent": "intent_create_reminder",
+                            "extracted_parameters": {"task": collected_task, "date": date_str},
+                            "current_node_name": "determine_intent_node",
+                            "reminder_creation_context": reminder_ctx,
+                            "input_text": input_text
+                        }
+                    elif input_type == "time_only" and time_str:
+                        # Only time was found - ask for date
+                        logger.info(f"LLM detected time-only input: '{time_str}', asking for date")
+                        reminder_ctx = {
+                            "collected_task": collected_task,
+                            "collected_date_str": None,
+                            "collected_time_str": time_str,
+                            "pending_clarification_type": "date",
+                            "status": "clarification_needed_date"
+                        }
+                        
+                        return {
+                            "current_intent": "intent_create_reminder",
+                            "extracted_parameters": {"task": collected_task, "time": time_str},
+                            "current_node_name": "determine_intent_node",
+                            "reminder_creation_context": reminder_ctx,
+                            "input_text": input_text
+                        }
                     else:
-                        # Unrecognized input - ask for clarification
-                        logger.info(f"Unrecognized input: '{input_text}', asking for clarification")
+                        # LLM couldn't parse the input clearly - ask for clarification
+                        logger.info(f"LLM couldn't parse input clearly: '{input_text}', asking for clarification")
                         reminder_ctx = {
                             "collected_task": collected_task,
                             "collected_date_str": None,
@@ -402,68 +371,56 @@ async def determine_intent_node(state: AgentState) -> Dict[str, Any]:
             # User is providing date/time for existing task
             collected_task = reminder_ctx.get("collected_task")
             if collected_task:
-                # Analyze the input to determine what type of information it contains
-                input_lower = input_text.lower().strip()
+                # Use LLM to intelligently parse the datetime input
+                user_profile = state.get("user_profile", {})
+                user_timezone = user_profile.get("timezone", "UTC")
                 
-                # Define patterns for different input types
-                time_only_patterns = [
-                    r'^\d{1,2}(?::\d{1,2})?\s*(a\.?m\.?|p\.?m\.?)$',  # 10 AM, 3:30 PM, etc.
-                    r'^\d{1,2}:\d{1,2}$',  # 10:30, 15:45, etc.
-                    r'^(morning|noon|afternoon|evening|night|midnight)$'  # time periods
-                ]
+                logger.info(f"Using LLM to parse datetime input: '{input_text}' for task: '{collected_task}'")
+                date_str, time_str, input_type = await parse_datetime_with_llm(input_text, user_timezone)
                 
-                date_only_patterns = [
-                    r'^(tomorrow|today|next week|next month)$',
-                    r'^\d{1,2}\s+(january|february|march|april|may|june|july|august|september|october|november|december)$',
-                    r'^\d{1,2}\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)$',
-                    r'^\d{1,2}/\d{1,2}$',  # MM/DD format
-                    r'^\d{4}-\d{1,2}-\d{1,2}$',  # YYYY-MM-DD format
-                    r'^(monday|tuesday|wednesday|thursday|friday|saturday|sunday)$',
-                    r'^(next monday|next tuesday|next wednesday|next thursday|next friday|next saturday|next sunday)$'
-                ]
-                
-                # Check if input contains both date and time
-                date_time_patterns = [
-                    r'.*\d{1,2}(?::\d{1,2})?\s*(a\.?m\.?|p\.?m\.?).*',  # Contains time
-                    r'.*(tomorrow|today|next week|next month|monday|tuesday|wednesday|thursday|friday|saturday|sunday).*',  # Contains date
-                    r'.*\d{1,2}\s+(january|february|march|april|may|june|july|august|september|october|november|december).*',  # Contains date
-                    r'.*\d{1,2}\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec).*'  # Contains date
-                ]
-                
-                # Determine input type
-                is_time_only = any(re.match(pattern, input_lower) for pattern in time_only_patterns)
-                is_date_only = any(re.match(pattern, input_lower) for pattern in date_only_patterns)
-                has_date_time = any(re.search(pattern, input_lower) for pattern in date_time_patterns)
-                
-                logger.info(f"Input analysis for '{input_text}': time_only={is_time_only}, date_only={is_date_only}, has_date_time={has_date_time}")
-                
-                if is_time_only:
-                    # Input is time only - ask for date
-                    logger.info(f"Time-only input detected: '{input_text}', asking for date")
-                    reminder_ctx["collected_time_str"] = input_text
-                    reminder_ctx["collected_date_str"] = None
-                    reminder_ctx["pending_clarification_type"] = "date"
-                    reminder_ctx["status"] = "clarification_needed_date"
+                if input_type == "date_time" and date_str and time_str:
+                    # Successfully parsed both date and time
+                    logger.info(f"LLM parsed '{input_text}' into date='{date_str}', time='{time_str}'")
+                    combined_input = f"Remind me to {collected_task} {date_str} {time_str}"
+                    
+                    reminder_ctx["collected_date_str"] = date_str
+                    reminder_ctx["collected_time_str"] = time_str
+                    reminder_ctx["pending_clarification_type"] = None
+                    reminder_ctx["status"] = "ready_for_processing"
                     
                     return {
                         "current_intent": "intent_create_reminder",
-                        "extracted_parameters": {"task": collected_task, "time": input_text},
+                        "extracted_parameters": {"task": collected_task, "date": date_str, "time": time_str},
                         "current_node_name": "determine_intent_node",
                         "reminder_creation_context": reminder_ctx,
-                        "input_text": input_text
+                        "input_text": combined_input
                     }
-                
-                elif is_date_only:
-                    # Input is date only - ask for time
-                    logger.info(f"Date-only input detected: '{input_text}', asking for time")
-                    reminder_ctx["collected_date_str"] = input_text
+                elif input_type == "date_only" and date_str:
+                    # Only date was found - ask for time
+                    logger.info(f"LLM detected date-only input: '{date_str}', asking for time")
+                    reminder_ctx["collected_date_str"] = date_str
                     reminder_ctx["collected_time_str"] = None
                     reminder_ctx["pending_clarification_type"] = "time"
                     reminder_ctx["status"] = "clarification_needed_time"
                     
                     return {
                         "current_intent": "intent_create_reminder",
-                        "extracted_parameters": {"task": collected_task, "date": input_text},
+                        "extracted_parameters": {"task": collected_task, "date": date_str},
+                        "current_node_name": "determine_intent_node",
+                        "reminder_creation_context": reminder_ctx,
+                        "input_text": input_text
+                    }
+                elif input_type == "time_only" and time_str:
+                    # Only time was found - ask for date
+                    logger.info(f"LLM detected time-only input: '{time_str}', asking for date")
+                    reminder_ctx["collected_date_str"] = None
+                    reminder_ctx["collected_time_str"] = time_str
+                    reminder_ctx["pending_clarification_type"] = "date"
+                    reminder_ctx["status"] = "clarification_needed_date"
+                    
+                    return {
+                        "current_intent": "intent_create_reminder",
+                        "extracted_parameters": {"task": collected_task, "time": time_str},
                         "current_node_name": "determine_intent_node",
                         "reminder_creation_context": reminder_ctx,
                         "input_text": input_text
