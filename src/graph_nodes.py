@@ -49,9 +49,9 @@ def split_datetime_input(input_text: str) -> tuple[Optional[str], Optional[str]]
     """
     input_lower = input_text.lower().strip()
     
-    # Common date patterns
+    # Common date patterns (including common misspellings)
     date_patterns = [
-        r'^(today|tomorrow|day after tomorrow)',
+        r'^(today|tomorrow|tommorow|day after tomorrow)',  # Added tommorow
         r'^(next week|next month)',
         r'^(monday|tuesday|wednesday|thursday|friday|saturday|sunday)',
         r'^(next monday|next tuesday|next wednesday|next thursday|next friday|next saturday|next sunday)',
@@ -63,9 +63,9 @@ def split_datetime_input(input_text: str) -> tuple[Optional[str], Optional[str]]
     
     # Common time patterns
     time_patterns = [
-        r'(\d{1,2}(?::\d{1,2})?\s*(a\.?m\.?|p\.?m\.?))$',
-        r'(\d{1,2}:\d{1,2})$',
-        r'(morning|noon|afternoon|evening|night|midnight)$'
+        r'(\d{1,2}(?::\d{1,2})?\s*(a\.?m\.?|p\.?m\.?))$',  # 10 AM, 3:30 PM, etc.
+        r'(\d{1,2}:\d{1,2})$',  # 10:30, 15:45, etc.
+        r'(morning|noon|afternoon|evening|night|midnight)$'  # time periods
     ]
     
     # Try to find date at the beginning
@@ -101,6 +101,9 @@ def split_datetime_input(input_text: str) -> tuple[Optional[str], Optional[str]]
             date_str = input_text
         elif any(re.search(pattern, input_lower) for pattern in time_patterns):
             time_str = input_text
+    
+    # Add debug logging
+    logger.info(f"split_datetime_input: '{input_text}' -> date='{date_str}', time='{time_str}'")
     
     return date_str, time_str
 
