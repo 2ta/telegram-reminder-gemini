@@ -98,11 +98,11 @@ class ConversationMemoryManager:
         # Check if the most recent user message is a complete reminder request
         if recent_messages and isinstance(recent_messages[-1], HumanMessage):
             latest_user_message = recent_messages[-1].content.lower()
-            # Check if this looks like a complete reminder request
+            # Check if this looks like a complete reminder request (must start with "remind me to")
             complete_reminder_patterns = [
-                r'remind\s+me\s+to\s+.+\s+(?:tomorrow|today|next|on|at|in|by)\s+.+',
-                r'remind\s+me\s+to\s+.+\s+\d{1,2}(?::\d{1,2})?\s*(a\.?m\.?|p\.?m\.?)',
-                r'remind\s+me\s+to\s+.+\s+(morning|noon|afternoon|evening|night)'
+                r'^remind\s+me\s+to\s+.+\s+(?:tomorrow|today|next|on|at|in|by)\s+.+',
+                r'^remind\s+me\s+to\s+.+\s+\d{1,2}(?::\d{1,2})?\s*(a\.?m\.?|p\.?m\.?)',
+                r'^remind\s+me\s+to\s+.+\s+(morning|noon|afternoon|evening|night)'
             ]
             
             import re
