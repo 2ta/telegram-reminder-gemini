@@ -55,6 +55,7 @@ async def parse_datetime_with_llm(input_text: str, user_timezone: str = "UTC") -
         # Initialize Gemini LLM
         llm = ChatGoogleGenerativeAI(
             model=settings.GEMINI_MODEL_NAME,
+            google_api_key=settings.GEMINI_API_KEY,
             temperature=0.1,  # Low temperature for consistent parsing
             max_tokens=500
         )
