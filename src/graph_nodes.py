@@ -37,75 +37,108 @@ def get_current_english_datetime_for_prompt() -> str:
         logger.error(f"Error generating current English datetime for prompt: {e}", exc_info=True)
         return "Current date and time unavailable"
 
-def split_datetime_input(input_text: str) -> tuple[Optional[str], Optional[str]]:
+async def parse_datetime_with_llm(input_text: str, user_timezone: str = "UTC") -> tuple[Optional[str], Optional[str], Optional[str]]:
     """
-    Split a combined date+time input into separate date and time components.
+    Use Gemini LLM to intelligently parse datetime input and extract date, time, and type.
     
     Args:
-        input_text: Combined input like "Today 10 AM", "tomorrow 3:30 PM", etc.
+        input_text: User input like "Today 10 AM", "tomorrow 3:30 PM", "next Monday", etc.
+        user_timezone: User's timezone for context
         
     Returns:
-        Tuple of (date_str, time_str) where either can be None if not found
+        Tuple of (date_str, time_str, input_type) where:
+        - date_str: Extracted date component (can be None)
+        - time_str: Extracted time component (can be None) 
+        - input_type: "date_only", "time_only", "date_time", "unclear", or "invalid"
     """
-    input_lower = input_text.lower().strip()
-    
-    # Common date patterns (including common misspellings)
-    date_patterns = [
-        r'^(today|tomorrow|tommorow|day after tomorrow)',  # Added tommorow
-        r'^(next week|next month)',
-        r'^(monday|tuesday|wednesday|thursday|friday|saturday|sunday)',
-        r'^(next monday|next tuesday|next wednesday|next thursday|next friday|next saturday|next sunday)',
-        r'^\d{1,2}\s+(january|february|march|april|may|june|july|august|september|october|november|december)',
-        r'^\d{1,2}\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)',
-        r'^\d{1,2}/\d{1,2}',
-        r'^\d{4}-\d{1,2}-\d{1,2}'
-    ]
-    
-    # Common time patterns
-    time_patterns = [
-        r'(\d{1,2}(?::\d{1,2})?\s*(a\.?m\.?|p\.?m\.?))$',  # 10 AM, 3:30 PM, etc.
-        r'(\d{1,2}:\d{1,2})$',  # 10:30, 15:45, etc.
-        r'(morning|noon|afternoon|evening|night|midnight)$'  # time periods
-    ]
-    
-    # Try to find date at the beginning
-    date_str = None
-    time_str = None
-    
-    for pattern in date_patterns:
-        match = re.match(pattern, input_lower)
-        if match:
-            date_str = match.group(0)
-            break
-    
-    # Try to find time at the end
-    for pattern in time_patterns:
-        match = re.search(pattern, input_lower)
-        if match:
-            time_str = match.group(1)
-            break
-    
-    # If we found both, clean up the input
-    if date_str and time_str:
-        # Remove the found parts from the input to see if there's anything left
-        remaining = input_lower.replace(date_str, '').replace(time_str, '').strip()
-        if remaining:
-            # If there's remaining text, it might be part of the date or time
-            # Try to include it with the date
-            date_str = input_lower[:input_lower.find(time_str)].strip()
-    
-    # If we only found one component, the whole input might be that component
-    if not date_str and not time_str:
-        # Check if the whole input looks like a date or time
-        if any(re.match(pattern, input_lower) for pattern in date_patterns):
-            date_str = input_text
-        elif any(re.search(pattern, input_lower) for pattern in time_patterns):
-            time_str = input_text
-    
-    # Add debug logging
-    logger.info(f"split_datetime_input: '{input_text}' -> date='{date_str}', time='{time_str}'")
-    
-    return date_str, time_str
+    try:
+        # Initialize Gemini LLM
+        llm = ChatGoogleGenerativeAI(
+            model=settings.GEMINI_MODEL_NAME,
+            temperature=0.1,  # Low temperature for consistent parsing
+            max_tokens=500
+        )
+        
+        current_datetime = get_current_english_datetime_for_prompt()
+        
+        prompt = ChatPromptTemplate.from_template("""
+You are an expert datetime parser. Your task is to analyze user input and extract date and time components intelligently.
+
+Current datetime: {current_datetime}
+User timezone: {user_timezone}
+
+User input: "{input_text}"
+
+Analyze this input and determine:
+1. What type of input this is
+2. Extract the date component (if any)
+3. Extract the time component (if any)
+
+Consider:
+- Common misspellings (e.g., "tommorow" = "tomorrow")
+- Natural language variations
+- Relative dates (today, tomorrow, next week, etc.)
+- Time periods (morning, afternoon, evening, etc.)
+- 12/24 hour formats
+- Various date formats
+
+Respond in this exact JSON format:
+{{
+    "input_type": "date_only|time_only|date_time|unclear|invalid",
+    "date_str": "extracted date or null",
+    "time_str": "extracted time or null",
+    "confidence": "high|medium|low",
+    "reasoning": "brief explanation of your analysis"
+}}
+
+Examples:
+- Input: "tomorrow 10 AM" → {{"input_type": "date_time", "date_str": "tomorrow", "time_str": "10 AM", "confidence": "high"}}
+- Input: "tommorow 3:30 PM" → {{"input_type": "date_time", "date_str": "tomorrow", "time_str": "3:30 PM", "confidence": "high"}}
+- Input: "next Monday" → {{"input_type": "date_only", "date_str": "next Monday", "time_str": null, "confidence": "high"}}
+- Input: "10 AM" → {{"input_type": "time_only", "date_str": null, "time_str": "10 AM", "confidence": "high"}}
+- Input: "morning" → {{"input_type": "time_only", "date_str": null, "time_str": "morning", "confidence": "high"}}
+- Input: "asdf" → {{"input_type": "invalid", "date_str": null, "time_str": null, "confidence": "high"}}
+
+Only respond with valid JSON, no other text.
+""")
+        
+        chain = prompt | llm | StrOutputParser()
+        
+        result = await chain.ainvoke({
+            "current_datetime": current_datetime,
+            "user_timezone": user_timezone,
+            "input_text": input_text
+        })
+        
+        # Parse the JSON response
+        try:
+            parsed_result = json.loads(result.strip())
+            date_str = parsed_result.get("date_str")
+            time_str = parsed_result.get("time_str")
+            input_type = parsed_result.get("input_type", "unclear")
+            confidence = parsed_result.get("confidence", "low")
+            reasoning = parsed_result.get("reasoning", "")
+            
+            logger.info(f"LLM datetime parsing: '{input_text}' -> type='{input_type}', date='{date_str}', time='{time_str}', confidence='{confidence}', reasoning='{reasoning}'")
+            
+            return date_str, time_str, input_type
+            
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse LLM response as JSON: {result}, error: {e}")
+            return None, None, "unclear"
+            
+    except Exception as e:
+        logger.error(f"Error in LLM datetime parsing for '{input_text}': {e}", exc_info=True)
+        return None, None, "unclear"
+
+def split_datetime_input(input_text: str) -> tuple[Optional[str], Optional[str]]:
+    """
+    Legacy function - kept for backward compatibility.
+    Now delegates to the LLM-based parser.
+    """
+    logger.warning("split_datetime_input is deprecated, use parse_datetime_with_llm instead")
+    # For now, return None values to force using the LLM parser
+    return None, None
 
 async def entry_node(state: AgentState) -> Dict[str, Any]:
     """Node that processes the initial input and determines message type."""
@@ -437,28 +470,80 @@ async def determine_intent_node(state: AgentState) -> Dict[str, Any]:
                     }
                 
                 elif has_date_time:
-                    # Input appears to have both date and time - try to process it
-                    logger.info(f"Date+time input detected: '{input_text}', attempting to process")
+                    # Input appears to have both date and time - use LLM to parse it intelligently
+                    logger.info(f"Date+time input detected: '{input_text}', using LLM to parse")
                     
-                    # Split the combined input into date and time components
-                    date_str, time_str = split_datetime_input(input_text)
-                    logger.info(f"Split '{input_text}' into date='{date_str}', time='{time_str}'")
+                    # Get user timezone for context
+                    user_profile = state.get("user_profile", {})
+                    user_timezone = user_profile.get("timezone", "UTC")
                     
-                    reminder_ctx["collected_date_str"] = date_str
-                    reminder_ctx["collected_time_str"] = time_str
-                    reminder_ctx["pending_clarification_type"] = None
-                    reminder_ctx["status"] = "ready_for_processing"
+                    # Use LLM to parse the datetime input
+                    date_str, time_str, input_type = await parse_datetime_with_llm(input_text, user_timezone)
                     
-                    # Clear the conversation memory since we're processing this now
-                    conversation_memory.clear_conversation_context(session_id)
-                    
-                    return {
-                        "current_intent": "intent_create_reminder",
-                        "extracted_parameters": {"task": collected_task, "date": date_str, "time": time_str},
-                        "current_node_name": "determine_intent_node",
-                        "reminder_creation_context": reminder_ctx,
-                        "input_text": input_text
-                    }
+                    if input_type == "date_time" and date_str and time_str:
+                        # Successfully parsed both date and time
+                        logger.info(f"LLM parsed '{input_text}' into date='{date_str}', time='{time_str}'")
+                        
+                        reminder_ctx["collected_date_str"] = date_str
+                        reminder_ctx["collected_time_str"] = time_str
+                        reminder_ctx["pending_clarification_type"] = None
+                        reminder_ctx["status"] = "ready_for_processing"
+                        
+                        # Clear the conversation memory since we're processing this now
+                        conversation_memory.clear_conversation_context(session_id)
+                        
+                        return {
+                            "current_intent": "intent_create_reminder",
+                            "extracted_parameters": {"task": collected_task, "date": date_str, "time": time_str},
+                            "current_node_name": "determine_intent_node",
+                            "reminder_creation_context": reminder_ctx,
+                            "input_text": input_text
+                        }
+                    elif input_type == "date_only" and date_str:
+                        # Only date was found - ask for time
+                        logger.info(f"LLM detected date-only input: '{date_str}', asking for time")
+                        reminder_ctx["collected_date_str"] = date_str
+                        reminder_ctx["collected_time_str"] = None
+                        reminder_ctx["pending_clarification_type"] = "time"
+                        reminder_ctx["status"] = "clarification_needed_time"
+                        
+                        return {
+                            "current_intent": "intent_create_reminder",
+                            "extracted_parameters": {"task": collected_task, "date": date_str},
+                            "current_node_name": "determine_intent_node",
+                            "reminder_creation_context": reminder_ctx,
+                            "input_text": input_text
+                        }
+                    elif input_type == "time_only" and time_str:
+                        # Only time was found - ask for date
+                        logger.info(f"LLM detected time-only input: '{time_str}', asking for date")
+                        reminder_ctx["collected_date_str"] = None
+                        reminder_ctx["collected_time_str"] = time_str
+                        reminder_ctx["pending_clarification_type"] = "date"
+                        reminder_ctx["status"] = "clarification_needed_date"
+                        
+                        return {
+                            "current_intent": "intent_create_reminder",
+                            "extracted_parameters": {"task": collected_task, "time": time_str},
+                            "current_node_name": "determine_intent_node",
+                            "reminder_creation_context": reminder_ctx,
+                            "input_text": input_text
+                        }
+                    else:
+                        # LLM couldn't parse the input clearly - ask for clarification
+                        logger.info(f"LLM couldn't parse input clearly: '{input_text}', asking for clarification")
+                        reminder_ctx["collected_date_str"] = None
+                        reminder_ctx["collected_time_str"] = None
+                        reminder_ctx["pending_clarification_type"] = "datetime"
+                        reminder_ctx["status"] = "clarification_needed_datetime"
+                        
+                        return {
+                            "current_intent": "intent_create_reminder",
+                            "extracted_parameters": {"task": collected_task},
+                            "current_node_name": "determine_intent_node",
+                            "reminder_creation_context": reminder_ctx,
+                            "input_text": input_text
+                        }
                 
                 else:
                     # Unrecognized input - ask for clarification
@@ -482,23 +567,47 @@ async def determine_intent_node(state: AgentState) -> Dict[str, Any]:
             collected_time = reminder_ctx.get("collected_time_str")
             if collected_task:
                 logger.info(f"User {state.get('user_id')} provided date '{input_text}' for task '{collected_task}' with time '{collected_time}'")
-                combined_input = f"Remind me to {collected_task} {input_text} {collected_time or ''}".strip()
                 
-                reminder_ctx["collected_date_str"] = input_text
-                reminder_ctx["collected_time_str"] = collected_time
-                reminder_ctx["pending_clarification_type"] = None
-                reminder_ctx["status"] = "ready_for_processing"
+                # Use LLM to validate and normalize the date input
+                user_profile = state.get("user_profile", {})
+                user_timezone = user_profile.get("timezone", "UTC")
+                date_str, time_str, input_type = await parse_datetime_with_llm(input_text, user_timezone)
                 
-                # Clear the conversation memory since we're processing this now
-                conversation_memory.clear_conversation_context(session_id)
-                
-                return {
-                    "current_intent": "intent_create_reminder",
-                    "extracted_parameters": {"task": collected_task, "date": input_text, "time": collected_time},
-                    "current_node_name": "determine_intent_node",
-                    "reminder_creation_context": reminder_ctx,
-                    "input_text": combined_input
-                }
+                if input_type in ["date_only", "date_time"] and date_str:
+                    # LLM successfully parsed the date
+                    logger.info(f"LLM validated date input: '{input_text}' -> '{date_str}'")
+                    combined_input = f"Remind me to {collected_task} {date_str} {collected_time or ''}".strip()
+                    
+                    reminder_ctx["collected_date_str"] = date_str
+                    reminder_ctx["collected_time_str"] = collected_time
+                    reminder_ctx["pending_clarification_type"] = None
+                    reminder_ctx["status"] = "ready_for_processing"
+                    
+                    # Clear the conversation memory since we're processing this now
+                    conversation_memory.clear_conversation_context(session_id)
+                    
+                    return {
+                        "current_intent": "intent_create_reminder",
+                        "extracted_parameters": {"task": collected_task, "date": date_str, "time": collected_time},
+                        "current_node_name": "determine_intent_node",
+                        "reminder_creation_context": reminder_ctx,
+                        "input_text": combined_input
+                    }
+                else:
+                    # LLM couldn't parse the date - ask for clarification
+                    logger.info(f"LLM couldn't parse date input: '{input_text}', asking for clarification")
+                    reminder_ctx["collected_date_str"] = None
+                    reminder_ctx["collected_time_str"] = collected_time
+                    reminder_ctx["pending_clarification_type"] = "date"
+                    reminder_ctx["status"] = "clarification_needed_date"
+                    
+                    return {
+                        "current_intent": "intent_create_reminder",
+                        "extracted_parameters": {"task": collected_task, "time": collected_time},
+                        "current_node_name": "determine_intent_node",
+                        "reminder_creation_context": reminder_ctx,
+                        "input_text": input_text
+                    }
         
         elif pending_clarification_type == "time":
             # User is providing time for existing task and date
@@ -506,23 +615,47 @@ async def determine_intent_node(state: AgentState) -> Dict[str, Any]:
             collected_date = reminder_ctx.get("collected_date_str")
             if collected_task:
                 logger.info(f"User {state.get('user_id')} provided time '{input_text}' for task '{collected_task}' with date '{collected_date}'")
-                combined_input = f"Remind me to {collected_task} {collected_date or ''} {input_text}".strip()
                 
-                reminder_ctx["collected_date_str"] = collected_date
-                reminder_ctx["collected_time_str"] = input_text
-                reminder_ctx["pending_clarification_type"] = None
-                reminder_ctx["status"] = "ready_for_processing"
+                # Use LLM to validate and normalize the time input
+                user_profile = state.get("user_profile", {})
+                user_timezone = user_profile.get("timezone", "UTC")
+                date_str, time_str, input_type = await parse_datetime_with_llm(input_text, user_timezone)
                 
-                # Clear the conversation memory since we're processing this now
-                conversation_memory.clear_conversation_context(session_id)
-                
-                return {
-                    "current_intent": "intent_create_reminder",
-                    "extracted_parameters": {"task": collected_task, "date": collected_date, "time": input_text},
-                    "current_node_name": "determine_intent_node",
-                    "reminder_creation_context": reminder_ctx,
-                    "input_text": combined_input
-                }
+                if input_type in ["time_only", "date_time"] and time_str:
+                    # LLM successfully parsed the time
+                    logger.info(f"LLM validated time input: '{input_text}' -> '{time_str}'")
+                    combined_input = f"Remind me to {collected_task} {collected_date or ''} {time_str}".strip()
+                    
+                    reminder_ctx["collected_date_str"] = collected_date
+                    reminder_ctx["collected_time_str"] = time_str
+                    reminder_ctx["pending_clarification_type"] = None
+                    reminder_ctx["status"] = "ready_for_processing"
+                    
+                    # Clear the conversation memory since we're processing this now
+                    conversation_memory.clear_conversation_context(session_id)
+                    
+                    return {
+                        "current_intent": "intent_create_reminder",
+                        "extracted_parameters": {"task": collected_task, "date": collected_date, "time": time_str},
+                        "current_node_name": "determine_intent_node",
+                        "reminder_creation_context": reminder_ctx,
+                        "input_text": combined_input
+                    }
+                else:
+                    # LLM couldn't parse the time - ask for clarification
+                    logger.info(f"LLM couldn't parse time input: '{input_text}', asking for clarification")
+                    reminder_ctx["collected_date_str"] = collected_date
+                    reminder_ctx["collected_time_str"] = None
+                    reminder_ctx["pending_clarification_type"] = "time"
+                    reminder_ctx["status"] = "clarification_needed_time"
+                    
+                    return {
+                        "current_intent": "intent_create_reminder",
+                        "extracted_parameters": {"task": collected_task, "date": collected_date},
+                        "current_node_name": "determine_intent_node",
+                        "reminder_creation_context": reminder_ctx,
+                        "input_text": input_text
+                    }
         
         elif pending_clarification_type == "task":
                 # User is providing task for existing date/time (less common but possible)
