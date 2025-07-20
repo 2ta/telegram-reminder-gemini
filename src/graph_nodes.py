@@ -638,14 +638,16 @@ IMPORTANT: When the user provides a combined date-time phrase like "11 PM today"
 - For "next Monday at 9 AM": date_str="next monday", time_str="9 AM"
 
 RECURRING PATTERNS: Look for patterns like:
-- "every day at 8 AM" → recurrence_rule="daily", time_str="8 AM"
-- "daily reminder" → recurrence_rule="daily"
-- "weekly meeting" → recurrence_rule="weekly"
-- "monthly check" → recurrence_rule="monthly"
-- "every morning" → recurrence_rule="daily", time_str="morning"
-- "every evening" → recurrence_rule="daily", time_str="evening"
-- "every night" → recurrence_rule="daily", time_str="night"
-- "every afternoon" → recurrence_rule="daily", time_str="afternoon"
+- "every day at 8 AM" → recurrence_rule="daily", time_str="8 AM", date_str="today"
+- "daily reminder" → recurrence_rule="daily", date_str="today"
+- "weekly meeting" → recurrence_rule="weekly", date_str="today"
+- "monthly check" → recurrence_rule="monthly", date_str="today"
+- "every morning" → recurrence_rule="daily", time_str="morning", date_str="today"
+- "every evening" → recurrence_rule="daily", time_str="evening", date_str="today"
+- "every night" → recurrence_rule="daily", time_str="night", date_str="today"
+- "every afternoon" → recurrence_rule="daily", time_str="afternoon", date_str="today"
+
+IMPORTANT: For recurring reminders, if no specific date is mentioned, use "today" as the date_str to establish the first occurrence.
 
 Current date and time: {current_english_datetime}
 
