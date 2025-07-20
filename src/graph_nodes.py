@@ -1566,7 +1566,11 @@ async def handle_intent_node(state: AgentState) -> Dict[str, Any]:
                                 logger.warning(f"Could not get datetime for reminder ID {reminder.id}. Skipping display. date_str={reminder.date_str}, time_str={reminder.time_str}, due_datetime_utc={reminder.due_datetime_utc}")
                                 reminder_list_items_text.append(f"⚠️ Date and time information for reminder ID {reminder.id} is invalid.")
                                 continue
-                            formatted_datetime = format_datetime_for_display(gregorian_dt)
+                            # Get user's timezone for proper display
+                            user_timezone = 'UTC'  # Default fallback
+                            if user_profile:
+                                user_timezone = user_profile.get("timezone", 'UTC')
+                            formatted_datetime = format_datetime_for_display(gregorian_dt, user_timezone)
                             task_preview = reminder.task[:40] + "..." if len(reminder.task) > 40 else reminder.task
                             
                             # Format display based on whether it's recurring
