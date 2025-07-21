@@ -982,7 +982,11 @@ async def send_reminder_notification(
         if reminder.recurrence_rule:
             # Calculate next due date for display
             next_due = calculate_next_recurrence(reminder.due_datetime_utc, reminder.recurrence_rule)
-            next_due_str = format_datetime_for_display(next_due, 'UTC')
+            # Fetch user's timezone for display
+            user_timezone = 'UTC'
+            if reminder.user and getattr(reminder.user, 'timezone', None):
+                user_timezone = reminder.user.timezone
+            next_due_str = format_datetime_for_display(next_due, user_timezone)
             
             if reminder.recurrence_rule.lower() == "daily":
                 recurrence_text = "daily"
@@ -1139,7 +1143,10 @@ async def handle_done_callback(update: Update, context: ContextTypes.DEFAULT_TYP
                     db.commit()
                     
                     # Format next due date for display
-                    next_due_str = format_datetime_for_display(next_due, 'UTC')
+                    user_timezone = 'UTC'
+                    if reminder.user and getattr(reminder.user, 'timezone', None):
+                        user_timezone = reminder.user.timezone
+                    next_due_str = format_datetime_for_display(next_due, user_timezone)
                     
                     await query.answer("Recurring reminder marked as done for this occurrence")
                     await query.edit_message_text(f"✅ Recurring reminder marked as done for this occurrence\n\n🔄 Next reminder: {next_due_str}")
