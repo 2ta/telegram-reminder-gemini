@@ -993,6 +993,32 @@ async def process_datetime_node(state: AgentState) -> Dict[str, Any]:
                     parsed_dt_utc = parse_english_datetime_to_utc(date_str, time_str, user_timezone)
                 
                 if parsed_dt_utc:
+                    # Ensure for recurring reminders, the first due date is always in the future
+                    if recurrence_rule:
+                        import pytz
+                        now_utc = datetime.datetime.now(pytz.utc)
+                        user_tz = pytz.timezone(user_timezone) if user_timezone and user_timezone != 'UTC' else pytz.utc
+                        parsed_local = parsed_dt_utc.astimezone(user_tz)
+                        now_local = now_utc.astimezone(user_tz)
+                        # If the parsed time is in the past or now, move to next occurrence
+                        if parsed_local <= now_local:
+                            if recurrence_rule.lower() == 'daily':
+                                parsed_local = parsed_local + datetime.timedelta(days=1)
+                            elif recurrence_rule.lower() == 'weekly':
+                                parsed_local = parsed_local + datetime.timedelta(weeks=1)
+                            elif recurrence_rule.lower() == 'monthly':
+                                month = parsed_local.month + 1
+                                year = parsed_local.year
+                                if month > 12:
+                                    month = 1
+                                    year += 1
+                                day = min(parsed_local.day, [31,29 if year%4==0 and (year%100!=0 or year%400==0) else 28,31,30,31,30,31,31,30,31,30,31][month-1])
+                                try:
+                                    parsed_local = parsed_local.replace(year=year, month=month, day=day)
+                                except Exception:
+                                    parsed_local = parsed_local + datetime.timedelta(days=30)
+                            # Convert back to UTC
+                            parsed_dt_utc = parsed_local.astimezone(pytz.utc)
                     logger.info(f"Successfully parsed datetime to UTC: {parsed_dt_utc}")
                     # Store in context for subsequent nodes
                     reminder_ctx["collected_parsed_datetime_utc"] = parsed_dt_utc
