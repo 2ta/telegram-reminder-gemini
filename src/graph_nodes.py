@@ -819,6 +819,7 @@ async def execute_start_command_node(state: AgentState) -> Dict[str, Any]:
         db.close()
 
 async def process_datetime_node(state: AgentState) -> Dict[str, Any]:
+    logger.info(f"[REMINDER DEBUG] (TOP) Entered process_datetime_node for user {state.get('user_id')}, state: {state}")
     """Node to parse date and time strings from extracted_parameters OR reminder_creation_context into a UTC datetime object."""
     logger.info(f"Graph: Entered process_datetime_node for user {state.get('user_id')}")
     current_intent = state.get("current_intent")
@@ -855,6 +856,7 @@ async def process_datetime_node(state: AgentState) -> Dict[str, Any]:
             reminder_ctx["collected_recurrence_rule"] = recurrence_rule
             logger.info(f"Recurrence rule detected: '{recurrence_rule}'")
         
+        logger.info(f"[REMINDER DEBUG] (PRE-RECURRENCE) date_str={date_str}, time_str={time_str}, recurrence_rule={reminder_ctx.get('collected_recurrence_rule')}, parsed_dt_utc={parsed_dt_utc}")
         if date_str or time_str:
             logger.info(f"Attempting to parse date='{date_str}', time='{time_str}' for intent '{current_intent}'") # Removed am_pm from log
             try:
