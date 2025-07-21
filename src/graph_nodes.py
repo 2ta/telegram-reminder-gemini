@@ -1000,7 +1000,7 @@ async def process_datetime_node(state: AgentState) -> Dict[str, Any]:
                         user_tz = pytz.timezone(user_timezone) if user_timezone and user_timezone != 'UTC' else pytz.utc
                         parsed_local = parsed_dt_utc.astimezone(user_tz)
                         now_local = now_utc.astimezone(user_tz)
-                        logger.info(f"[REMINDER DEBUG] Initial parsed_dt_utc: {parsed_dt_utc}, parsed_local: {parsed_local}, now_utc: {now_utc}, now_local: {now_local}, recurrence_rule: {recurrence_rule}")
+                        logger.info(f"[REMINDER DEBUG] (ENTRY) Recurring scheduling logic: parsed_dt_utc={parsed_dt_utc}, parsed_local={parsed_local}, now_utc={now_utc}, now_local={now_local}, recurrence_rule={recurrence_rule}")
                         # For recurring reminders, always schedule the first due date in the future
                         while parsed_local <= now_local:
                             logger.info(f"[REMINDER DEBUG] parsed_local ({parsed_local}) <= now_local ({now_local}), bumping to next occurrence for recurrence_rule: {recurrence_rule}")
@@ -1021,7 +1021,7 @@ async def process_datetime_node(state: AgentState) -> Dict[str, Any]:
                                     parsed_local = parsed_local + datetime.timedelta(days=30)
                             else:
                                 break
-                        logger.info(f"[REMINDER DEBUG] Final scheduled parsed_local: {parsed_local}, parsed_dt_utc: {parsed_local.astimezone(pytz.utc)}")
+                        logger.info(f"[REMINDER DEBUG] (EXIT) Final scheduled parsed_local: {parsed_local}, parsed_dt_utc: {parsed_local.astimezone(pytz.utc)}")
                         # Convert back to UTC
                         parsed_dt_utc = parsed_local.astimezone(pytz.utc)
                     logger.info(f"Successfully parsed datetime to UTC: {parsed_dt_utc}")
