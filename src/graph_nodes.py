@@ -1403,6 +1403,35 @@ async def create_reminder_node(state: AgentState) -> Dict[str, Any]:
     else:
         parsed_dt_utc = parsed_dt_utc_from_ctx
 
+    # Ensure for recurring reminders, the first due date is always in the future (robust post-parse check)
+    recurrence_rule = reminder_ctx.get("collected_recurrence_rule")
+    import pytz
+    if recurrence_rule and isinstance(parsed_dt_utc, datetime.datetime):
+        now_utc = datetime.datetime.now(pytz.utc)
+        user_timezone = user_profile.get("timezone", "UTC") if user_profile else "UTC"
+        user_tz = pytz.timezone(user_timezone) if user_timezone and user_timezone != 'UTC' else pytz.utc
+        parsed_local = parsed_dt_utc.astimezone(user_tz)
+        # Always bump forward until in the future
+        while parsed_dt_utc <= now_utc:
+            if recurrence_rule.lower() == 'daily':
+                parsed_local = parsed_local + datetime.timedelta(days=1)
+            elif recurrence_rule.lower() == 'weekly':
+                parsed_local = parsed_local + datetime.timedelta(weeks=1)
+            elif recurrence_rule.lower() == 'monthly':
+                month = parsed_local.month + 1
+                year = parsed_local.year
+                if month > 12:
+                    month = 1
+                    year += 1
+                day = min(parsed_local.day, [31,29 if year%4==0 and (year%100!=0 or year%400==0) else 28,31,30,31,30,31,31,30,31,30,31][month-1])
+                try:
+                    parsed_local = parsed_local.replace(year=year, month=month, day=day)
+                except Exception:
+                    parsed_local = parsed_local + datetime.timedelta(days=30)
+            else:
+                break
+            parsed_dt_utc = parsed_local.astimezone(pytz.utc)
+        reminder_ctx["collected_parsed_datetime_utc"] = parsed_dt_utc
 
     if not task or not parsed_dt_utc:
         logger.error(f"Missing task or datetime for user {user_id} in create_reminder_node. Task: {task}, DT: {parsed_dt_utc}")
