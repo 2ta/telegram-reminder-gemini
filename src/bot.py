@@ -981,11 +981,10 @@ async def send_reminder_notification(
         # Add special note for recurring reminders with next due date
         if reminder.recurrence_rule:
             # Calculate next due date for display
-            next_due = calculate_next_recurrence(reminder.due_datetime_utc, reminder.recurrence_rule)
-            # Fetch user's timezone for display
             user_timezone = 'UTC'
             if reminder.user and getattr(reminder.user, 'timezone', None):
                 user_timezone = reminder.user.timezone
+            next_due = calculate_next_recurrence(reminder.due_datetime_utc, reminder.recurrence_rule, user_timezone)
             next_due_str = format_datetime_for_display(next_due, user_timezone)
             
             if reminder.recurrence_rule.lower() == "daily":
@@ -1015,24 +1014,38 @@ async def send_reminder_notification(
         logger.error(f"Error sending reminder notification to user {user_id}: {e}", exc_info=True)
         return False
 
-def calculate_next_recurrence(current_due: datetime.datetime, recurrence_rule: str) -> datetime.datetime:
+def calculate_next_recurrence(current_due: datetime.datetime, recurrence_rule: str, user_timezone: str = 'UTC') -> datetime.datetime:
     """
-    Calculate the next due date for a recurring reminder.
+    Calculate the next due date for a recurring reminder in the user's timezone.
     """
+    import pytz
     try:
         recurrence = recurrence_rule.lower()
-        
+        tz = pytz.timezone(user_timezone) if user_timezone and user_timezone != 'UTC' else pytz.utc
+        # Convert current_due to user's local time
+        local_due = current_due.astimezone(tz)
         if recurrence == "daily":
-            return current_due + datetime.timedelta(days=1)
+            next_local_due = local_due + datetime.timedelta(days=1)
         elif recurrence == "weekly":
-            return current_due + datetime.timedelta(weeks=1)
+            next_local_due = local_due + datetime.timedelta(weeks=1)
         elif recurrence == "monthly":
-            # Simple monthly calculation (30 days)
-            return current_due + datetime.timedelta(days=30)
+            # Add one month, handle month overflow
+            month = local_due.month + 1
+            year = local_due.year
+            if month > 12:
+                month = 1
+                year += 1
+            day = min(local_due.day, [31,29 if year%4==0 and (year%100!=0 or year%400==0) else 28,31,30,31,30,31,31,30,31,30,31][month-1])
+            try:
+                next_local_due = local_due.replace(year=year, month=month, day=day)
+            except Exception:
+                # fallback: add 30 days
+                next_local_due = local_due + datetime.timedelta(days=30)
         else:
             # Unknown recurrence, return current due date
-            return current_due
-            
+            next_local_due = local_due
+        # Convert back to UTC
+        return next_local_due.astimezone(pytz.utc)
     except Exception as e:
         logger.error(f"Error calculating next recurrence: {e}", exc_info=True)
         return current_due
@@ -1043,7 +1056,10 @@ async def handle_recurring_reminder(reminder: Reminder, db: Session) -> None:
     """
     try:
         # Calculate next due date
-        next_due = calculate_next_recurrence(reminder.due_datetime_utc, reminder.recurrence_rule)
+        user_timezone = 'UTC'
+        if reminder.user and getattr(reminder.user, 'timezone', None):
+            user_timezone = reminder.user.timezone
+        next_due = calculate_next_recurrence(reminder.due_datetime_utc, reminder.recurrence_rule, user_timezone)
         
         # Update the reminder with new due date
         reminder.due_datetime_utc = next_due
@@ -1136,16 +1152,16 @@ async def handle_done_callback(update: Update, context: ContextTypes.DEFAULT_TYP
             if reminder:
                 if reminder.recurrence_rule:
                     # For recurring reminders, calculate next due date and keep it active
-                    next_due = calculate_next_recurrence(reminder.due_datetime_utc, reminder.recurrence_rule)
+                    user_timezone = 'UTC'
+                    if reminder.user and getattr(reminder.user, 'timezone', None):
+                        user_timezone = reminder.user.timezone
+                    next_due = calculate_next_recurrence(reminder.due_datetime_utc, reminder.recurrence_rule, user_timezone)
                     reminder.due_datetime_utc = next_due
                     reminder.is_notified = False
                     reminder.notification_sent_at = None
                     db.commit()
                     
                     # Format next due date for display
-                    user_timezone = 'UTC'
-                    if reminder.user and getattr(reminder.user, 'timezone', None):
-                        user_timezone = reminder.user.timezone
                     next_due_str = format_datetime_for_display(next_due, user_timezone)
                     
                     await query.answer("Recurring reminder marked as done for this occurrence")
