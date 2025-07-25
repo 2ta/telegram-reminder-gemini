@@ -998,16 +998,17 @@ async def process_datetime_node(state: AgentState) -> Dict[str, Any]:
                     # Ensure for recurring reminders, the first due date is always in the future (robust post-parse check)
                     if recurrence_rule:
                         import pytz
-                        now_utc = datetime.datetime.now(pytz.utc)
+                        import datetime as dt
+                        now_utc = dt.datetime.now(pytz.utc)
                         user_tz = pytz.timezone(user_timezone) if user_timezone and user_timezone != 'UTC' else pytz.utc
                         parsed_local = parsed_dt_utc.astimezone(user_tz)
                         now_local = now_utc.astimezone(user_tz)
                         # Always bump forward until in the future
                         while parsed_dt_utc <= now_utc:
                             if recurrence_rule.lower() == 'daily':
-                                parsed_local = parsed_local + datetime.timedelta(days=1)
+                                parsed_local = parsed_local + dt.timedelta(days=1)
                             elif recurrence_rule.lower() == 'weekly':
-                                parsed_local = parsed_local + datetime.timedelta(weeks=1)
+                                parsed_local = parsed_local + dt.timedelta(weeks=1)
                             elif recurrence_rule.lower() == 'monthly':
                                 month = parsed_local.month + 1
                                 year = parsed_local.year
@@ -1018,7 +1019,7 @@ async def process_datetime_node(state: AgentState) -> Dict[str, Any]:
                                 try:
                                     parsed_local = parsed_local.replace(year=year, month=month, day=day)
                                 except Exception:
-                                    parsed_local = parsed_local + datetime.timedelta(days=30)
+                                    parsed_local = parsed_local + dt.timedelta(days=30)
                             else:
                                 break
                             parsed_dt_utc = parsed_local.astimezone(pytz.utc)
