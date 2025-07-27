@@ -560,6 +560,9 @@ async def determine_intent_node(state: AgentState) -> Dict[str, Any]:
         if input_text == '/start':
             logger.info(f"Detected /start command from user {state.get('user_id')}")
             return {"current_intent": "intent_start", "current_node_name": "determine_intent_node"}
+        elif input_text in ['/version', '/v']:
+            logger.info(f"Detected /version command from user {state.get('user_id')}")
+            return {"current_intent": "intent_version", "current_node_name": "determine_intent_node"}
         elif input_text == '/reminders' or input_text.startswith('/reminders '):
             page = 1
             if input_text.startswith('/reminders '): # Check if there's an argument
@@ -1020,10 +1023,12 @@ async def process_datetime_node(state: AgentState) -> Dict[str, Any]:
                     logger.info(f"[REMINDER DEBUG] (POST-PARSE) Final scheduled parsed_local: {parsed_local}, parsed_dt_utc: {parsed_dt_utc}")
                     # Store in context for subsequent nodes
                     reminder_ctx["collected_parsed_datetime_utc"] = parsed_dt_utc
+                    logger.info(f"[DATETIME DEBUG] Successfully set collected_parsed_datetime_utc = '{parsed_dt_utc}' (type: {type(parsed_dt_utc)})")
                 else:
                     logger.warning(f"Failed to parse date/time from strings: date='{date_str}', time='{time_str}'")
                     # If parsing fails, ensure collected_parsed_datetime_utc is None or removed
                     reminder_ctx["collected_parsed_datetime_utc"] = None
+                    logger.info(f"[DATETIME DEBUG] Failed parsing - set collected_parsed_datetime_utc = None")
                     # Add a flag for failed parsing
                     reminder_ctx["datetime_parse_failed"] = True
             except Exception as e:
@@ -1036,6 +1041,7 @@ async def process_datetime_node(state: AgentState) -> Dict[str, Any]:
     else:
         logger.info(f"Skipping datetime parsing for intent '{current_intent}'.")
     
+    logger.info(f"[DATETIME DEBUG] process_datetime_node returning context with collected_parsed_datetime_utc='{reminder_ctx.get('collected_parsed_datetime_utc')}' for user {state.get('user_id')}")
     return {
         "reminder_creation_context": reminder_ctx,
         "current_node_name": "process_datetime_node"
@@ -1057,6 +1063,14 @@ async def validate_and_clarify_reminder_node(state: AgentState) -> Dict[str, Any
     collected_task = reminder_ctx.get("collected_task")
     collected_parsed_dt_utc = reminder_ctx.get("collected_parsed_datetime_utc")
     datetime_parse_failed = reminder_ctx.get("datetime_parse_failed", False)
+    
+    # DEBUG: Add comprehensive logging
+    logger.info(f"[VALIDATION DEBUG] User {user_id} validation started:")
+    logger.info(f"[VALIDATION DEBUG] - collected_task: '{collected_task}' (type: {type(collected_task)})")
+    logger.info(f"[VALIDATION DEBUG] - collected_parsed_dt_utc: '{collected_parsed_dt_utc}' (type: {type(collected_parsed_dt_utc)})")
+    logger.info(f"[VALIDATION DEBUG] - datetime_parse_failed: {datetime_parse_failed}")
+    logger.info(f"[VALIDATION DEBUG] - reminder_ctx keys: {list(reminder_ctx.keys())}")
+    logger.info(f"[VALIDATION DEBUG] - reminder_ctx full: {reminder_ctx}")
     
     # Default to free tier limits if profile is not loaded yet (e.g., new user)
     current_reminder_count = 0
@@ -1130,16 +1144,19 @@ async def validate_and_clarify_reminder_node(state: AgentState) -> Dict[str, Any
         new_reminder_creation_status = "clarification_needed_datetime"
     # --- 3. Validate Task ---
     elif not collected_task:
+        logger.info(f"[VALIDATION DEBUG] CONDITION 3: Task missing - collected_task='{collected_task}'")
         logger.info(f"Validation failed for user {user_id}: Task is missing.")
         pending_clarification_type = "task"
         clarification_question_text = "What would you like to be reminded of?"
         new_reminder_creation_status = "clarification_needed_task"
     # --- 4. Check if datetime was successfully parsed (check this FIRST) ---
     elif collected_parsed_dt_utc:
+        logger.info(f"[VALIDATION DEBUG] CONDITION 4: Datetime EXISTS - collected_parsed_dt_utc='{collected_parsed_dt_utc}' (truthy: {bool(collected_parsed_dt_utc)})")
         logger.info(f"Validation successful for user {user_id}: Task='{collected_task}', Datetime='{collected_parsed_dt_utc}'. Ready for confirmation.")
         new_reminder_creation_status = "ready_for_confirmation"
     # --- 5. Validate Datetime (only if not already parsed) ---
     elif not collected_parsed_dt_utc:
+        logger.info(f"[VALIDATION DEBUG] CONDITION 5: Datetime MISSING - collected_parsed_dt_utc='{collected_parsed_dt_utc}' (falsy: {not bool(collected_parsed_dt_utc)})")
         if datetime_parse_failed:
             logger.warning(f"Date/time parsing failed for user {user_id}, task '{collected_task}'. Informing user.")
             pending_clarification_type = "datetime"
@@ -1716,6 +1733,19 @@ async def handle_intent_node(state: AgentState) -> Dict[str, Any]:
         response_text = MSG_WELCOME 
         response_keyboard_markup = None
         logger.info(f"handle_intent_node processing intent_start for user {user_id}. MSG_WELCOME will be used.")
+        
+    elif current_intent == "intent_version":
+        # Show version information
+        from src.version import VERSION_INFO
+        response_text = (
+            f"🤖 **Bot Version Information**\n\n"
+            f"**Version:** {VERSION_INFO['version']}\n"
+            f"**Commit:** {VERSION_INFO['commit_hash']}\n"
+            f"**Message:** {VERSION_INFO['commit_message']}\n"
+            f"**Deployed:** {VERSION_INFO['deployment_time'][:19]}"
+        )
+        response_keyboard_markup = None
+        logger.info(f"handle_intent_node: Showing version info for user {user_id}")
         
     elif current_intent == "intent_view_reminders":
         # ... (existing view reminders logic remains the same)
