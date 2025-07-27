@@ -1020,6 +1020,11 @@ async def process_datetime_node(state: AgentState) -> Dict[str, Any]:
                             else:
                                 break
                             parsed_dt_utc = parsed_local.astimezone(pytz.utc)
+                    else:
+                        # For non-recurring reminders, initialize parsed_local for logging
+                        import pytz
+                        user_tz = pytz.timezone(user_timezone) if user_timezone and user_timezone != 'UTC' else pytz.utc
+                        parsed_local = parsed_dt_utc.astimezone(user_tz)
                     logger.info(f"[REMINDER DEBUG] (POST-PARSE) Final scheduled parsed_local: {parsed_local}, parsed_dt_utc: {parsed_dt_utc}")
                     # Store in context for subsequent nodes
                     reminder_ctx["collected_parsed_datetime_utc"] = parsed_dt_utc
