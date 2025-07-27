@@ -1134,7 +1134,11 @@ async def validate_and_clarify_reminder_node(state: AgentState) -> Dict[str, Any
         pending_clarification_type = "task"
         clarification_question_text = "What would you like to be reminded of?"
         new_reminder_creation_status = "clarification_needed_task"
-    # --- 4. Validate Datetime ---
+    # --- 4. Check if datetime was successfully parsed (check this FIRST) ---
+    elif collected_parsed_dt_utc:
+        logger.info(f"Validation successful for user {user_id}: Task='{collected_task}', Datetime='{collected_parsed_dt_utc}'. Ready for confirmation.")
+        new_reminder_creation_status = "ready_for_confirmation"
+    # --- 5. Validate Datetime (only if not already parsed) ---
     elif not collected_parsed_dt_utc:
         if datetime_parse_failed:
             logger.warning(f"Date/time parsing failed for user {user_id}, task '{collected_task}'. Informing user.")
@@ -1149,11 +1153,6 @@ async def validate_and_clarify_reminder_node(state: AgentState) -> Dict[str, Any
             pending_clarification_type = "datetime"
             clarification_question_text = f"When should I remind you about '{collected_task}'?"
             new_reminder_creation_status = "clarification_needed_datetime"
-
-    # --- 5. Check if datetime was successfully parsed ---
-    elif collected_parsed_dt_utc:
-        logger.info(f"Validation successful for user {user_id}: Task='{collected_task}', Datetime='{collected_parsed_dt_utc}'. Ready for confirmation.")
-        new_reminder_creation_status = "ready_for_confirmation"
 
     # (Future AM/PM specific clarification check - assuming parse_english_datetime_to_utc handles am_pm_choice or returns None if it's ambiguous and choice is missing)
     # For instance, if parse_english_datetime_to_utc returned a specific error or flag for AM/PM:
