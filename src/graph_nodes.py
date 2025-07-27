@@ -623,7 +623,7 @@ async def determine_intent_node(state: AgentState) -> Dict[str, Any]:
                     google_api_key=settings.GEMINI_API_KEY
                 )
                 current_english_datetime = get_current_english_datetime_for_prompt()
-                prompt_template = f"""You are an intelligent assistant for detecting user intent from English text (if the user give the prompt in other language, apply all the rules below to the prompt in English and understand the user intent and pass the resualt for task in the same language as the prompt but other things in English).
+                prompt_template = f"""You are an intelligent assistant for detecting user intent from English text (if the user give the prompt in other language, apply all the rules below to the prompt in English and understand the user intent and pass the resualt for task in the same language of the user that used and  provide time_str and date_str in English).
 Your task is to determine whether the user intends to create a new reminder or not.
 If they intend to create a reminder, you should extract the following information:
 1.  `task`: The main task that needs to be reminded (e.g., "call my brother", "weekly sales team meeting"). This should not include date and time.
