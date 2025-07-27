@@ -805,79 +805,7 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     await _handle_graph_invocation(update, context, initial_state)
     log_memory_usage(f"after handle_voice for user {user_id}")
 
-# Reminder DB Operations (Python 3.9 Type Hint Corrected)
-async def save_or_update_reminder_in_db(
-    user_id: int, 
-    chat_id: int, 
-    context_data: Dict[str, Any], 
-    reminder_id_to_update: Optional[int] = None
-) -> Tuple[Optional[Reminder], Optional[str]]:
-    """
-    Saves a new reminder in the database. Update logic has been removed.
-    Now directly fetches the User object using user_id.
-    This function is legacy and its logic should be moved to LangGraph nodes.
-    For now, it might be called by legacy ConversationHandler states if they are still active.
-    """
-    logger.warning("Legacy save_or_update_reminder_in_db called. Update logic has been removed. This logic should be in LangGraph.")
-    db: Session = next(get_db())
-    try:
-        # Fetch the User database object using the Telegram user_id
-        user_db_obj = db.query(User).filter(User.telegram_id == user_id).first()
-        if not user_db_obj:
-            logger.error(f"User with telegram_id {user_id} not found in DB. Cannot save reminder.")
-            return None, "User not found."
-        user_db_id = user_db_obj.id # Get the primary key of the User table
 
-        task_description = context_data.get('task_description')
-        due_datetime_utc = context_data.get('due_datetime_utc')
-        recurrence_rule = context_data.get('recurrence_rule')
-
-        if not task_description or not due_datetime_utc:
-            return None, "Task description or due datetime missing."
-
-        # Tier limit check - this logic should also be in the graph (load_user_profile_node)
-        active_reminder_count = db.query(func.count(Reminder.id)).filter(
-            Reminder.user_id == user_db_id,
-            Reminder.is_active == True
-        ).scalar() or 0
-        
-        # Ensure subscription_tier is used for premium check
-        is_premium = user_db_obj.subscription_tier == SubscriptionTier.PREMIUM
-        max_reminders = settings.MAX_REMINDERS_PREMIUM_TIER if is_premium else settings.MAX_REMINDERS_FREE_TIER
-
-        if active_reminder_count >= max_reminders and not settings.IGNORE_REMINDER_LIMITS:
-            limit_msg_key = "MSG_REMINDER_LIMIT_REACHED_PREMIUM" if is_premium else "MSG_REMINDER_LIMIT_REACHED_FREE"
-            # Fetch the actual message string from settings or config, assuming it's defined there.
-            # For now, returning a generic key. This part needs to align with actual message definitions.
-            limit_message = getattr(settings, limit_msg_key, "Reminder limit reached.")
-            if hasattr(settings, limit_msg_key):
-                 limit_message = limit_message.format(limit=max_reminders) # if messages have placeholders
-            return None, limit_message
-
-        # Always create new reminder as update logic is removed
-            reminder = Reminder(
-            user_id=user_db_id,
-                chat_id=chat_id,
-            task=task_description,
-            date_str=None,
-            time_str=None,
-                recurrence_rule=recurrence_rule,
-                is_active=True,
-                is_sent=False
-            )
-            db.add(reminder)
-        logger.info(f"New reminder creation attempted (legacy function) for user_db_id {user_db_id}. Task: {task_description}")
-        
-        db.commit()
-        db.refresh(reminder)
-        return reminder, None # Success
-
-    except Exception as e:
-        db.rollback()
-        logger.error(f"Error in save_or_update_reminder_in_db for user {user_id}: {e}", exc_info=True)
-        return None, str(e)
-    finally:
-        db.close()
 
 # NEW: Reminder Notification System
 async def check_and_send_reminders(context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -1448,33 +1376,7 @@ async def delete_user_account(user_id: int, db: Session) -> bool:
         db.rollback()
         return False
 
-# Conversation Handlers
-async def handle_initial_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int: 
-    logger.warning("Legacy ConversationHandler state: handle_initial_message called. Should be handled by LangGraph.")
-    await update.message.reply_text("This part of the bot is being updated. Please use the main commands.")
-    return ConversationHandler.END
 
-async def received_task_description(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    logger.warning("Legacy ConversationHandler state: received_task_description called. Should be handled by LangGraph.")
-    await update.message.reply_text("This part of the bot is being updated. Please use the main commands.")
-    return ConversationHandler.END
-
-async def received_full_datetime(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    logger.warning("Legacy ConversationHandler state: received_full_datetime called. Should be handled by LangGraph.")
-    await update.message.reply_text("This part of the bot is being updated. Please use the main commands.")
-    return ConversationHandler.END
-
-async def received_time_only(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    logger.warning("Legacy ConversationHandler state: received_time_only called. Should be handled by LangGraph.")
-    await update.message.reply_text("This part of the bot is being updated. Please use the main commands.")
-    return ConversationHandler.END
-
-async def received_am_pm_clarification(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    logger.warning("Legacy ConversationHandler state: received_am_pm_clarification called. Should be handled by LangGraph.")
-    # This function might have had logic to process AM/PM from context.user_data
-    # Now, such clarifications are handled within the LangGraph flow.
-    await update.message.reply_text("This part of the bot is being updated. Please use the main commands.")
-    return ConversationHandler.END
 
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle callback queries from inline buttons."""
@@ -1489,7 +1391,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     
     logger.info(f"Received callback '{callback_data}' from user {user_id}")
     
-    # Handle snooze and done callbacks first
+    # Handle snooze and done callbacks first (these are handled outside the graph)
     if callback_data.startswith("snooze:"):
         await handle_snooze_callback(update, context)
         return
@@ -1497,7 +1399,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         await handle_done_callback(update, context)
         return
     
-    # Handle settings and timezone callbacks
+    # Handle settings and timezone callbacks (these are handled outside the graph)
     if callback_data == "settings_change_timezone":
         await handle_settings_change_timezone_callback(update, context)
         return
@@ -1535,62 +1437,14 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     # Acknowledge the button press by sending an empty response
     await query.answer()
     
-    # Extract the task and date from the confirmation message text
-    reminder_ctx = {}
-    reminder_text = query.message.text if query.message and query.message.text else ""
-    
-    # Look for task and datetime in the confirmation message
-    import re
-    import datetime
-    import pytz
-    
-    task_match = re.search(r'Task: (.+?)\n', reminder_text)
-    date_match = re.search(r'Time: (.+?)\n', reminder_text)
-    
-    if callback_data.startswith("confirm_create_reminder:") and task_match and date_match:
-        # Only populate for confirmation buttons
-        task = task_match.group(1)
-        date_str = date_match.group(1)
-        logger.info(f"Extracted from confirmation: Task='{task}', Date='{date_str}'")
-        
-        # Try to parse the datetime string from the confirmation message
-        try:
-            # For demonstration, create a fixed datetime for tomorrow at 14:00
-            # In a real system, you would use the actual datetime from the message
-            tomorrow = datetime.datetime.now(pytz.utc) + datetime.timedelta(days=1)
-            tomorrow = tomorrow.replace(hour=14, minute=0, second=0, microsecond=0)
-            parsed_utc_datetime = tomorrow
-            logger.info(f"Using parsed datetime: {parsed_utc_datetime}")
-            
-            # Store in context
-            reminder_ctx = {
-                "collected_task": task,
-                "collected_parsed_datetime_utc": parsed_utc_datetime,
-                "confirmation_question_text": reminder_text,
-                "status": "awaiting_confirmation"
-            }
-        except Exception as e:
-            logger.error(f"Error parsing datetime for confirmation: {e}")
-            reminder_ctx = {
-                "collected_task": task,
-                "confirmation_question_text": reminder_text,
-                "status": "awaiting_confirmation"
-            }
-        
-        # Add the pending confirmation type based on the callback
-        if callback_data == "confirm_create_reminder:yes":
-            pending_confirmation = "create_reminder"
-        else:
-            pending_confirmation = None
-    else:
-        pending_confirmation = None
-    
+    # For all other callbacks (including reminder confirmations), pass to the graph
+    # The graph will handle the callback processing logic
     initial_state = AgentState(
         user_id=user_id,
         chat_id=chat_id,
         input_text=callback_data,
         message_type="callback_query",
-        user_telegram_details = {
+        user_telegram_details={
             "username": update.effective_user.username,
             "first_name": update.effective_user.first_name,
             "last_name": update.effective_user.last_name,
@@ -1601,8 +1455,8 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         current_intent=None,
         extracted_parameters={}, 
         nlu_direct_output=None, 
-        reminder_creation_context=reminder_ctx,
-        pending_confirmation=pending_confirmation,
+        reminder_creation_context={},
+        pending_confirmation=None,
         reminder_filters={}, 
         active_reminders_page=0, 
         payment_context={},

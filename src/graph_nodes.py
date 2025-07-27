@@ -427,6 +427,8 @@ async def determine_intent_node(state: AgentState) -> Dict[str, Any]:
 
     # --- Priority 1: Exact Callbacks ---
     if message_type == "callback_query":
+        logger.info(f"Processing callback query: '{effective_input}' for user {state.get('user_id')}")
+        
         if effective_input.startswith("confirm_create_reminder:yes:id="):
             logger.info(f"DEBUG: Matched callback for 'confirm_create_reminder:yes:id=': {effective_input}")
             try:
@@ -504,15 +506,7 @@ async def determine_intent_node(state: AgentState) -> Dict[str, Any]:
                     "reminder_creation_context": {},
                     "pending_confirmation": None
                 }
-        elif effective_input == "confirm_create_reminder:no": # Deprecated branch
-            logger.warning(f"DEBUG: Matched DEPRECATED callback for 'confirm_create_reminder:no': {effective_input}. Should include ID.")
-            return {
-                "current_intent": "intent_create_reminder_cancelled",
-                "response_text": "Okay, I didn't set it. ❌ Just tell me again what and when to remind you. 🙂",
-                "current_node_name": "determine_intent_node",
-                "reminder_creation_context": {}, 
-                "pending_confirmation": None
-            }
+
         elif effective_input.startswith("confirm_delete_reminder:"):
             try:
                 reminder_id_str = effective_input.split("confirm_delete_reminder:", 1)[1]
@@ -1340,6 +1334,8 @@ async def confirm_reminder_details_node(state: AgentState) -> Dict[str, Any]:
     )
     
     # Confirmation message keyboard (styled as in the image, using dict format for compatibility)
+    # IMPORTANT: Callback format must include confirmation_id for proper handling
+    # Format: confirm_create_reminder:yes:id={confirmation_id} or confirm_create_reminder:no:id={confirmation_id}
     keyboard_markup = {
         "type": "InlineKeyboardMarkup",
         "inline_keyboard": [
