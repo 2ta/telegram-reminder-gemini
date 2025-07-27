@@ -567,7 +567,9 @@ def verify_payment_and_notify(session_id: str):
                 user = db.query(User).filter(User.id == payment.user_id).first()
                 if user:
                     # Send Telegram message to user
-                    send_telegram_notification(user.telegram_id, user.chat_id, payment.amount)
+                    # Use telegram_id as fallback if chat_id is None
+                    chat_id = user.chat_id if user.chat_id is not None else user.telegram_id
+                    send_telegram_notification(user.telegram_id, chat_id, payment.amount)
                     logger.info(f"Sent premium activation notification to user {user.telegram_id}")
                     
         except Exception as e:
@@ -629,7 +631,7 @@ def notify_payment_failed(session_id: str):
         if payment:
             user = db.query(User).filter(User.id == payment.user_id).first()
             if user:
-                chat_id = user.chat_id
+                chat_id = user.chat_id if user.chat_id is not None else user.telegram_id
         db.close()
     except Exception as e:
         logger.error(f"Error getting user info for failed payment notification: {e}")
