@@ -1150,6 +1150,11 @@ async def validate_and_clarify_reminder_node(state: AgentState) -> Dict[str, Any
             clarification_question_text = f"When should I remind you about '{collected_task}'?"
             new_reminder_creation_status = "clarification_needed_datetime"
 
+    # --- 5. Check if datetime was successfully parsed ---
+    elif collected_parsed_dt_utc:
+        logger.info(f"Validation successful for user {user_id}: Task='{collected_task}', Datetime='{collected_parsed_dt_utc}'. Ready for confirmation.")
+        new_reminder_creation_status = "ready_for_confirmation"
+
     # (Future AM/PM specific clarification check - assuming parse_english_datetime_to_utc handles am_pm_choice or returns None if it's ambiguous and choice is missing)
     # For instance, if parse_english_datetime_to_utc returned a specific error or flag for AM/PM:
     # elif reminder_ctx.get("datetime_parse_requires_ampm_clarification"):
@@ -1181,8 +1186,11 @@ async def validate_and_clarify_reminder_node(state: AgentState) -> Dict[str, Any
                 clarification_question_text = f"When should I remind you about '{collected_task}'?"
                 new_reminder_creation_status = "clarification_needed_datetime"
     else:
-        logger.info(f"Validation successful for user {user_id}: Task='{collected_task}', Datetime='{collected_parsed_dt_utc}'. Ready for confirmation.")
-        new_reminder_creation_status = "ready_for_confirmation"
+        # Fallback case - if we reach here, something unexpected happened
+        logger.warning(f"Unexpected validation state for user {user_id}: Task='{collected_task}', Datetime='{collected_parsed_dt_utc}'. Defaulting to clarification needed.")
+        pending_clarification_type = "datetime"
+        clarification_question_text = f"When should I remind you about '{collected_task}'?"
+        new_reminder_creation_status = "clarification_needed_datetime"
 
 
     reminder_ctx["pending_clarification_type"] = pending_clarification_type
