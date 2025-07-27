@@ -624,7 +624,8 @@ async def determine_intent_node(state: AgentState) -> Dict[str, Any]:
                 )
                 current_english_datetime = get_current_english_datetime_for_prompt()
                 prompt_template = f"""You are an intelligent assistant for detecting user intent from English text (if the user give the prompt in other language, apply all the rules below to the prompt in English and understand the user intent and pass the resualt for task in the same language of the user that used and  provide time_str and date_str in English - if the user provide date in the Jalali calendar convert it to the Gregorian calendar and always provide time_str and date_str in English).
-Your task is to determine whether the user intends to create a new reminder or not.
+All of your responses for date_str and time_str must be in English, regardless of the user's language. Do not use any other language.
+                Your task is to determine whether the user intends to create a new reminder or not.
 If they intend to create a reminder, you should extract the following information:
 1.  `task`: The main task that needs to be reminded (e.g., "call my brother", "weekly sales team meeting"). This should not include date and time.
 2.  `date_str`: Date-related phrases (e.g., "tomorrow", "day after tomorrow", "next monday", "weekend", "in 3 days", "march 15", "today"). This field can include relative or specific expressions.
