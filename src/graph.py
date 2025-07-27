@@ -60,8 +60,9 @@ def route_after_validation_and_clarification(state: AgentState):
     # Get status from within the reminder_creation_context
     reminder_ctx = state.get("reminder_creation_context", {})
     creation_status = reminder_ctx.get("status") 
+    current_operation_status = state.get("current_operation_status")
 
-    logger.info(f"Router (after_validation_and_clarification) for user {user_id}: Status from context='{creation_status}'")
+    logger.info(f"Router (after_validation_and_clarification) for user {user_id}: Status from context='{creation_status}', current_operation_status='{current_operation_status}'")
 
     if creation_status == "ready_for_confirmation":
         logger.info(f"Routing user {user_id} to confirm_reminder_details_node.")
