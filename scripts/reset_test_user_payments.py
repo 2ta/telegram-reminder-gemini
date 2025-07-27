@@ -47,11 +47,9 @@ def reset_test_user_payments(telegram_id: int):
         logger.info(f"Found user: {user.username} (ID: {user.id})")
         
         # Get current subscription status
-        current_tier = db.query(SubscriptionTier).filter(SubscriptionTier.user_id == user.id).first()
-        if current_tier:
-            logger.info(f"Current subscription: {current_tier.tier_type} until {current_tier.expires_at}")
-        else:
-            logger.info("No current subscription found")
+        logger.info(f"Current subscription tier: {user.subscription_tier}")
+        logger.info(f"Subscription expiry: {user.subscription_expiry}")
+        logger.info(f"Reminder count: {user.reminder_count}")
         
         # Delete all payment records for this user
         payments = db.query(Payment).filter(Payment.user_id == user.id).all()
@@ -65,22 +63,21 @@ def reset_test_user_payments(telegram_id: int):
         else:
             logger.info("No payment records found to delete")
         
-        # Delete subscription tier record
-        if current_tier:
-            logger.info(f"Deleting subscription tier record (ID: {current_tier.id})")
-            db.delete(current_tier)
+        # Reset subscription tier to FREE
+        logger.info("Resetting subscription tier to FREE")
         
         # Reset user to free tier
-        user.is_premium = False
-        user.premium_until = None
+        user.subscription_tier = SubscriptionTier.FREE
+        user.subscription_expiry = None
+        user.reminder_count = 0
         
         # Commit changes
         db.commit()
         
         logger.info(f"✅ Successfully reset user {telegram_id} to free tier")
         logger.info(f"   - Deleted {payment_count} payment records")
-        logger.info(f"   - Removed premium subscription")
-        logger.info(f"   - User is now free tier (is_premium: {user.is_premium})")
+        logger.info(f"   - Reset subscription tier to FREE")
+        logger.info(f"   - User is now free tier (subscription_tier: {user.subscription_tier})")
         
         return True
         
