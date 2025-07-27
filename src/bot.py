@@ -1475,6 +1475,23 @@ async def ping(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     logger.info(f"Received /ping from user {update.effective_user.id if update.effective_user else 'unknown'}")
     await update.message.reply_text("pong")
 
+async def version_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Show bot version information."""
+    try:
+        from src.version import VERSION_INFO
+        response_text = (
+            f"🤖 **Bot Version Information**\n\n"
+            f"**Version:** {VERSION_INFO['version']}\n"
+            f"**Commit:** {VERSION_INFO['commit_hash']}\n"
+            f"**Message:** {VERSION_INFO['commit_message']}\n"
+            f"**Deployed:** {VERSION_INFO['deployment_time'][:19]}"
+        )
+        await update.message.reply_text(response_text, parse_mode='Markdown')
+        logger.info(f"Sent version info to user {update.effective_user.id if update.effective_user else 'unknown'}")
+    except Exception as e:
+        logger.error(f"Error in version_command: {e}", exc_info=True)
+        await update.message.reply_text("❌ Error retrieving version information.")
+
 def build_application() -> Application:
     global _application_instance
     init_db()
@@ -1494,6 +1511,7 @@ def build_application() -> Application:
     application.add_handler(CommandHandler("privacy", privacy_command))
     application.add_handler(CommandHandler("stripe_webhook", handle_stripe_webhook))
     application.add_handler(CommandHandler("ping", ping))
+    application.add_handler(CommandHandler(["version", "v"], version_command))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     application.add_handler(MessageHandler(filters.VOICE, handle_voice))
     application.add_handler(MessageHandler(filters.LOCATION, handle_location))
