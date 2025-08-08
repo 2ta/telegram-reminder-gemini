@@ -202,86 +202,38 @@ def parse_english_datetime_to_utc(date_str: Optional[str], time_str: Optional[st
                         break
 
     # 3. Combine date and time, convert to UTC
-    if target_date:
-        if target_time:
-            # Combine date and time in user's timezone
-            local_dt = datetime.combine(target_date, target_time)
-            
-            # Convert from user's timezone to UTC
-            try:
-                if user_timezone and user_timezone != 'UTC':
-                    tz_obj = pytz.timezone(user_timezone)
-                    local_dt_with_tz = tz_obj.localize(local_dt)
-                    utc_dt = local_dt_with_tz.astimezone(pytz.utc)
-                    logger.info(f"Converted {local_dt} from {user_timezone} to UTC: {utc_dt}")
-                else:
-                    # User timezone is UTC or not specified, treat as UTC
-                    utc_dt = local_dt.replace(tzinfo=timezone.utc)
-                    logger.info(f"Treated {local_dt} as UTC: {utc_dt}")
-            except Exception as e:
-                logger.error(f"Error converting timezone from {user_timezone}: {e}")
-                # Fallback to UTC
+    # Important product rule: Do NOT auto-default when only date OR only time is provided.
+    # - If only date is present (and no relative time resolved): ask user for time -> return None
+    # - If only time is present (and no relative date resolved): ask user for date -> return None
+    # - If both are present (or relative time produced both), return a concrete datetime.
+    if target_date and target_time:
+        # Combine date and time in user's timezone
+        local_dt = datetime.combine(target_date, target_time)
+        try:
+            if user_timezone and user_timezone != 'UTC':
+                tz_obj = pytz.timezone(user_timezone)
+                local_dt_with_tz = tz_obj.localize(local_dt)
+                utc_dt = local_dt_with_tz.astimezone(pytz.utc)
+                logger.info(f"Converted {local_dt} from {user_timezone} to UTC: {utc_dt}")
+            else:
                 utc_dt = local_dt.replace(tzinfo=timezone.utc)
-        else:
-            # Only date specified, use current time in user's timezone
-            try:
-                if user_timezone and user_timezone != 'UTC':
-                    tz_obj = pytz.timezone(user_timezone)
-                    now_in_user_tz = now_utc.astimezone(tz_obj)
-                    local_dt = datetime.combine(target_date, now_in_user_tz.time())
-                    local_dt_with_tz = tz_obj.localize(local_dt)
-                    utc_dt = local_dt_with_tz.astimezone(pytz.utc)
-                else:
-                    utc_dt = datetime.combine(target_date, now_utc.time()).replace(tzinfo=timezone.utc)
-            except Exception as e:
-                logger.error(f"Error converting timezone for date-only: {e}")
-                utc_dt = datetime.combine(target_date, now_utc.time()).replace(tzinfo=timezone.utc)
+                logger.info(f"Treated {local_dt} as UTC: {utc_dt}")
+        except Exception as e:
+            logger.error(f"Error converting timezone from {user_timezone}: {e}")
+            utc_dt = local_dt.replace(tzinfo=timezone.utc)
+        return utc_dt
+    elif target_date and not target_time:
+        logger.info("parse_english_datetime_to_utc: Date provided without time -> returning None to trigger time clarification")
+        return None
+    elif target_time and not target_date:
+        logger.info("parse_english_datetime_to_utc: Time provided without date -> returning None to trigger date clarification")
+        return None
     else:
-        if target_time:
-            # Only time specified, use today's date or tomorrow if time has passed
-            try:
-                if user_timezone and user_timezone != 'UTC':
-                    tz_obj = pytz.timezone(user_timezone)
-                    now_in_user_tz = now_utc.astimezone(tz_obj)
-                    today_with_time = datetime.combine(now_in_user_tz.date(), target_time)
-                    today_with_time_tz = tz_obj.localize(today_with_time)
-                    today_with_time_utc = today_with_time_tz.astimezone(pytz.utc)
-                    
-                    if today_with_time_utc <= now_utc:
-                        # Time has already passed today in user's timezone, use tomorrow
-                        tomorrow_in_user_tz = now_in_user_tz + timedelta(days=1)
-                        tomorrow_with_time = datetime.combine(tomorrow_in_user_tz.date(), target_time)
-                        tomorrow_with_time_tz = tz_obj.localize(tomorrow_with_time)
-                        utc_dt = tomorrow_with_time_tz.astimezone(pytz.utc)
-                        logger.info(f"Time '{time_str}' has passed today in {user_timezone}, using tomorrow instead")
-                    else:
-                        # Time is still in the future today
-                        utc_dt = today_with_time_utc
-                else:
-                    # User timezone is UTC
-                    today_with_time = datetime.combine(now_utc.date(), target_time).replace(tzinfo=timezone.utc)
-                    if today_with_time <= now_utc:
-                        # Time has already passed today, use tomorrow
-                        tomorrow_with_time = datetime.combine((now_utc + timedelta(days=1)).date(), target_time).replace(tzinfo=timezone.utc)
-                        utc_dt = tomorrow_with_time
-                        logger.info(f"Time '{time_str}' has passed today, using tomorrow instead")
-                    else:
-                        # Time is still in the future today
-                        utc_dt = today_with_time
-            except Exception as e:
-                logger.error(f"Error converting timezone for time-only: {e}")
-                # Fallback to UTC logic
-                today_with_time = datetime.combine(now_utc.date(), target_time).replace(tzinfo=timezone.utc)
-                if today_with_time <= now_utc:
-                    tomorrow_with_time = datetime.combine((now_utc + timedelta(days=1)).date(), target_time).replace(tzinfo=timezone.utc)
-                    utc_dt = tomorrow_with_time
-                else:
-                    utc_dt = today_with_time
-        else:
-            # Neither date nor time specified
-            return None
-
-    return utc_dt
+        # Neither date nor time specified
+        return None
+    
+    # Unreachable, kept for clarity
+    # return utc_dt
 
 def resolve_english_date_phrase_to_range(phrase: Optional[str]) -> Optional[Tuple[datetime, datetime]]:
     """

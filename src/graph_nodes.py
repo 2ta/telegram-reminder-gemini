@@ -1171,10 +1171,22 @@ async def validate_and_clarify_reminder_node(state: AgentState) -> Dict[str, Any
             )
             new_reminder_creation_status = "clarification_needed_datetime"
         else:
-            logger.info(f"Validation failed for user {user_id}, task '{collected_task}': Datetime is missing or unparseable.")
-            pending_clarification_type = "datetime"
-            clarification_question_text = f"When should I remind you about '{collected_task}'?"
-            new_reminder_creation_status = "clarification_needed_datetime"
+            # Decide targeted clarification: ask for missing part if we know it
+            has_date_str = reminder_ctx.get("collected_date_str") is not None
+            has_time_str = reminder_ctx.get("collected_time_str") is not None
+            if has_date_str and not has_time_str:
+                pending_clarification_type = "time"
+                clarification_question_text = f"What time should I remind you about '{collected_task}'? (e.g., 10 AM, 3:30 PM, morning)"
+                new_reminder_creation_status = "clarification_needed_time"
+            elif has_time_str and not has_date_str:
+                pending_clarification_type = "date"
+                clarification_question_text = f"What date should I remind you about '{collected_task}'? (e.g., tomorrow, 22 July, next Monday)"
+                new_reminder_creation_status = "clarification_needed_date"
+            else:
+                logger.info(f"Validation failed for user {user_id}, task '{collected_task}': Datetime is missing or unparseable.")
+                pending_clarification_type = "datetime"
+                clarification_question_text = f"When should I remind you about '{collected_task}'?"
+                new_reminder_creation_status = "clarification_needed_datetime"
 
     # (Future AM/PM specific clarification check - assuming parse_english_datetime_to_utc handles am_pm_choice or returns None if it's ambiguous and choice is missing)
     # For instance, if parse_english_datetime_to_utc returned a specific error or flag for AM/PM:
@@ -1960,7 +1972,7 @@ async def handle_intent_node(state: AgentState) -> Dict[str, Any]:
         
         if clarification_status == "clarification_needed_datetime":
             # Ask for missing date/time
-            task = reminder_ctx.get("collected_task", "this task")
+            task = reminder_ctx.get("collected_task", extracted_parameters.get('task', "this task"))
             response_text = f"Certainly. When should I remind you about '{task}'?"
             response_keyboard_markup = None
             logger.info(f"handle_intent_node: Asking for datetime clarification for user {user_id}, task: '{task}'")
