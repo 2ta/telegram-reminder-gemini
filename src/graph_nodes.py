@@ -1237,7 +1237,19 @@ async def validate_and_clarify_reminder_node(state: AgentState) -> Dict[str, Any
     # --- 4. Validate Datetime (only if not already parsed) ---
     elif not collected_parsed_dt_utc:
         logger.info(f"[VALIDATION DEBUG] CONDITION 5: Datetime MISSING - collected_parsed_dt_utc='{collected_parsed_dt_utc}' (falsy: {not bool(collected_parsed_dt_utc)})")
-        if datetime_parse_failed:
+        # Prioritize targeted clarification first based on which part we have
+        has_date_str = reminder_ctx.get("collected_date_str") is not None
+        has_time_str = reminder_ctx.get("collected_time_str") is not None
+        if has_date_str and not has_time_str:
+            pending_clarification_type = "time"
+            clarification_question_text = f"What time should I remind you about '{collected_task}'? (e.g., 10 AM, 3:30 PM, morning)"
+            new_reminder_creation_status = "clarification_needed_time"
+        elif has_time_str and not has_date_str:
+            pending_clarification_type = "date"
+            clarification_question_text = f"What date should I remind you about '{collected_task}'? (e.g., tomorrow, 22 July, next Monday)"
+            new_reminder_creation_status = "clarification_needed_date"
+        elif datetime_parse_failed:
+            # Only if we couldn't determine which part is present or both parts were invalid
             logger.warning(f"Date/time parsing failed for user {user_id}, task '{collected_task}'. Informing user.")
             pending_clarification_type = "datetime"
             clarification_question_text = (
@@ -1246,22 +1258,10 @@ async def validate_and_clarify_reminder_node(state: AgentState) -> Dict[str, Any
             )
             new_reminder_creation_status = "clarification_needed_datetime"
         else:
-            # Decide targeted clarification: ask for missing part if we know it
-            has_date_str = reminder_ctx.get("collected_date_str") is not None
-            has_time_str = reminder_ctx.get("collected_time_str") is not None
-            if has_date_str and not has_time_str:
-                pending_clarification_type = "time"
-                clarification_question_text = f"What time should I remind you about '{collected_task}'? (e.g., 10 AM, 3:30 PM, morning)"
-                new_reminder_creation_status = "clarification_needed_time"
-            elif has_time_str and not has_date_str:
-                pending_clarification_type = "date"
-                clarification_question_text = f"What date should I remind you about '{collected_task}'? (e.g., tomorrow, 22 July, next Monday)"
-                new_reminder_creation_status = "clarification_needed_date"
-            else:
-                logger.info(f"Validation failed for user {user_id}, task '{collected_task}': Datetime is missing or unparseable.")
-                pending_clarification_type = "datetime"
-                clarification_question_text = f"When should I remind you about '{collected_task}'?"
-                new_reminder_creation_status = "clarification_needed_datetime"
+            logger.info(f"Validation failed for user {user_id}, task '{collected_task}': Datetime is missing or unparseable.")
+            pending_clarification_type = "datetime"
+            clarification_question_text = f"When should I remind you about '{collected_task}'?"
+            new_reminder_creation_status = "clarification_needed_datetime"
     # --- 5. Fallback to prior clarification status only if still not resolved ---
     else:
         current_status = reminder_ctx.get("status")
