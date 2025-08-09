@@ -431,11 +431,11 @@ async def determine_intent_node(state: AgentState) -> Dict[str, Any]:
             extracted: Dict[str, Any] = {"task": collected_task, "time": time_str}
             if existing_date_str:
                 extracted["date"] = existing_date_str
-            return {
-                "current_intent": "intent_create_reminder",
+                    return {
+                        "current_intent": "intent_create_reminder",
                 "extracted_parameters": extracted,
-                "current_node_name": "determine_intent_node",
-                "reminder_creation_context": reminder_ctx,
+                        "current_node_name": "determine_intent_node",
+                        "reminder_creation_context": reminder_ctx,
                 "input_text": combined_input
             }
         elif pending_clarification_type == "date":
@@ -457,7 +457,7 @@ async def determine_intent_node(state: AgentState) -> Dict[str, Any]:
                 "current_node_name": "determine_intent_node",
                 "reminder_creation_context": reminder_ctx,
                 "input_text": combined_input
-            }
+                    }
 
     # --- Priority 1: Exact Callbacks ---
     if message_type == "callback_query":
@@ -1276,6 +1276,21 @@ async def validate_and_clarify_reminder_node(state: AgentState) -> Dict[str, Any
                 clarification_question_text = f"When should I remind you about '{collected_task}'? (e.g., tomorrow at 10 AM, 22 July 3 PM)"
             new_reminder_creation_status = current_status
 
+    # If we have determined a new status (e.g., clarification_needed_date/time/datetime), finalize and return
+    if new_reminder_creation_status is not None:
+        reminder_ctx["pending_clarification_type"] = pending_clarification_type
+        reminder_ctx["clarification_question_text"] = clarification_question_text
+        reminder_ctx["clarification_keyboard_markup"] = clarification_keyboard_markup
+        reminder_ctx["status"] = new_reminder_creation_status
+        logger.info(
+            f"validate_and_clarify_reminder_node returning early with status: '{new_reminder_creation_status}' (post-decision)"
+        )
+        return {
+            "reminder_creation_context": reminder_ctx,
+            "current_operation_status": new_reminder_creation_status,
+            "current_node_name": "validate_and_clarify_reminder_node",
+        }
+
     # (Future AM/PM specific clarification check - assuming parse_english_datetime_to_utc handles am_pm_choice or returns None if it's ambiguous and choice is missing)
     # For instance, if parse_english_datetime_to_utc returned a specific error or flag for AM/PM:
     # elif reminder_ctx.get("datetime_parse_requires_ampm_clarification"):
@@ -1475,7 +1490,7 @@ async def confirm_reminder_details_node(state: AgentState) -> Dict[str, Any]:
                 auto_adjusted_note = "\n\nNote: The time you chose had already passed. I moved it to the next available time."
     except Exception:
         pass
-
+    
     response_text = (
         "Should I set this reminder? 👇\n\n"
         f"📝 Task: {task}\n"
