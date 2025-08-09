@@ -418,14 +418,46 @@ async def determine_intent_node(state: AgentState) -> Dict[str, Any]:
                         "pending_clarification_type": "datetime",
                         "status": "clarification_needed_datetime"
                     }
-                    
-                    return {
-                        "current_intent": "intent_create_reminder",
-                        "extracted_parameters": {"task": collected_task},
-                        "current_node_name": "determine_intent_node",
-                        "reminder_creation_context": reminder_ctx,
-                        "input_text": input_text
-                    }
+        elif pending_clarification_type == "time":
+            # User provided the missing time for an already collected date
+            collected_task = reminder_ctx.get("collected_task")
+            existing_date_str = reminder_ctx.get("collected_date_str")
+            time_str = input_text.strip()
+            logger.info(f"Received time clarification input='{time_str}' for task='{collected_task}', date='{existing_date_str}'")
+            reminder_ctx["collected_time_str"] = time_str
+            reminder_ctx["pending_clarification_type"] = None
+            reminder_ctx["status"] = "ready_for_processing"
+            combined_input = f"Remind me to {collected_task} {existing_date_str or ''} {time_str}".strip()
+            extracted: Dict[str, Any] = {"task": collected_task, "time": time_str}
+            if existing_date_str:
+                extracted["date"] = existing_date_str
+            return {
+                "current_intent": "intent_create_reminder",
+                "extracted_parameters": extracted,
+                "current_node_name": "determine_intent_node",
+                "reminder_creation_context": reminder_ctx,
+                "input_text": combined_input
+            }
+        elif pending_clarification_type == "date":
+            # User provided the missing date for an already collected time
+            collected_task = reminder_ctx.get("collected_task")
+            existing_time_str = reminder_ctx.get("collected_time_str")
+            date_str = input_text.strip()
+            logger.info(f"Received date clarification input='{date_str}' for task='{collected_task}', time='{existing_time_str}'")
+            reminder_ctx["collected_date_str"] = date_str
+            reminder_ctx["pending_clarification_type"] = None
+            reminder_ctx["status"] = "ready_for_processing"
+            combined_input = f"Remind me to {collected_task} {date_str} {existing_time_str or ''}".strip()
+            extracted = {"task": collected_task, "date": date_str}
+            if existing_time_str:
+                extracted["time"] = existing_time_str
+            return {
+                "current_intent": "intent_create_reminder",
+                "extracted_parameters": extracted,
+                "current_node_name": "determine_intent_node",
+                "reminder_creation_context": reminder_ctx,
+                "input_text": combined_input
+            }
 
     # --- Priority 1: Exact Callbacks ---
     if message_type == "callback_query":
