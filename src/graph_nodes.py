@@ -84,6 +84,7 @@ Consider:
 - Time periods (morning, afternoon, evening, etc.)
 - 12/24 hour formats
 - Various date formats
+ - The phrase "tonight" should be treated as a time period (time_only)
 
 Respond in this exact JSON format:
 {{
@@ -100,6 +101,7 @@ Examples:
 - Input: "next Monday" → {{"input_type": "date_only", "date_str": "next Monday", "time_str": null, "confidence": "high"}}
 - Input: "10 AM" → {{"input_type": "time_only", "date_str": null, "time_str": "10 AM", "confidence": "high"}}
 - Input: "morning" → {{"input_type": "time_only", "date_str": null, "time_str": "morning", "confidence": "high"}}
+- Input: "tonight" → {{"input_type": "time_only", "date_str": null, "time_str": "tonight", "confidence": "high"}}
 - Input: "asdf" → {{"input_type": "invalid", "date_str": null, "time_str": null, "confidence": "high"}}
 
 Only respond with valid JSON, no other text.
