@@ -14,6 +14,7 @@ ENGLISH_TIME_PERIODS = {
     "evening": time(17, 0),    # 5:00 PM
     "dusk": time(18, 30),      # 6:30 PM
     "night": time(21, 0),      # 9:00 PM
+    "tonight": time(21, 0),    # 9:00 PM (implies today)
     "midnight": time(0, 0),    # Midnight
 }
 
@@ -136,6 +137,9 @@ def parse_english_datetime_to_utc(date_str: Optional[str], time_str: Optional[st
     # 2. Parse Time String
     if time_str:
         time_str_cleaned = time_str.strip().lower()
+        # Special-case: "tonight" implies today's date and night time
+        if "tonight" in time_str_cleaned and target_date is None:
+            target_date = now_utc.date()
         
         # Relative times like "in 30 minutes" - needs a base time
         m_relative_time = re.match(r"in\s+(half an hour|quarter hour|(\d+))\s+(hour|minute)s?", time_str_cleaned)
@@ -195,10 +199,13 @@ def parse_english_datetime_to_utc(date_str: Optional[str], time_str: Optional[st
                 except ValueError as e:
                     logger.warning(f"Invalid time components from regex: {time_str_cleaned} - {e}")
             else:
-                # Time periods like "morning", "evening"
+                # Time periods like "morning", "evening", "tonight"
                 for period, time_obj in ENGLISH_TIME_PERIODS.items():
                     if period in time_str_cleaned:
                         target_time = time_obj
+                        # If the phrase is "tonight" and date not chosen, assume today
+                        if period == "tonight" and target_date is None:
+                            target_date = now_utc.date()
                         break
 
     # 3. Combine date and time, convert to UTC
