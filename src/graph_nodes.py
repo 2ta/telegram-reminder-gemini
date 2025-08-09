@@ -1132,9 +1132,52 @@ async def validate_and_clarify_reminder_node(state: AgentState) -> Dict[str, Any
             "reminder_creation_context": reminder_ctx # Pass context through
         }
 
-    # --- 2. If datetime is already parsed, override any prior clarification status ---
+    # --- 2. If datetime is already parsed, ensure it is not in the past; if it is, bump forward to the next available time ---
     if collected_parsed_dt_utc:
-        logger.info(f"[VALIDATION DEBUG] CONDITION: Parsed datetime present. Overriding any prior clarification status for user {user_id}.")
+        import datetime as _dt
+        import pytz as _pytz
+        logger.info(f"[VALIDATION DEBUG] CONDITION: Parsed datetime present. Checking for past time for user {user_id}.")
+
+        # Normalize to datetime for comparison
+        parsed_dt: _dt.datetime
+        if isinstance(collected_parsed_dt_utc, str):
+            try:
+                parsed_dt = _dt.datetime.fromisoformat(collected_parsed_dt_utc.replace("Z", "+00:00"))
+            except Exception as e:
+                logger.warning(f"Could not parse collected_parsed_dt_utc string during past check: {collected_parsed_dt_utc}. Error: {e}")
+                parsed_dt = None
+        elif isinstance(collected_parsed_dt_utc, _dt.datetime):
+            parsed_dt = collected_parsed_dt_utc
+        else:
+            parsed_dt = None
+
+        if parsed_dt is not None and parsed_dt.tzinfo is None:
+            # Assume UTC if naive
+            parsed_dt = parsed_dt.replace(tzinfo=_pytz.utc)
+
+        if parsed_dt is not None:
+            now_utc = _dt.datetime.now(_pytz.utc)
+            if parsed_dt <= now_utc:
+                # Compute next available local time by adding days until future
+                user_timezone = (user_profile or {}).get("timezone", "UTC")
+                try:
+                    user_tz = _pytz.timezone(user_timezone) if user_timezone and user_timezone != "UTC" else _pytz.utc
+                except Exception:
+                    user_tz = _pytz.utc
+                parsed_local = parsed_dt.astimezone(user_tz)
+                now_local = now_utc.astimezone(user_tz)
+                # Bump by days until strictly in the future
+                while parsed_local <= now_local:
+                    parsed_local = parsed_local + _dt.timedelta(days=1)
+                adjusted_utc = parsed_local.astimezone(_pytz.utc)
+                logger.info(
+                    f"[VALIDATION DEBUG] Parsed time was in the past. Auto-adjusting from {parsed_dt} to next available {adjusted_utc} for user {user_id}."
+                )
+                # Persist adjustment in context and mark flag for confirmation message
+                reminder_ctx["auto_adjusted_due_to_past"] = True
+                reminder_ctx["auto_adjusted_original_dt_utc_str"] = parsed_dt.isoformat()
+                reminder_ctx["collected_parsed_datetime_utc"] = adjusted_utc
+
         new_reminder_creation_status = "ready_for_confirmation"
         # Finalize and return early to avoid later fallbacks overriding this decision
         reminder_ctx["pending_clarification_type"] = None
@@ -1376,10 +1419,33 @@ async def confirm_reminder_details_node(state: AgentState) -> Dict[str, Any]:
     else:
         time_display = formatted_date_time
     
+    # If time was auto-adjusted due to being in the past, inform the user
+    auto_adjusted_note = ""
+    try:
+        if reminder_context.get("auto_adjusted_due_to_past"):
+            original_dt_val = reminder_context.get("auto_adjusted_original_dt_utc_str")
+            original_dt = None
+            if isinstance(original_dt_val, str):
+                import datetime as _dt
+                try:
+                    original_dt = _dt.datetime.fromisoformat(original_dt_val.replace("Z", "+00:00"))
+                except Exception:
+                    original_dt = None
+            elif isinstance(original_dt_val, datetime.datetime):
+                original_dt = original_dt_val
+            if original_dt is not None:
+                original_disp = format_datetime_for_display(original_dt, user_timezone)
+                auto_adjusted_note = f"\n\nNote: The time you chose had already passed (was {original_disp}). I moved it to the next available time."
+            else:
+                auto_adjusted_note = "\n\nNote: The time you chose had already passed. I moved it to the next available time."
+    except Exception:
+        pass
+
     response_text = (
         "Should I set this reminder? 👇\n\n"
         f"📝 Task: {task}\n"
-        f"⏰ Time: {time_display}\n\n"
+        f"⏰ Time: {time_display}"
+        f"{auto_adjusted_note}\n\n"
         "If it's correct, click 'Set'\n"
         "If it needs changes, click 'Cancel' and send the new reminder again 🙂"
     )
