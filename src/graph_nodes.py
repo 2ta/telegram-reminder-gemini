@@ -1064,12 +1064,15 @@ async def process_datetime_node(state: AgentState) -> Dict[str, Any]:
                     reminder_ctx["collected_parsed_datetime_utc"] = parsed_dt_utc
                     logger.info(f"[DATETIME DEBUG] Successfully set collected_parsed_datetime_utc = '{parsed_dt_utc}' (type: {type(parsed_dt_utc)})")
                 else:
-                    logger.warning(f"Failed to parse date/time from strings: date='{date_str}', time='{time_str}'")
-                    # If parsing fails, ensure collected_parsed_datetime_utc is None or removed
+                    logger.warning(f"Failed to combine/parse date/time: date='{date_str}', time='{time_str}'")
+                    # Ensure field is None
                     reminder_ctx["collected_parsed_datetime_utc"] = None
-                    logger.info(f"[DATETIME DEBUG] Failed parsing - set collected_parsed_datetime_utc = None")
-                    # Add a flag for failed parsing
-                    reminder_ctx["datetime_parse_failed"] = True
+                    logger.info("[DATETIME DEBUG] Failed parsing - set collected_parsed_datetime_utc = None")
+                    # Mark parse_failed only when both parts were present (invalid combo) or neither was recognized
+                    has_date_part = bool(date_str)
+                    has_time_part = bool(time_str)
+                    # If exactly one part exists, we don't consider it a parse failure; validator will ask for the missing part
+                    reminder_ctx["datetime_parse_failed"] = True if (has_date_part and has_time_part) or (not has_date_part and not has_time_part) else False
             except Exception as e:
                 logger.error(f"Error during date/time parsing: {e}", exc_info=True)
                 reminder_ctx["collected_parsed_datetime_utc"] = None
