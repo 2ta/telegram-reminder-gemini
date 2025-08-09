@@ -1200,7 +1200,7 @@ async def validate_and_clarify_reminder_node(state: AgentState) -> Dict[str, Any
     #     new_reminder_creation_status = "clarification_needed_am_pm"
     #     # Ensure determine_intent_node handles "clarify_am_pm:am/pm" callbacks and sets "collected_am_pm_choice"
 
-    elif reminder_ctx.get("status") == "ready_for_processing":
+    if reminder_ctx.get("status") == "ready_for_processing":
         # This is a follow-up response that has been combined, re-validate
         logger.info(f"Re-validating combined input for user {user_id}: Task='{collected_task}', Datetime='{collected_parsed_dt_utc}'")
         if collected_task and collected_parsed_dt_utc:
