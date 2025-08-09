@@ -431,11 +431,11 @@ async def determine_intent_node(state: AgentState) -> Dict[str, Any]:
             extracted: Dict[str, Any] = {"task": collected_task, "time": time_str}
             if existing_date_str:
                 extracted["date"] = existing_date_str
-                    return {
-                        "current_intent": "intent_create_reminder",
+            return {
+                "current_intent": "intent_create_reminder",
                 "extracted_parameters": extracted,
-                        "current_node_name": "determine_intent_node",
-                        "reminder_creation_context": reminder_ctx,
+                "current_node_name": "determine_intent_node",
+                "reminder_creation_context": reminder_ctx,
                 "input_text": combined_input
             }
         elif pending_clarification_type == "date":
