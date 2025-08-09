@@ -1136,6 +1136,19 @@ async def validate_and_clarify_reminder_node(state: AgentState) -> Dict[str, Any
     if collected_parsed_dt_utc:
         logger.info(f"[VALIDATION DEBUG] CONDITION: Parsed datetime present. Overriding any prior clarification status for user {user_id}.")
         new_reminder_creation_status = "ready_for_confirmation"
+        # Finalize and return early to avoid later fallbacks overriding this decision
+        reminder_ctx["pending_clarification_type"] = None
+        reminder_ctx["clarification_question_text"] = None
+        reminder_ctx["clarification_keyboard_markup"] = None
+        reminder_ctx["status"] = new_reminder_creation_status
+        logger.info(
+            f"validate_and_clarify_reminder_node returning early with status: '{new_reminder_creation_status}'"
+        )
+        return {
+            "reminder_creation_context": reminder_ctx,
+            "current_operation_status": new_reminder_creation_status,
+            "current_node_name": "validate_and_clarify_reminder_node",
+        }
     # --- 3. Validate Task ---
     elif not collected_task:
         logger.info(f"[VALIDATION DEBUG] CONDITION 3: Task missing - collected_task='{collected_task}'")
