@@ -99,10 +99,31 @@ class ConversationMemoryManager:
         for i, msg in enumerate(recent_messages):
             if isinstance(msg, AIMessage):
                 content = msg.content.lower()
+                # Generic datetime clarification
                 if "when should i remind you" in content:
                     context["has_pending_clarification"] = True
                     context["pending_clarification_type"] = "datetime"
                     # Extract task from the question
+                    if "about '" in content and "'?" in content:
+                        task_start = content.find("about '") + 7
+                        task_end = content.find("'?", task_start)
+                        if task_start > 6 and task_end > task_start:
+                            context["collected_task"] = content[task_start:task_end]
+                    context["last_question"] = msg.content
+                # Specific time clarification
+                elif "what time should i remind you" in content:
+                    context["has_pending_clarification"] = True
+                    context["pending_clarification_type"] = "time"
+                    if "about '" in content and "'?" in content:
+                        task_start = content.find("about '") + 7
+                        task_end = content.find("'?", task_start)
+                        if task_start > 6 and task_end > task_start:
+                            context["collected_task"] = content[task_start:task_end]
+                    context["last_question"] = msg.content
+                # Specific date clarification
+                elif "what date should i remind you" in content:
+                    context["has_pending_clarification"] = True
+                    context["pending_clarification_type"] = "date"
                     if "about '" in content and "'?" in content:
                         task_start = content.find("about '") + 7
                         task_end = content.find("'?", task_start)
