@@ -114,21 +114,33 @@ class ConversationMemoryManager:
                 elif "what time should i remind you" in content:
                     context["has_pending_clarification"] = True
                     context["pending_clarification_type"] = "time"
+                    # Extract task and inline known date if present: "about 'TASK' on 'DATE'?"
                     if "about '" in content and "'?" in content:
                         task_start = content.find("about '") + 7
                         task_end = content.find("'?", task_start)
                         if task_start > 6 and task_end > task_start:
                             context["collected_task"] = content[task_start:task_end]
+                    if " on '" in content:
+                        date_start = content.find(" on '") + 5
+                        date_end = content.find("'", date_start)
+                        if date_start >= 5 and date_end > date_start:
+                            context["collected_date_str"] = content[date_start:date_end]
                     context["last_question"] = msg.content
                 # Specific date clarification
                 elif "what date should i remind you" in content:
                     context["has_pending_clarification"] = True
                     context["pending_clarification_type"] = "date"
+                    # Extract task and inline known time if present: "about 'TASK' at 'TIME'?"
                     if "about '" in content and "'?" in content:
                         task_start = content.find("about '") + 7
                         task_end = content.find("'?", task_start)
                         if task_start > 6 and task_end > task_start:
                             context["collected_task"] = content[task_start:task_end]
+                    if " at '" in content:
+                        time_start = content.find(" at '") + 5
+                        time_end = content.find("'", time_start)
+                        if time_start >= 5 and time_end > time_start:
+                            context["collected_time_str"] = content[time_start:time_end]
                     context["last_question"] = msg.content
                 elif "what would you like to be reminded of" in content:
                     context["has_pending_clarification"] = True

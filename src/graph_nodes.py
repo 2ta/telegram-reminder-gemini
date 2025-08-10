@@ -1859,7 +1859,18 @@ async def handle_intent_node(state: AgentState) -> Dict[str, Any]:
 
     if current_operation_status == "clarification_needed_time":
         task = extracted_parameters.get('task', 'your task')
-        response_text = f"What time should I remind you about '{task}'? (e.g., 10 AM, 3:30 PM, morning)"
+        # If we already know the date, include it to help memory and the user
+        known_date = reminder_ctx.get("collected_date_str")
+        if known_date:
+            response_text = (
+                f"What time should I remind you about '{task}' on '{known_date}'? "
+                f"(e.g., 10 AM, 3:30 PM, morning)"
+            )
+        else:
+            response_text = (
+                f"What time should I remind you about '{task}'? "
+                f"(e.g., 10 AM, 3:30 PM, morning)"
+            )
         logger.info(f"handle_intent_node: Asking for time clarification for user {user_id}, task: '{task}'")
         # Save context to conversation memory
         session_id = conversation_memory.get_session_id(user_id, state.get("chat_id"))
@@ -1867,7 +1878,18 @@ async def handle_intent_node(state: AgentState) -> Dict[str, Any]:
 
     elif current_operation_status == "clarification_needed_date":
         task = extracted_parameters.get('task', 'your task')
-        response_text = f"What date should I remind you about '{task}'? (e.g., tomorrow, 22 July, next Monday)"
+        # If we already know the time, include it to help memory and the user
+        known_time = reminder_ctx.get("collected_time_str")
+        if known_time:
+            response_text = (
+                f"What date should I remind you about '{task}' at '{known_time}'? "
+                f"(e.g., tomorrow, 22 July, next Monday)"
+            )
+        else:
+            response_text = (
+                f"What date should I remind you about '{task}'? "
+                f"(e.g., tomorrow, 22 July, next Monday)"
+            )
         logger.info(f"handle_intent_node: Asking for date clarification for user {user_id}, task: '{task}'")
         # Save context to conversation memory
         session_id = conversation_memory.get_session_id(user_id, state.get("chat_id"))
