@@ -281,11 +281,12 @@ async def determine_intent_node(state: AgentState) -> Dict[str, Any]:
             # User is responding to the clarification
             logger.info(f"User {user_id} is responding to pending clarification: {pending_clarification_type}")
             
-            # Get the existing reminder context from the conversation memory, as it's the most reliable source.
+            # Merge conversation memory context with any existing state reminder context to preserve prior parts (e.g., date)
+            state_reminder_ctx = state.get("reminder_creation_context", {}) or {}
             reminder_ctx = {
-                "collected_task": conversation_context.get("collected_task"),
-                "collected_date_str": conversation_context.get("collected_date_str"),
-                "collected_time_str": conversation_context.get("collected_time_str"),
+                "collected_task": conversation_context.get("collected_task") or state_reminder_ctx.get("collected_task"),
+                "collected_date_str": conversation_context.get("collected_date_str") or state_reminder_ctx.get("collected_date_str"),
+                "collected_time_str": conversation_context.get("collected_time_str") or state_reminder_ctx.get("collected_time_str"),
                 "pending_clarification_type": pending_clarification_type
             }
 
