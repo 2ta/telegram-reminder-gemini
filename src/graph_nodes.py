@@ -1834,6 +1834,9 @@ async def handle_intent_node(state: AgentState) -> Dict[str, Any]:
     current_operation_status = state.get("current_operation_status") 
     logger.info(f"Graph: Entered handle_intent_node for user {user_id}, intent: {current_intent}, params: {extracted_parameters}, status: {current_operation_status}")
 
+    # Ensure reminder context is available for clarification branches
+    reminder_ctx = state.get("reminder_creation_context", {}) or {}
+
     # Default response text - updated to remove /help
     default_response_text = "I didn't understand what you asked me to do. Please be more specific."
     
