@@ -106,9 +106,23 @@ class ConversationMemoryManager:
                     # Extract task from the question
                     if "about '" in content and "'?" in content:
                         task_start = content.find("about '") + 7
-                        task_end = content.find("'?", task_start)
+                        task_end = content.find("'?,", task_start)
+                        # Some questions end with "'?" without a comma; handle both
+                        if task_end == -1:
+                            task_end = content.find("'?", task_start)
                         if task_start > 6 and task_end > task_start:
                             context["collected_task"] = content[task_start:task_end]
+                    # Also extract any inline known date/time if present (best-effort)
+                    if " on '" in content:
+                        date_start = content.find(" on '") + 5
+                        date_end = content.find("'", date_start)
+                        if date_start >= 5 and date_end > date_start:
+                            context["collected_date_str"] = content[date_start:date_end]
+                    if " at '" in content:
+                        time_start = content.find(" at '") + 5
+                        time_end = content.find("'", time_start)
+                        if time_start >= 5 and time_end > time_start:
+                            context["collected_time_str"] = content[time_start:time_end]
                     context["last_question"] = msg.content
                 # Specific time clarification
                 elif "what time should i remind you" in content:

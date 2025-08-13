@@ -3,7 +3,7 @@
 ## Overview
 This document tracks all developed features of the Telegram Reminder Bot. It is updated regularly after each new development to maintain a complete record of the bot's capabilities.
 
-**Last Updated:** December 2024  
+**Last Updated:** August 2025  
 **Bot Language:** English (All user-facing text is in English)  
 **Status:** Production Ready
 
@@ -151,6 +151,9 @@ The bot is designed to work primarily in English. While voice input supports Per
 ---
 
 ## Development History
+
+### Recent Updates (August 2025)
+1. Conversation Memory: Improved clarification flow to remember inline date/time embedded in bot questions (e.g., "on '25th Aug'", "at '10 AM'"). Follow-up user replies like "10 AM" now correctly combine with the remembered date, preventing redundant prompts.
 
 ### Recent Updates (December 2024)
 1. **Reminder Notification System:** Added background job scheduler and interactive notifications
