@@ -33,6 +33,7 @@ class User(BaseModel):
     subscription_expiry = Column(DateTime(timezone=True), nullable=True)
     reminder_count = Column(Integer, default=0)
     chat_id = Column(Integer, nullable=True)
+    is_admin = Column(Boolean, default=False)  # Admin flag for admin mode features
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 

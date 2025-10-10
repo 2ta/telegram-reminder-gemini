@@ -30,6 +30,16 @@ def get_or_create_user(telegram_user_id: int, first_name: str, last_name: str = 
         db.add(user)
         db.commit()
         db.refresh(user)
+        
+        # Send admin notification for new user registration
+        try:
+            from src.admin import send_admin_notification
+            from src.bot import _application_instance
+            if _application_instance and _application_instance.bot:
+                import asyncio
+                asyncio.create_task(send_admin_notification(_application_instance.bot, user, "new_user"))
+        except Exception as e:
+            logger.error(f"Failed to send admin notification for new user {telegram_user_id}: {e}")
     elif (user.first_name != first_name or
           user.last_name != last_name or
           user.username != username or

@@ -800,6 +800,15 @@ async def execute_start_command_node(state: AgentState) -> Dict[str, Any]:
             db.commit()
             db.refresh(user_obj) # To get the new user_obj.id if needed immediately
             logger.info(f"New user {user_id} created successfully.")
+            
+            # Send admin notification for new user registration
+            try:
+                from src.admin import send_admin_notification
+                from src.bot import _application_instance
+                if _application_instance and _application_instance.bot:
+                    await send_admin_notification(_application_instance.bot, user_obj, "new_user")
+            except Exception as e:
+                logger.error(f"Failed to send admin notification for new user {user_id}: {e}")
             # Update user_profile in state as it was None before
             user_profile = {
                 "user_db_id": user_obj.id,

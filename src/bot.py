@@ -28,6 +28,7 @@ from src.database import init_db, get_db
 from src.models import Reminder, User, SubscriptionTier
 from src.payment import create_payment_link, verify_payment, is_user_premium, PaymentStatus, StripePaymentError, handle_stripe_webhook
 from src.datetime_utils import format_datetime_for_display
+from src.admin import is_user_admin, set_user_admin, get_user_stats, send_admin_notification
 
 # Import the LangGraph app
 from src.graph import lang_graph_app
@@ -237,6 +238,12 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
                 db.add(user)
                 db.commit()
                 logger.info(f"Created new user {user_id} during timezone setup")
+                
+                # Send admin notification for new user registration
+                try:
+                    await send_admin_notification(update.get_bot(), user, "new_user")
+                except Exception as e:
+                    logger.error(f"Failed to send admin notification for new user {user_id}: {e}")
             
     except Exception as e:
         logger.error(f"Error checking user timezone in start command: {e}")
@@ -365,6 +372,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     user_id = update.effective_user.id
     chat_id = update.effective_chat.id
     text = update.message.text
+    
+    # Skip processing if this is a command (should be handled by CommandHandler)
+    if text.startswith('/'):
+        logger.info(f"Skipping command '{text}' in handle_message - should be handled by CommandHandler")
+        return
     
     logger.info(f"Received text message from user {user_id}: {text[:50]}...")
     
@@ -1492,6 +1504,109 @@ async def version_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         logger.error(f"Error in version_command: {e}", exc_info=True)
         await update.message.reply_text("❌ Error retrieving version information.")
 
+# Admin command handlers
+async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle /admin command - show admin panel for admin users."""
+    user_id = update.effective_user.id
+    
+    if not is_user_admin(user_id):
+        await update.message.reply_text("❌ Access denied. This command is only available for administrators.")
+        return
+    
+    keyboard = [
+        [InlineKeyboardButton("📊 Bot Statistics", callback_data="admin_stats")],
+        [InlineKeyboardButton("👥 User Management", callback_data="admin_users")],
+        [InlineKeyboardButton("🔧 Admin Settings", callback_data="admin_settings")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    message = (
+        "🔧 **Admin Panel**\n\n"
+        "Welcome to the admin panel. Use the buttons below to access admin features:\n\n"
+        "• **Bot Statistics**: View user counts, reminders, and system metrics\n"
+        "• **User Management**: Manage users and admin permissions\n"
+        "• **Admin Settings**: Configure admin notifications and settings"
+    )
+    
+    await update.message.reply_text(message, reply_markup=reply_markup, parse_mode='Markdown')
+
+async def set_admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle /setadmin command - set admin status for a user."""
+    user_id = update.effective_user.id
+    
+    # Check if current user is admin
+    if not is_user_admin(user_id):
+        await update.message.reply_text("❌ Access denied. Only administrators can use this command.")
+        return
+    
+    # Parse command arguments
+    if not context.args:
+        await update.message.reply_text(
+            "Usage: `/setadmin <telegram_id> <true/false>`\n\n"
+            "Example: `/setadmin 123456789 true` - Make user 123456789 an admin\n"
+            "Example: `/setadmin 123456789 false` - Remove admin status from user 123456789",
+            parse_mode='Markdown'
+        )
+        return
+    
+    try:
+        target_user_id = int(context.args[0])
+        admin_status = context.args[1].lower() in ['true', '1', 'yes', 'on']
+        
+        # Prevent self-demotion
+        if target_user_id == user_id and not admin_status:
+            await update.message.reply_text("❌ You cannot remove your own admin status.")
+            return
+        
+        success = set_user_admin(target_user_id, admin_status)
+        
+        if success:
+            status_text = "granted" if admin_status else "revoked"
+            await update.message.reply_text(
+                f"✅ Admin status {status_text} for user `{target_user_id}`",
+                parse_mode='Markdown'
+            )
+        else:
+            await update.message.reply_text("❌ Failed to update admin status. User may not exist.")
+            
+    except ValueError:
+        await update.message.reply_text("❌ Invalid user ID. Please provide a valid Telegram user ID.")
+    except Exception as e:
+        logger.error(f"Error in set_admin_command: {e}")
+        await update.message.reply_text("❌ An error occurred while updating admin status.")
+
+async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle /stats command - show bot statistics for admin users."""
+    user_id = update.effective_user.id
+    
+    if not is_user_admin(user_id):
+        await update.message.reply_text("❌ Access denied. This command is only available for administrators.")
+        return
+    
+    try:
+        stats = get_user_stats()
+        
+        message = (
+            "📊 **Bot Statistics**\n\n"
+            f"👥 **Users:**\n"
+            f"• Total Users: {stats.get('total_users', 0)}\n"
+            f"• Premium Users: {stats.get('premium_users', 0)}\n"
+            f"• Free Users: {stats.get('free_users', 0)}\n"
+            f"• Recent Registrations (24h): {stats.get('recent_registrations', 0)}\n\n"
+            f"📝 **Reminders:**\n"
+            f"• Active Reminders: {stats.get('total_reminders', 0)}\n\n"
+            f"📈 **System Status:**\n"
+            f"• Bot Status: ✅ Online\n"
+            f"• Database: ✅ Connected\n"
+            f"• Admin Mode: ✅ Active"
+        )
+        
+        await update.message.reply_text(message, parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Error in stats_command: {e}")
+        await update.message.reply_text("❌ An error occurred while retrieving statistics.")
+
 def build_application() -> Application:
     global _application_instance
     init_db()
@@ -1512,6 +1627,10 @@ def build_application() -> Application:
     application.add_handler(CommandHandler("stripe_webhook", handle_stripe_webhook))
     application.add_handler(CommandHandler("ping", ping))
     application.add_handler(CommandHandler(["version", "v"], version_command))
+    # Admin commands
+    application.add_handler(CommandHandler("admin", admin_command))
+    application.add_handler(CommandHandler("setadmin", set_admin_command))
+    application.add_handler(CommandHandler("stats", stats_command))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     application.add_handler(MessageHandler(filters.VOICE, handle_voice))
     application.add_handler(MessageHandler(filters.LOCATION, handle_location))
