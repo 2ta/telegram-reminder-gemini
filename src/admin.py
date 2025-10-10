@@ -53,7 +53,8 @@ def get_all_admins() -> List[User]:
     """Get all admin users."""
     db = next(get_db())
     try:
-        admins = db.query(User).filter(User.is_admin == True).all()
+        # Use explicit boolean comparison for PostgreSQL compatibility
+        admins = db.query(User).filter(User.is_admin.is_(True)).all()
         return admins
     except Exception as e:
         logger.error(f"Error getting admin users: {e}")
