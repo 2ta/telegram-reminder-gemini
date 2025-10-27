@@ -128,3 +128,17 @@ class Payment(BaseModel):
     
     # Relationships
     user = relationship("User")
+
+class MarketingMessage(BaseModel):
+    __tablename__ = "marketing_messages"
+    
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    message_type = Column(String, nullable=False)  # 'new_user_3days' or 'inactive_4days'
+    sent_at = Column(DateTime(timezone=True), nullable=False)
+    sent_to_chat_id = Column(Integer, nullable=False)
+    
+    # Relationships
+    user = relationship("User")
+    
+    def __repr__(self):
+        return f"<MarketingMessage(id={self.id}, user_id={self.user_id}, type='{self.message_type}')>"

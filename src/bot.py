@@ -25,7 +25,7 @@ from config.config import MSG_ERROR_GENERIC, MSG_WELCOME # Import all needed mes
 # It's recommended to move message constants to a dedicated config/messages.py or include them in config.config.py
 
 from src.database import init_db, get_db
-from src.models import Reminder, User, SubscriptionTier
+from src.models import Reminder, User, SubscriptionTier, MarketingMessage
 from src.payment import create_payment_link, verify_payment, is_user_premium, PaymentStatus, StripePaymentError, handle_stripe_webhook
 from src.datetime_utils import format_datetime_for_display
 from src.admin import is_user_admin, set_user_admin, get_user_stats, send_admin_notification
@@ -1607,6 +1607,223 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         logger.error(f"Error in stats_command: {e}")
         await update.message.reply_text("❌ An error occurred while retrieving statistics.")
 
+# Marketing Automation System
+async def send_marketing_message(message_text: str, user_id: int, chat_id: int, bot) -> bool:
+    """
+    Send a marketing message to a user.
+    Returns True if message was sent successfully, False otherwise.
+    """
+    try:
+        await bot.send_message(
+            chat_id=chat_id,
+            text=message_text
+        )
+        logger.info(f"Marketing message sent to user {user_id}")
+        return True
+    except Exception as e:
+        logger.error(f"Error sending marketing message to user {user_id}: {e}", exc_info=True)
+        return False
+
+async def check_and_send_new_user_marketing(context: ContextTypes.DEFAULT_TYPE) -> None:
+    """
+    Background job to send marketing messages to new users who haven't set any reminders after 3 days.
+    Runs every 6 hours.
+    """
+    global _application_instance
+    
+    if not _application_instance:
+        logger.warning("Application instance not available for sending marketing messages")
+        return
+    
+    logger.info("Checking for new users to send marketing messages...")
+    
+    db: Session = next(get_db())
+    try:
+        from datetime import datetime, timezone, timedelta
+        
+        # Get current time in UTC
+        now_utc = datetime.now(timezone.utc)
+        three_days_ago = now_utc - timedelta(days=3)
+        
+        # Find users who:
+        # 1. Registered 3 days ago (approximately, within a 1-hour window)
+        # 2. Have no reminders
+        # 3. Haven't received this marketing message yet
+        
+        users_to_target = db.query(User).filter(
+            and_(
+                User.created_at >= three_days_ago - timedelta(hours=1),
+                User.created_at <= three_days_ago,
+                ~User.id.in_(
+                    db.query(Reminder.user_id).distinct()
+                )
+            )
+        ).all()
+        
+        logger.info(f"Found {len(users_to_target)} new users without reminders")
+        
+        for user in users_to_target:
+            try:
+                # Check if user has already received this marketing message
+                existing_message = db.query(MarketingMessage).filter(
+                    and_(
+                        MarketingMessage.user_id == user.id,
+                        MarketingMessage.message_type == 'new_user_3days'
+                    )
+                ).first()
+                
+                if existing_message:
+                    logger.info(f"User {user.id} already received new_user_3days marketing message, skipping")
+                    continue
+                
+                # Send marketing message
+                message_text = (
+                    f"Hi {user.first_name}! 👋\n\n"
+                    "I noticed you registered with me 3 days ago but haven't created any reminders yet.\n\n"
+                    "💡 **Would you like to get started?** Here's how I can help:\n\n"
+                    "• Just tell me what you want to be reminded about\n"
+                    "• I'll understand natural language (\"Remind me to call mom tomorrow at 3pm\")\n"
+                    "• You can even send voice messages!\n\n"
+                    "🗓️ **Try it now:**\n"
+                    "\"Remind me to check my emails every day at 9am\"\n\n"
+                    "I'm here to help you stay organized! ✨"
+                )
+                
+                message_sent = await send_marketing_message(
+                    message_text,
+                    user.telegram_id,
+                    user.chat_id or user.telegram_id,
+                    context.bot
+                )
+                
+                if message_sent:
+                    # Record the marketing message
+                    marketing_msg = MarketingMessage(
+                        user_id=user.id,
+                        message_type='new_user_3days',
+                        sent_at=now_utc,
+                        sent_to_chat_id=user.chat_id or user.telegram_id
+                    )
+                    db.add(marketing_msg)
+                    db.commit()
+                    logger.info(f"Marketing message sent to new user {user.id}")
+                else:
+                    logger.error(f"Failed to send marketing message to user {user.id}")
+                    
+            except Exception as e:
+                logger.error(f"Error processing marketing message for user {user.id}: {e}", exc_info=True)
+                db.rollback()
+                continue
+                
+    except Exception as e:
+        logger.error(f"Error in check_and_send_new_user_marketing: {e}", exc_info=True)
+    finally:
+        db.close()
+
+async def check_and_send_inactive_user_marketing(context: ContextTypes.DEFAULT_TYPE) -> None:
+    """
+    Background job to send marketing messages to users who haven't set any reminders in the last 4 days.
+    Runs every 6 hours.
+    """
+    global _application_instance
+    
+    if not _application_instance:
+        logger.warning("Application instance not available for sending marketing messages")
+        return
+    
+    logger.info("Checking for inactive users to send marketing messages...")
+    
+    db: Session = next(get_db())
+    try:
+        from datetime import datetime, timezone, timedelta
+        from sqlalchemy import func
+        
+        # Get current time in UTC
+        now_utc = datetime.now(timezone.utc)
+        four_days_ago = now_utc - timedelta(days=4)
+        
+        # Find users who:
+        # 1. Have created at least one reminder before (have some history)
+        # 2. Haven't created any new reminders in the last 4 days
+        # 3. Haven't received this marketing message in the last 4 days
+        
+        # Get users who have reminders
+        users_with_reminders = db.query(User).join(Reminder).filter(
+            User.id == Reminder.user_id
+        ).distinct().all()
+        
+        logger.info(f"Found {len(users_with_reminders)} users with reminders")
+        
+        for user in users_with_reminders:
+            try:
+                # Check if user has created any reminder in the last 4 days
+                recent_reminders = db.query(Reminder).filter(
+                    and_(
+                        Reminder.user_id == user.id,
+                        Reminder.created_at >= four_days_ago
+                    )
+                ).count()
+                
+                if recent_reminders > 0:
+                    continue  # User has created reminders recently, skip
+                
+                # Check if user has already received this marketing message in the last 4 days
+                recent_marketing = db.query(MarketingMessage).filter(
+                    and_(
+                        MarketingMessage.user_id == user.id,
+                        MarketingMessage.message_type == 'inactive_4days',
+                        MarketingMessage.sent_at >= four_days_ago
+                    )
+                ).first()
+                
+                if recent_marketing:
+                    continue  # Already sent recently, skip
+                
+                # Send marketing message
+                message_text = (
+                    f"Hi {user.first_name}! 👋\n\n"
+                    "I noticed you haven't created any reminders recently. Are you still finding me useful?\n\n"
+                    "🤔 **Need help staying organized?**\n\n"
+                    "Let me help you get back on track:\n\n"
+                    "💡 **Quick Tips:**\n"
+                    "• \"Remind me to exercise every day at 6am\"\n"
+                    "• \"Remind me about the team meeting tomorrow at 2pm\"\n"
+                    "• \"Remind me to take my vitamins daily at 8am\"\n\n"
+                    "📱 Just send me a message with what you need, and I'll take care of the rest!\n\n"
+                    "I'm here to help you stay on top of everything! ✨"
+                )
+                
+                message_sent = await send_marketing_message(
+                    message_text,
+                    user.telegram_id,
+                    user.chat_id or user.telegram_id,
+                    context.bot
+                )
+                
+                if message_sent:
+                    # Record the marketing message
+                    marketing_msg = MarketingMessage(
+                        user_id=user.id,
+                        message_type='inactive_4days',
+                        sent_at=now_utc,
+                        sent_to_chat_id=user.chat_id or user.telegram_id
+                    )
+                    db.add(marketing_msg)
+                    db.commit()
+                    logger.info(f"Marketing message sent to inactive user {user.id}")
+                else:
+                    logger.error(f"Failed to send marketing message to user {user.id}")
+                    
+            except Exception as e:
+                logger.error(f"Error processing marketing message for user {user.id}: {e}", exc_info=True)
+                db.rollback()
+                continue
+                
+    except Exception as e:
+        logger.error(f"Error in check_and_send_inactive_user_marketing: {e}", exc_info=True)
+    finally:
+        db.close()
+
 def build_application() -> Application:
     global _application_instance
     init_db()
@@ -1642,6 +1859,17 @@ def build_application() -> Application:
         logger.error(f"Exception while handling an update: {context.error}", exc_info=True)
     application.add_error_handler(error_handler)
     job_queue = application.job_queue
+    
+    # Schedule reminder checking job (runs every 60 seconds)
     job_queue.run_repeating(check_and_send_reminders, interval=60, first=10)
     logger.info("Background reminder checker job scheduled (runs every 60 seconds)")
+    
+    # Schedule marketing automation jobs (runs every 6 hours)
+    # Convert 6 hours to seconds: 6 * 60 * 60 = 21600
+    job_queue.run_repeating(check_and_send_new_user_marketing, interval=21600, first=3600)  # First run after 1 hour
+    logger.info("Marketing automation job for new users scheduled (runs every 6 hours)")
+    
+    job_queue.run_repeating(check_and_send_inactive_user_marketing, interval=21600, first=3600)  # First run after 1 hour
+    logger.info("Marketing automation job for inactive users scheduled (runs every 6 hours)")
+    
     return application
