@@ -716,6 +716,99 @@ async def determine_intent_node(state: AgentState) -> Dict[str, Any]:
                     "reminder_creation_context": reminder_ctx
                 }
             else:
+                # Even if LLM says no intent, check if it's a voice message with date/time patterns
+                # Voice messages with scheduling language should be treated as reminder intents
+                if message_type in ["voice", "voice_transcribed"]:
+                    # Check for common reminder patterns in voice transcriptions
+                    input_lower = input_text.lower()
+                    
+                    # Check for explicit reminder phrases
+                    has_remind_phrase = any(phrase in input_lower for phrase in [
+                        "remind me", "remind me to", "remind me about", "set a reminder", "remember to"
+                    ])
+                    
+                    # Check for date/time patterns
+                    months = ["december", "january", "february", "march", "april", "may", "june", 
+                             "july", "august", "september", "october", "november"]
+                    has_month = any(month in input_lower for month in months)
+                    has_date_keywords = any(kw in input_lower for kw in ["tomorrow", "today", "next week", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"])
+                    has_time_keywords = any(kw in input_lower for kw in ["am", "pm", "p.m.", "a.m.", "morning", "afternoon", "evening", "night", "noon"])
+                    has_at_pattern = " at " in input_lower
+                    has_on_pattern = " on " in input_lower
+                    
+                    # Check for task keywords
+                    has_task_keywords = any(kw in input_lower for kw in ["call", "meeting", "appointment", "reminder", "remember"])
+                    
+                    # Determine if this looks like a reminder intent
+                    has_date_time_pattern = (
+                        (has_remind_phrase and (has_month or has_date_keywords or has_time_keywords)) or
+                        (has_task_keywords and has_at_pattern and (has_month or has_date_keywords or has_time_keywords)) or
+                        (has_task_keywords and has_on_pattern and (has_month or has_date_keywords)) or
+                        (has_at_pattern and (has_month or has_date_keywords) and has_time_keywords) or
+                        (" of " in input_lower and has_month and has_time_keywords)  # Pattern like "12 of December at 10 p.m."
+                    )
+                    
+                    if has_date_time_pattern:
+                        logger.warning(f"Voice message with date/time pattern not detected as reminder intent by LLM. Input: '{input_text}'. Forcing reminder intent and re-parsing with LLM.")
+                        # Try one more time with a more explicit prompt for voice messages
+                        try:
+                            # Create a more explicit prompt for voice messages
+                            voice_prompt_result = await intelligent_reminder_intent_detection(
+                                input_text=f"remind me {input_text}",  # Add "remind me" prefix to help LLM
+                                conversation_history=conversation_history,
+                                user_timezone=user_timezone
+                            )
+                            
+                            if voice_prompt_result.get("is_reminder_intent"):
+                                task = voice_prompt_result.get("task")
+                                date_str = voice_prompt_result.get("date_str")
+                                time_str = voice_prompt_result.get("time_str")
+                                recurrence_rule = voice_prompt_result.get("recurrence_rule")
+                                
+                                logger.info(f"Voice message re-parsed successfully: task='{task}', date='{date_str}', time='{time_str}'")
+                                
+                                reminder_ctx = {
+                                    "collected_task": task,
+                                    "collected_date_str": date_str,
+                                    "collected_time_str": time_str,
+                                    "collected_recurrence_rule": recurrence_rule,
+                                    "pending_clarification_type": voice_prompt_result.get("clarification_type") if voice_prompt_result.get("needs_clarification") else None,
+                                    "intent_confidence": "medium",
+                                    "voice_transcription_retry": True
+                                }
+                                
+                                return {
+                                    "current_intent": "intent_create_reminder",
+                                    "extracted_parameters": {
+                                        "date": date_str,
+                                        "time": time_str,
+                                        "task": task,
+                                        "recurrence_rule": recurrence_rule
+                                    },
+                                    "current_node_name": "determine_intent_node",
+                                    "reminder_creation_context": reminder_ctx
+                                }
+                        except Exception as retry_error:
+                            logger.error(f"Error in voice message re-parsing: {retry_error}", exc_info=True)
+                        
+                        # If re-parsing also fails, still force reminder intent but ask for clarification
+                        logger.warning(f"Forcing reminder intent for voice message: '{input_text}'")
+                        reminder_ctx = {
+                            "collected_task": None,
+                            "collected_date_str": None,
+                            "collected_time_str": None,
+                            "collected_recurrence_rule": None,
+                            "pending_clarification_type": "task",
+                            "intent_confidence": "low",
+                            "voice_transcription_issue": True
+                        }
+                        return {
+                            "current_intent": "intent_create_reminder",
+                            "extracted_parameters": {},
+                            "current_node_name": "determine_intent_node",
+                            "reminder_creation_context": reminder_ctx
+                        }
+                
                 logger.info(f"Intelligent intent detection: not a reminder intent for input: '{input_text}'")
                 # Fall through to unknown_intent
                 

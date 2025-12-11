@@ -97,8 +97,9 @@ def parse_english_datetime_to_utc(date_str: Optional[str], time_str: Optional[st
             
             if not target_date:
                 # Dates like "14 July", "July 14", "15th january", "january 15th", "22 July 2025"
-                # Updated regex to handle optional year
-                m_day_month_year = re.match(r"(\d{1,2})(?:st|nd|rd|th)?\s+(\w+)(?:\s+(\d{4}))?", date_str_cleaned)
+                # Also handle "12 of December", "12th of December" format
+                # Updated regex to handle optional year and "of" connector
+                m_day_month_year = re.match(r"(\d{1,2})(?:st|nd|rd|th)?(?:\s+of\s+)?(\w+)(?:\s+(\d{4}))?", date_str_cleaned)
                 if m_day_month_year:
                     day_str = m_day_month_year.group(1)
                     month_name_str = m_day_month_year.group(2)

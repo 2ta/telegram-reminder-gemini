@@ -81,9 +81,9 @@ async def intelligent_reminder_intent_detection(
         
         llm = ChatGoogleGenerativeAI(
             model=settings.GEMINI_MODEL_NAME,
-            temperature=0.2,  # Lower temperature for more consistent parsing
+            temperature=0.0,  # Zero temperature for most consistent parsing
             google_api_key=settings.GEMINI_API_KEY,
-            max_tokens=1000
+            max_tokens=2000  # Increased for better parsing of complex inputs
         )
         
         current_datetime = get_current_english_datetime_for_prompt()
@@ -114,26 +114,48 @@ User input: "{input_text}"
 
 Analyze this input with the following considerations:
 
-1. **Intent Detection**: Determine if the user wants to create a reminder. Look for:
-   - Explicit phrases: "remind me", "set a reminder", "remember to"
-   - Implicit intent: tasks with time references, scheduling language
-   - Context clues from conversation history
+1. **Intent Detection - BE EXTREMELY PERMISSIVE**:
+   - If input contains ANY of these, it's DEFINITELY a reminder intent:
+     * "remind me" / "remind me to" / "remind me about" (explicit)
+     * Task/action + date/time (e.g., "call my brother at 12 of December at 10 p.m.")
+     * Task/action + "at" + date/time (e.g., "call mom at 3pm tomorrow")
+     * Any scheduling language (e.g., "meeting on Friday", "appointment next week")
+   - DEFAULT TO REMINDER INTENT if there's ANY doubt - better to ask for clarification than miss a reminder
+   - Voice transcriptions may have punctuation/formatting differences - be very tolerant
+   - CRITICAL EXAMPLES that MUST be detected:
+     * "remind me to call my brother at 12 of December at 10 p.m." → DEFINITELY reminder intent
+     * "call my brother at 12 of December at 10 p.m." → DEFINITELY reminder intent (even without "remind me")
+     * "remind me to call my brother at 12 of December. at 10 p.m." → DEFINITELY reminder intent (period is punctuation)
+     * "meeting tomorrow at 3pm" → DEFINITELY reminder intent
 
 2. **Task Extraction**: Extract the main task/action to be reminded about:
    - Remove date/time references from the task
-   - Keep the core action (e.g., "call mom", "take medicine", "team meeting")
+   - Keep the core action (e.g., "call mom", "call my brother", "take medicine", "team meeting")
    - Preserve the user's original language if not English
+   - CRITICAL: When user says "remind me to call my brother at 12 of December", extract task="call my brother" (remove the date/time part)
 
-3. **Date Extraction**: Identify date-related phrases:
+3. **Date Extraction - HANDLE ALL FORMATS**:
+   - CRITICAL: Recognize ALL these date formats (all are valid):
+     * "12 of December" / "12th of December" / "the 12th of December"
+     * "December 12" / "December 12th" / "Dec 12"
+     * "12 December" / "12th December"
+     * "12/12" / "12-12" (assume current or next year)
    - Relative: "today", "tomorrow", "next week", "in 3 days"
-   - Specific: "July 15", "2024-06-10", "next Monday"
-   - Weekdays: "Monday", "Friday"
+   - Weekdays: "Monday", "Friday", "next Monday"
    - Special: "weekend", "end of month"
+   - CRITICAL: When parsing "at 12 of December", the "at" is just a connector - extract "12 of December" as date_str
+   - CRITICAL: When parsing "at [date] at [time]", first "at" introduces date, second "at" introduces time
+   - CRITICAL: Handle voice transcription variations - "12 of December" might be transcribed as "12 December" or "December 12"
 
-4. **Time Extraction**: Identify time-related phrases:
-   - Specific: "10 AM", "3:30 PM", "14:00"
-   - Relative: "morning", "afternoon", "evening", "tonight"
-   - Combined: "tomorrow at 3pm" should separate into date="tomorrow", time="3pm"
+4. **Time Extraction - HANDLE ALL FORMATS**:
+   - CRITICAL: Recognize ALL these time formats (all are valid):
+     * "10 p.m." / "10 PM" / "10pm" / "10 p.m" / "10PM" / "10 P.M."
+     * "10:00 PM" / "10:00pm" / "22:00" / "10:00 p.m."
+     * "10 AM" / "10am" / "10 a.m." / "10:00 AM"
+   - Relative: "morning", "afternoon", "evening", "tonight", "noon"
+   - CRITICAL: When user says "at 10 p.m.", extract time_str="10 p.m." (preserve format)
+   - CRITICAL: Handle voice transcription variations - "10 p.m." might be transcribed as "10pm" or "10 PM" - all are valid
+   - CRITICAL: Periods in transcriptions (e.g., "at 12 of December. at 10 p.m.") don't affect extraction - extract date and time separately
 
 5. **Recurrence Detection**: Identify recurring patterns:
    - "every day", "daily" → recurrence_rule="daily"
@@ -153,12 +175,16 @@ Analyze this input with the following considerations:
    - "medium": Clear intent, some ambiguity
    - "low": Unclear intent or incomplete information
 
-IMPORTANT RULES:
-- If user provides a complete reminder request, extract all components
-- If user is responding to a clarification question, use conversation context
-- Handle typos and variations intelligently (e.g., "tommorow" = "tomorrow")
-- For recurring reminders without specific date, use "today" as date_str
-- Always provide reasoning for your analysis
+CRITICAL RULES - FOLLOW THESE STRICTLY:
+1. BE EXTREMELY PERMISSIVE: If there's ANY doubt about intent, set is_reminder_intent=true
+2. HANDLE VOICE TRANSCRIPTION ERRORS: Voice messages may have punctuation/formatting differences - be very tolerant
+3. DATE FORMATS: All these are valid - "12 of December", "12th of December", "December 12", "12 December", "the 12th of December"
+4. TIME FORMATS: All these are valid - "10 p.m.", "10 PM", "10pm", "22:00", "10:00 PM"
+5. CONNECTOR WORDS: "at" can connect date or time - parse based on context (first "at" usually = date, second "at" usually = time)
+6. PUNCTUATION: Periods, commas in transcriptions don't affect date/time extraction - ignore them
+7. COMPLETE REQUESTS: If user provides task + date + time, extract all components and set needs_clarification=false
+8. TYPOS: Handle variations intelligently (e.g., "tommorow" = "tomorrow", "december" = "December")
+9. DEFAULT TO REMINDER: When uncertain, default to reminder intent - better to ask for clarification than miss a reminder
 
 Respond ONLY with valid JSON in this exact format:
 {{
@@ -176,6 +202,15 @@ Respond ONLY with valid JSON in this exact format:
 Examples:
 - Input: "Remind me to call mom tomorrow at 3pm"
   → {{"is_reminder_intent": true, "task": "call mom", "date_str": "tomorrow", "time_str": "3pm", "confidence": "high"}}
+
+- Input: "remind me to call my brother at 12 of December at 10 p.m."
+  → {{"is_reminder_intent": true, "task": "call my brother", "date_str": "12 of December", "time_str": "10 p.m.", "confidence": "high"}}
+
+- Input: "remind me to call my brother at 12th of December at 10 p.m."
+  → {{"is_reminder_intent": true, "task": "call my brother", "date_str": "12th of December", "time_str": "10 p.m.", "confidence": "high"}}
+
+- Input: "remind me to call my brother on December 12 at 10 p.m."
+  → {{"is_reminder_intent": true, "task": "call my brother", "date_str": "December 12", "time_str": "10 p.m.", "confidence": "high"}}
 
 - Input: "tomorrow 10am"
   → {{"is_reminder_intent": true, "task": null, "date_str": "tomorrow", "time_str": "10am", "needs_clarification": true, "clarification_type": "task"}}
@@ -215,7 +250,8 @@ Only respond with valid JSON, no other text.
                 f"task='{parsed_result.get('task')}', "
                 f"date='{parsed_result.get('date_str')}', "
                 f"time='{parsed_result.get('time_str')}', "
-                f"confidence={parsed_result.get('confidence')}"
+                f"confidence={parsed_result.get('confidence')}, "
+                f"reasoning='{parsed_result.get('reasoning', 'N/A')}'"
             )
             
             return parsed_result
