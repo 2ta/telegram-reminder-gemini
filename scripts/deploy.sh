@@ -96,7 +96,7 @@ After=network.target
 Type=simple
 User=root
 WorkingDirectory=$PROJECT_DIR
-ExecStart=$PROJECT_DIR/.venv/bin/python $PROJECT_DIR/start_bot.py
+ExecStart=$PROJECT_DIR/.venv/bin/python $PROJECT_DIR/run_bot.py
 Restart=on-failure
 RestartSec=10
 StartLimitBurst=3
@@ -150,7 +150,7 @@ remote_exec "
         
         # Check if bot is responding
         echo '🔍 Checking bot process...'
-        if pgrep -f 'start_bot.py' > /dev/null; then
+        if pgrep -f 'run_bot.py' > /dev/null; then
             echo '✅ Bot process is running'
         else
             echo '⚠️ Bot process not found, but service is active'
