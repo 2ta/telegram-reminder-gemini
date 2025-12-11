@@ -30,21 +30,18 @@ This directory contains comprehensive documentation for the Telegram Reminder Bo
   - API integrations
   - Security considerations
 
-### Development
-- **[planning/todo.md](planning/todo.md)** - Development roadmap and current status
-  - Feature implementation status
-  - TODO checklist
-  - Architecture decisions
-  - Future enhancements
+### AI & Intelligence
+- **[INTELLIGENT_REMINDER_REFACTORING.md](INTELLIGENT_REMINDER_REFACTORING.md)** - Intelligent reminder agent refactoring documentation
+  - LLM-powered intent detection
+  - Intelligent datetime parsing
+  - Context-aware clarification generation
+  - Error handling improvements
 
-- **[planning/prompt_plan.md](planning/prompt_plan.md)** - AI prompt engineering and LLM integration planning
-
-### Testing
-- **[testing/test_scenarios.md](testing/test_scenarios.md)** - Test scenarios and coverage
-  - User interaction flows
-  - Edge cases
-  - Performance testing
-  - Security testing
+### Marketing
+- **[MARKETING_AUTOMATION.md](MARKETING_AUTOMATION.md)** - Marketing automation system
+  - New user engagement
+  - Inactive user re-engagement
+  - Automated messaging system
 
 ## 🚀 Quick Navigation
 
@@ -52,9 +49,9 @@ This directory contains comprehensive documentation for the Telegram Reminder Bo
 
 **For Payment Setup**: See [PAYMENT_DOMAIN_SETUP.md](PAYMENT_DOMAIN_SETUP.md)
 
-**For Development**: Review [FEATURES.md](FEATURES.md), [specs/spec.md](specs/spec.md) and [planning/todo.md](planning/todo.md)
+**For Development**: Review [FEATURES.md](FEATURES.md), [specs/spec.md](specs/spec.md) and [INTELLIGENT_REMINDER_REFACTORING.md](INTELLIGENT_REMINDER_REFACTORING.md)
 
-**For Testing**: See [testing/test_scenarios.md](testing/test_scenarios.md)
+**For AI Features**: See [INTELLIGENT_REMINDER_REFACTORING.md](INTELLIGENT_REMINDER_REFACTORING.md)
 
 ## 📖 External Resources
 

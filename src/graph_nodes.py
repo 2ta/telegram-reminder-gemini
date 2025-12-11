@@ -24,6 +24,12 @@ from sqlalchemy.orm import Session
 from src.payment import DEFAULT_PAYMENT_AMOUNT
 from src.conversation_memory import conversation_memory
 from src.langsmith_config import log_graph_execution, create_run_name
+from src.intelligent_reminder_agent import (
+    intelligent_reminder_intent_detection,
+    intelligent_datetime_parsing,
+    intelligent_clarification_generation,
+    intelligent_error_handling
+)
 
 # Global cache for pending reminder details before confirmation
 PENDING_REMINDER_CONFIRMATIONS: Dict[str, Dict[str, Any]] = {}
@@ -647,105 +653,75 @@ async def determine_intent_node(state: AgentState) -> Dict[str, Any]:
                 "current_node_name": "determine_intent_node"
             }
 
-        if not settings.GEMINI_API_KEY:
-            logger.warning("GEMINI_API_KEY is not set. LLM NLU will be skipped.")
-            # Fall through to unknown_intent at the end
-        else:
-            try:
-                llm = ChatGoogleGenerativeAI(
-                    model=settings.GEMINI_MODEL_NAME, 
-                    temperature=0.3,
-                    google_api_key=settings.GEMINI_API_KEY
+        # Use intelligent intent detection with conversation context
+        try:
+            # Get conversation history for context
+            chat_id = state.get("chat_id")
+            session_id = conversation_memory.get_session_id(user_id, chat_id)
+            history = conversation_memory.get_message_history(session_id)
+            conversation_history = []
+            if history and history.messages:
+                for msg in history.messages[-6:]:  # Last 6 messages
+                    if isinstance(msg, HumanMessage):
+                        conversation_history.append({"speaker": "user", "text": msg.content})
+                    elif isinstance(msg, AIMessage):
+                        conversation_history.append({"speaker": "bot", "text": msg.content})
+            
+            # Get user timezone
+            user_profile = state.get("user_profile", {})
+            user_timezone = user_profile.get("timezone", "UTC")
+            
+            # Use intelligent intent detection
+            logger.info(f"Using intelligent intent detection for user {user_id}, input: '{input_text}'")
+            intent_result = await intelligent_reminder_intent_detection(
+                input_text=input_text,
+                conversation_history=conversation_history,
+                user_timezone=user_timezone
+            )
+            
+            if intent_result.get("is_reminder_intent"):
+                task = intent_result.get("task")
+                date_str = intent_result.get("date_str")
+                time_str = intent_result.get("time_str")
+                recurrence_rule = intent_result.get("recurrence_rule")
+                confidence = intent_result.get("confidence", "medium")
+                needs_clarification = intent_result.get("needs_clarification", False)
+                clarification_type = intent_result.get("clarification_type")
+                
+                logger.info(
+                    f"Intelligent intent detection result: intent=True, task='{task}', "
+                    f"date='{date_str}', time='{time_str}', recurrence='{recurrence_rule}', "
+                    f"confidence={confidence}, needs_clarification={needs_clarification}"
                 )
-                current_english_datetime = get_current_english_datetime_for_prompt()
-                prompt_template = f"""You are an intelligent assistant for detecting user intent from English text (if the user give the prompt in other language, apply all the rules below to the prompt in English and understand the user intent and pass the resualt for task in the same language of the user that used and  provide time_str and date_str in English - if the user provide date in the Jalali calendar convert it to the Gregorian calendar and always provide time_str and date_str in English).
-                Your task is to determine whether the user intends to create a new reminder or not.
-If they intend to create a reminder, you should extract the following information:
-1.  `task`: The main task that needs to be reminded (e.g., "call my brother", "weekly sales team meeting"). This should not include date and time.
-2.  `date_str`: Date-related phrases (e.g., "tomorrow", "day after tomorrow", "next monday", "weekend", "in 3 days", "march 15", "today"). This field can include relative or specific expressions.
-3.  `time_str`: Time-related phrases (e.g., "2 pm", "3 in the afternoon", "early morning", "around noon", "11 PM"). This field can include relative or specific expressions.
-4.  `recurrence_rule`: Recurring patterns (e.g., "every day", "daily", "weekly", "monthly", "every monday", "every morning"). This should be null for one-time reminders.
-
-IMPORTANT: When the user provides a combined date-time phrase like "11 PM today" or "tomorrow at 2 PM", you should separate them:
-- For "11 PM today": date_str="today", time_str="11 PM"
-- For "tomorrow at 2 PM": date_str="tomorrow", time_str="2 PM"
-- For "next Monday at 9 AM": date_str="next monday", time_str="9 AM"
-
-RECURRING PATTERNS: Look for patterns like:
-- "every day at 8 AM" → recurrence_rule="daily", time_str="8 AM", date_str="today"
-- "daily reminder" → recurrence_rule="daily", date_str="today"
-- "weekly meeting" → recurrence_rule="weekly", date_str="today"
-- "monthly check" → recurrence_rule="monthly", date_str="today"
-- "every month on the 15th" → recurrence_rule="monthly", time_str="15th", date_str="today"
-- "every month at 22nd" → recurrence_rule="monthly", time_str="22nd", date_str="today"
-- "every month at 22th" → recurrence_rule="monthly", time_str="22th", date_str="today"
-- "every month at 22th at 6:10 PM" → recurrence_rule="monthly", time_str="22th at 6:10 PM", date_str="today" (keep the combined day and time for parsing)
-- "every month on the 15th at 3:30 PM" → recurrence_rule="monthly", time_str="3:30 PM", date_str="today"
-- "every morning" → recurrence_rule="daily", time_str="morning", date_str="today"
-- "every evening" → recurrence_rule="daily", time_str="evening", date_str="today"
-- "every night" → recurrence_rule="daily", time_str="night", date_str="today"
-- "every afternoon" → recurrence_rule="daily", time_str="afternoon", date_str="today"
-
-IMPORTANT: For recurring reminders, if no specific date is mentioned, use "today" as the date_str to establish the first occurrence.
-For monthly reminders, if a day is specified (like "22th", "15th"), extract it as time_str.
-
-Current date and time: {current_english_datetime}
-
-User text: "{input_text}"
-
-Please provide your response only and only in the format of a JSON object with the following structure:
-{{
-  "is_reminder_creation_intent": boolean,
-  "task": "string or null",
-  "date_str": "string or null",
-  "time_str": "string or null",
-  "recurrence_rule": "string or null"
-}}
-
-The user may provide only the task. If so, `is_reminder_creation_intent` should be true and the `task` field should be populated.
-"""
-                logger.info(f"Sending prompt to LLM for intent determination. User input: '{input_text}'")
-                llm_response = await llm.ainvoke([HumanMessage(content=prompt_template)])
-                llm_response_content = llm_response.content.strip()
-                logger.debug(f"LLM raw response: {llm_response_content}")
-                try:
-                    # Attempt to extract JSON even if it's embedded in other text
-                    json_match = re.search(r"```json\s*(\{.*?\})\s*```", llm_response_content, re.DOTALL)
-                    json_str = json_match.group(1) if json_match else llm_response_content
-                    parsed_llm_response = json.loads(json_str)
-                    is_reminder_intent = parsed_llm_response.get("is_reminder_creation_intent", False)
-                    if is_reminder_intent:
-                        task = parsed_llm_response.get("task")
-                        date_str = parsed_llm_response.get("date_str")
-                        time_str = parsed_llm_response.get("time_str")
-                        recurrence_rule = parsed_llm_response.get("recurrence_rule")
-                        # Allow reminder intent if at least a task is present.
-                        if task:
-                            logger.info(f"LLM determined 'intent_create_reminder'. Task: '{task}', Date: '{date_str}', Time: '{time_str}', Recurrence: '{recurrence_rule}'")
-                            return {
-                                "current_intent": "intent_create_reminder",
-                                "extracted_parameters": {"date": date_str, "time": time_str, "task": task, "recurrence_rule": recurrence_rule},
-                                "current_node_name": "determine_intent_node",
-                                "reminder_creation_context": {
-                                    "collected_task": task,
-                                    "collected_date_str": date_str,
-                                    "collected_time_str": time_str,
-                                    "collected_recurrence_rule": recurrence_rule,
-                                    "pending_clarification_type": None
-                                }
-                            }
-                        else:
-                            logger.warning(f"LLM indicated reminder intent, but task is missing. LLM Output: {parsed_llm_response}")
-                            # Fall through to unknown_intent if task is missing
-                    else:
-                        logger.info(f"LLM determined 'is_reminder_creation_intent' is false for input: '{input_text}'")
-                        # Fall through to unknown_intent
-                except json.JSONDecodeError as json_e:
-                    logger.error(f"Failed to parse JSON response from LLM: {json_e}. Raw response for user '{state.get('user_id')}': {llm_response_content}")
-                    # Fall through to unknown_intent
-            except Exception as e:
-                logger.error(f"Error during LLM call in determine_intent_node for user '{state.get('user_id')}': {e}", exc_info=True)
+                
+                # Build reminder context
+                reminder_ctx = {
+                    "collected_task": task,
+                    "collected_date_str": date_str,
+                    "collected_time_str": time_str,
+                    "collected_recurrence_rule": recurrence_rule,
+                    "pending_clarification_type": clarification_type if needs_clarification else None,
+                    "intent_confidence": confidence
+                }
+                
+                return {
+                    "current_intent": "intent_create_reminder",
+                    "extracted_parameters": {
+                        "date": date_str,
+                        "time": time_str,
+                        "task": task,
+                        "recurrence_rule": recurrence_rule
+                    },
+                    "current_node_name": "determine_intent_node",
+                    "reminder_creation_context": reminder_ctx
+                }
+            else:
+                logger.info(f"Intelligent intent detection: not a reminder intent for input: '{input_text}'")
                 # Fall through to unknown_intent
+                
+        except Exception as e:
+            logger.error(f"Error during intelligent intent detection for user '{user_id}': {e}", exc_info=True)
+            # Fall through to unknown_intent
 
     # --- Default Fallback (Unknown Intent) ---
     logger.warning(f"Could not determine a specific intent for user '{state.get('user_id')}', input: '{input_text}'. Treating as unknown_intent.")
@@ -1032,8 +1008,27 @@ async def process_datetime_node(state: AgentState) -> Dict[str, Any]:
                             # Not a day specification, use regular parsing
                             parsed_dt_utc = parse_english_datetime_to_utc(date_str, time_str, user_timezone)
                 else:
-                    # Regular parsing for non-monthly or non-day-specification cases
-                    parsed_dt_utc = parse_english_datetime_to_utc(date_str, time_str, user_timezone)
+                    # Use intelligent datetime parsing for better understanding
+                    try:
+                        parsing_result = await intelligent_datetime_parsing(
+                            date_str=date_str,
+                            time_str=time_str,
+                            user_timezone=user_timezone,
+                            context=f"Task: {reminder_ctx.get('collected_task', 'Unknown')}, Recurrence: {recurrence_rule or 'None'}"
+                        )
+                        parsed_dt_utc = parsing_result.get("parsed_datetime_utc")
+                        # Update context with normalized strings if parsing was successful
+                        if parsed_dt_utc and parsing_result.get("date_str_normalized"):
+                            reminder_ctx["collected_date_str"] = parsing_result.get("date_str_normalized")
+                        if parsed_dt_utc and parsing_result.get("time_str_normalized"):
+                            reminder_ctx["collected_time_str"] = parsing_result.get("time_str_normalized")
+                        # Store parsing confidence and any error messages
+                        if parsing_result.get("error_message"):
+                            logger.warning(f"Intelligent datetime parsing warning: {parsing_result['error_message']}")
+                    except Exception as e:
+                        logger.error(f"Error in intelligent datetime parsing, falling back to regular parsing: {e}", exc_info=True)
+                        # Fallback to regular parsing
+                        parsed_dt_utc = parse_english_datetime_to_utc(date_str, time_str, user_timezone)
                 
                 if parsed_dt_utc:
                     # Ensure for recurring reminders, the first due date is always in the future (robust post-parse check)
@@ -1085,6 +1080,20 @@ async def process_datetime_node(state: AgentState) -> Dict[str, Any]:
                     reminder_ctx["datetime_parse_failed"] = True if (has_date_part and has_time_part) or (not has_date_part and not has_time_part) else False
             except Exception as e:
                 logger.error(f"Error during date/time parsing: {e}", exc_info=True)
+                # Use intelligent error handling
+                try:
+                    error_result = await intelligent_error_handling(
+                        error_type="parse_error",
+                        error_details=str(e),
+                        user_input=f"Date: {date_str}, Time: {time_str}",
+                        context={"task": reminder_ctx.get("collected_task"), "user_timezone": user_timezone}
+                    )
+                    if error_result.get("user_message"):
+                        reminder_ctx["parse_error_message"] = error_result["user_message"]
+                    if error_result.get("suggestions"):
+                        reminder_ctx["parse_error_suggestions"] = error_result["suggestions"]
+                except Exception as error_handling_error:
+                    logger.error(f"Error in intelligent error handling: {error_handling_error}", exc_info=True)
                 reminder_ctx["collected_parsed_datetime_utc"] = None
                 reminder_ctx["datetime_parse_failed"] = True
         else:
@@ -1242,7 +1251,19 @@ async def validate_and_clarify_reminder_node(state: AgentState) -> Dict[str, Any
         logger.info(f"[VALIDATION DEBUG] CONDITION 3: Task missing - collected_task='{collected_task}'")
         logger.info(f"Validation failed for user {user_id}: Task is missing.")
         pending_clarification_type = "task"
-        clarification_question_text = "What would you like to be reminded of?"
+        # Use intelligent clarification generation
+        try:
+            user_timezone = (user_profile or {}).get("timezone", "UTC")
+            clarification_result = await intelligent_clarification_generation(
+                missing_info_type="task",
+                user_timezone=user_timezone
+            )
+            clarification_question_text = clarification_result.get("question", "What would you like to be reminded of?")
+            if clarification_result.get("examples"):
+                clarification_question_text += f"\n\nExamples: {', '.join(clarification_result['examples'][:3])}"
+        except Exception as e:
+            logger.error(f"Error generating intelligent clarification for task: {e}", exc_info=True)
+            clarification_question_text = "What would you like to be reminded of?"
         new_reminder_creation_status = "clarification_needed_task"
     # --- 4. Validate Datetime (only if not already parsed) ---
     elif not collected_parsed_dt_utc:
@@ -1250,27 +1271,79 @@ async def validate_and_clarify_reminder_node(state: AgentState) -> Dict[str, Any
         # Prioritize targeted clarification first based on which part we have
         has_date_str = reminder_ctx.get("collected_date_str") is not None
         has_time_str = reminder_ctx.get("collected_time_str") is not None
+        user_timezone = (user_profile or {}).get("timezone", "UTC")
+        
         if has_date_str and not has_time_str:
             pending_clarification_type = "time"
-            clarification_question_text = f"What time should I remind you about '{collected_task}'? (e.g., 10 AM, 3:30 PM, morning)"
+            # Use intelligent clarification generation
+            try:
+                clarification_result = await intelligent_clarification_generation(
+                    missing_info_type="time",
+                    collected_task=collected_task,
+                    collected_date=reminder_ctx.get("collected_date_str"),
+                    user_timezone=user_timezone
+                )
+                clarification_question_text = clarification_result.get("question", f"What time should I remind you about '{collected_task}'?")
+                if clarification_result.get("examples"):
+                    clarification_question_text += f"\n\nExamples: {', '.join(clarification_result['examples'][:3])}"
+            except Exception as e:
+                logger.error(f"Error generating intelligent clarification for time: {e}", exc_info=True)
+                clarification_question_text = f"What time should I remind you about '{collected_task}'? (e.g., 10 AM, 3:30 PM, morning)"
             new_reminder_creation_status = "clarification_needed_time"
         elif has_time_str and not has_date_str:
             pending_clarification_type = "date"
-            clarification_question_text = f"What date should I remind you about '{collected_task}'? (e.g., tomorrow, 22 July, next Monday)"
+            # Use intelligent clarification generation
+            try:
+                clarification_result = await intelligent_clarification_generation(
+                    missing_info_type="date",
+                    collected_task=collected_task,
+                    collected_time=reminder_ctx.get("collected_time_str"),
+                    user_timezone=user_timezone
+                )
+                clarification_question_text = clarification_result.get("question", f"What date should I remind you about '{collected_task}'?")
+                if clarification_result.get("examples"):
+                    clarification_question_text += f"\n\nExamples: {', '.join(clarification_result['examples'][:3])}"
+            except Exception as e:
+                logger.error(f"Error generating intelligent clarification for date: {e}", exc_info=True)
+                clarification_question_text = f"What date should I remind you about '{collected_task}'? (e.g., tomorrow, 22 July, next Monday)"
             new_reminder_creation_status = "clarification_needed_date"
         elif datetime_parse_failed:
             # Only if we couldn't determine which part is present or both parts were invalid
             logger.warning(f"Date/time parsing failed for user {user_id}, task '{collected_task}'. Informing user.")
             pending_clarification_type = "datetime"
-            clarification_question_text = (
-                f"Sorry, I couldn't understand the date and time you provided. "
-                f"Please try a different format, e.g., 'tomorrow at 1 PM' or '2024-06-10 13:00'."
-            )
+            # Use intelligent clarification generation
+            try:
+                clarification_result = await intelligent_clarification_generation(
+                    missing_info_type="datetime",
+                    collected_task=collected_task,
+                    user_timezone=user_timezone
+                )
+                clarification_question_text = clarification_result.get("question", f"When should I remind you about '{collected_task}'?")
+                if clarification_result.get("examples"):
+                    clarification_question_text += f"\n\nExamples: {', '.join(clarification_result['examples'][:3])}"
+            except Exception as e:
+                logger.error(f"Error generating intelligent clarification for datetime: {e}", exc_info=True)
+                clarification_question_text = (
+                    f"Sorry, I couldn't understand the date and time you provided. "
+                    f"Please try a different format, e.g., 'tomorrow at 1 PM' or '2024-06-10 13:00'."
+                )
             new_reminder_creation_status = "clarification_needed_datetime"
         else:
             logger.info(f"Validation failed for user {user_id}, task '{collected_task}': Datetime is missing or unparseable.")
             pending_clarification_type = "datetime"
-            clarification_question_text = f"When should I remind you about '{collected_task}'?"
+            # Use intelligent clarification generation
+            try:
+                clarification_result = await intelligent_clarification_generation(
+                    missing_info_type="datetime",
+                    collected_task=collected_task,
+                    user_timezone=user_timezone
+                )
+                clarification_question_text = clarification_result.get("question", f"When should I remind you about '{collected_task}'?")
+                if clarification_result.get("examples"):
+                    clarification_question_text += f"\n\nExamples: {', '.join(clarification_result['examples'][:3])}"
+            except Exception as e:
+                logger.error(f"Error generating intelligent clarification for datetime: {e}", exc_info=True)
+                clarification_question_text = f"When should I remind you about '{collected_task}'?"
             new_reminder_creation_status = "clarification_needed_datetime"
     # --- 5. Fallback to prior clarification status only if still not resolved ---
     else:

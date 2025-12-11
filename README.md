@@ -71,13 +71,18 @@ telegram_reminder_bot_project/
 ├── config/                 # Configuration files
 │   └── config.py          # Environment variables and settings
 ├── scripts/               # Deployment and utility scripts
-│   └── deploy.sh         # Automated deployment script
+│   ├── deploy.sh         # Automated deployment script
+│   ├── setup_admin.py    # Admin user setup
+│   ├── setup_payment_domain.sh  # Payment domain setup
+│   └── verify_deployment.py     # Deployment verification
 ├── docs/                 # Project documentation
 │   ├── MANAGEMENT.md     # Production management guide
-│   ├── specs/           # Technical specifications
-│   ├── planning/        # Development planning and todo
-│   └── testing/         # Test scenarios and documentation
-├── working_bot.py        # Production bot entry point
+│   ├── FEATURES.md       # Features documentation
+│   ├── INTELLIGENT_REMINDER_REFACTORING.md  # AI agent documentation
+│   ├── MARKETING_AUTOMATION.md  # Marketing system docs
+│   └── specs/           # Technical specifications
+├── bot_entry.py         # Main bot entry point
+├── app.py               # Combined app for Render.com deployment
 ├── requirements.txt      # Python dependencies
 └── env.sample           # Environment variables template
 ```
@@ -103,7 +108,9 @@ telegram_reminder_bot_project/
 
 3. **Run the bot**:
    ```bash
-   python working_bot.py
+   python bot_entry.py
+   # Or for Render.com deployment:
+   python app.py
    ```
 
 ### Production Deployment
@@ -123,10 +130,11 @@ sudo systemctl start telegram-reminder-bot
 ## 📖 Documentation
 
 - **[Management Guide](docs/MANAGEMENT.md)** - Production deployment and management
+- **[Features Documentation](docs/FEATURES.md)** - Complete features list and status
+- **[Intelligent Reminder Agent](docs/INTELLIGENT_REMINDER_REFACTORING.md)** - AI-powered reminder system
 - **[LangSmith Integration](docs/LANGSMITH_INTEGRATION.md)** - Monitoring and debugging guide
 - **[Technical Specifications](docs/specs/spec.md)** - Detailed technical requirements
-- **[Test Scenarios](docs/testing/test_scenarios.md)** - Testing documentation
-- **[Development Planning](docs/planning/todo.md)** - Current development status
+- **[Marketing Automation](docs/MARKETING_AUTOMATION.md)** - Automated user engagement system
 
 ## 🔧 Configuration
 
@@ -166,8 +174,9 @@ pip install pytest pytest-asyncio
 # Run tests
 pytest tests/
 
-# Test LangSmith integration
-python scripts/test_langsmith.py
+# Run specific test files
+python test_admin_mode.py
+python test_recurring_reminders.py
 ```
 
 ## 🔍 Monitoring
